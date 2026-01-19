@@ -137,6 +137,31 @@ async function runDailyJob() {
     console.error("Daily job failed:", err.message);
   }
 }
+// View latest saved report (for dashboard/email)
+app.get("/reports/latest", async (req, res) => {
+  try {
+    const site_id = req.query.site_id || "test_site";
+
+    const result = await pool.query(
+      `
+      SELECT site_id, report_date, report_text, created_at
+      FROM daily_reports
+      WHERE site_id = $1
+      ORDER BY report_date DESC, created_at DESC
+      LIMIT 1
+      `,
+      [site_id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: "No reports found" });
+    }
+
+    res.json({ ok: true, report: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
