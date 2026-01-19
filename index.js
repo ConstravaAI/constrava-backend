@@ -13,50 +13,35 @@ const DATABASE_URL = process.env.DATABASE_URL;
 
 const pool = new Pool({ connectionString: DATABASE_URL });
 
-/* =========================
-   BASIC HEALTH CHECKS
-========================= */
-
-app.get("/", (req, res) => {
-  res.send("Backend is running ✅");
-});
+app.get("/", (req, res) => res.send("Backend is running ✅"));
 
 app.get("/db-test", async (req, res) => {
   try {
-    const r = await pool.query("SELECT NOW()");
+    const r = await pool.query("SELECT NOW() as now");
     res.json({ ok: true, now: r.rows[0].now });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-/* =========================
-   EVENTS (MULTI-CLIENT SAFE)
-========================= */
-
+// EVENTS (validated site_id)
 app.post("/events", async (req, res) => {
   const { site_id, event_name, page_type, device } = req.body;
-
   if (!site_id || !event_name) {
     return res.status(400).json({ error: "site_id and event_name required" });
   }
 
   try {
-    // Validate site
-    const site = await pool.query(
-      "SELECT 1 FROM sites WHERE site_id = $1",
-      [site_id]
-    );
-
+    const site = await pool.query("SELECT 1 FROM sites WHERE site_id = $1", [
+      site_id
+    ]);
     if (site.rows.length === 0) {
       return res.status(403).json({ error: "Invalid site_id" });
     }
 
     await pool.query(
-      `
-      INSERT INTO events_raw (site_id, event_name, page_type, device)
-      VALUES ($1, $2, $3, $4)
-      `,
+      `INSERT INTO events_raw (site_id, event_name, page_type, device)
+       VALUES ($1, $2, $3, $4)`,
       [site_id, event_name, page_type || null, device || null]
     );
 
@@ -66,10 +51,7 @@ app.post("/events", async (req, res) => {
   }
 });
 
-/* =========================
-   DAILY AGGREGATION
-========================= */
-
+// DAILY METRICS (manual trigger)
 app.post("/run-daily", async (req, res) => {
   try {
     const r = await pool.query(`
@@ -78,17 +60,13 @@ app.post("/run-daily", async (req, res) => {
       WHERE created_at::date = CURRENT_DATE
       GROUP BY site_id
     `);
-
     res.json({ ok: true, metrics: r.rows });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-/* =========================
-   GENERATE + SAVE AI REPORT
-========================= */
-
+// GENERATE + SAVE REPORT
 app.post("/generate-report", async (req, res) => {
   try {
     const metricsRes = await pool.query(`
@@ -113,14 +91,9 @@ app.post("/generate-report", async (req, res) => {
           { role: "system", content: "You write short daily business reports." },
           {
             role: "user",
-            content: `
-Metrics (JSON): ${JSON.stringify(metrics)}
-
-Write:
-1) Summary
-2) 3 prioritized next actions
-3) One metric to watch
-            `
+            content:
+              `Metrics (JSON): ${JSON.stringify(metrics)}\n` +
+              "Write:\n1) Summary\n2) 3 next actions\n3) One metric to watch"
           }
         ]
       })
@@ -146,14 +119,10 @@ Write:
   }
 });
 
-/* =========================
-   VIEW LATEST REPORT
-========================= */
-
+// VIEW LATEST REPORT
 app.get("/reports/latest", async (req, res) => {
   try {
-    const site_id = req.query.site_id;
-
+    const site_id = req.query.site_id || "test_site";
     const r = await pool.query(
       `
       SELECT site_id, report_date, report_text, created_at
@@ -175,15 +144,13 @@ app.get("/reports/latest", async (req, res) => {
   }
 });
 
-/* =========================
-   EMAIL LATEST REPORT
-========================= */
-
+// EMAIL LATEST REPORT (Resend)
 app.post("/email-latest", async (req, res) => {
   try {
-    const { site_id, to_email } = req.body;
+    const site_id = req.body.site_id || "test_site";
+    const to_email = req.body.to_email;
     if (!to_email) {
-      return res.status(400).json({ error: "to_email required" });
+      return res.status(400).json({ ok: false, error: "to_email required" });
     }
 
     const r = await pool.query(
@@ -198,7 +165,7 @@ app.post("/email-latest", async (req, res) => {
     );
 
     if (r.rows.length === 0) {
-      return res.status(404).json({ error: "No report found" });
+      return res.status(404).json({ ok: false, error: "No report found" });
     }
 
     const emailRes = await fetch("https://api.resend.com/emails", {
@@ -211,9 +178,31 @@ app.post("/email-latest", async (req, res) => {
         from: process.env.FROM_EMAIL || "onboarding@resend.dev",
         to: [to_email],
         subject: `Daily Report (${site_id})`,
-        html: `<pre>${r.rows[0].report_text}</pre>`
+        html: `<pre style="white-space:pre-wrap;">${r.rows[0].report_text}</pre>`
       })
     });
 
-const emailData = await emailRes.json();
-res.json({ ok: true, resend: emailData });
+    const emailData = await emailRes.json();
+    res.json({ ok: true, resend: emailData });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// AUTOMATION (runs once after boot, then every 24h)
+const ONE_DAY = 24 * 60 * 60 * 1000;
+
+setTimeout(runDailyJob, 60 * 1000);
+setInterval(runDailyJob, ONE_DAY);
+
+async function runDailyJob() {
+  try {
+    console.log("Running daily report job...");
+    await fetch(`http://localhost:${PORT}/generate-report`, { method: "POST" });
+    console.log("Daily report completed");
+  } catch (err) {
+    console.error("Daily job failed:", err.message);
+  }
+}
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
