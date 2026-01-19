@@ -215,4 +215,5 @@ app.post("/email-latest", async (req, res) => {
       })
     });
 
-    const emailDat
+const emailData = await emailRes.json();
+res.json({ ok: true, resend: emailData });
