@@ -61,6 +61,59 @@ app.post("/run-daily", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+// Generate a simple AI daily report (manual trigger)
+app.post("/generate-report", async (req, res) => {
+  try {
+    // 1) pull today's metrics
+    const metricsRes = await pool.query(`
+      SELECT site_id, COUNT(*) as total_events
+      FROM events_raw
+      WHERE created_at::date = CURRENT_DATE
+      GROUP BY site_id
+    `);
+
+    const metrics = metricsRes.rows;
+
+    // 2) call OpenAI (GPT-4o) to turn metrics into advice
+    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You generate short daily business reports. Be specific, actionable, and concise."
+          },
+          {
+            role: "user",
+            content:
+              `Here are today's metrics (JSON): ${JSON.stringify(metrics)}\n` +
+              `Write a daily report with:\n` +
+              `1) Summary of what happened\n` +
+              `2) 3 prioritized next actions\n` +
+              `3) One metric to watch tomorrow\n`
+          }
+        ]
+      })
+    });
+
+    const aiData = await aiRes.json();
+    const reportText = aiData?.choices?.[0]?.message?.content;
+
+    if (!reportText) {
+      return res.status(500).json({ ok: false, error: "AI response missing" });
+    }
+
+    res.json({ ok: true, report: reportText });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
