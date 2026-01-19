@@ -115,6 +115,28 @@ app.post("/generate-report", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+// ---- Daily automated run (every 24 hours) ----
+const ONE_DAY = 24 * 60 * 60 * 1000;
+
+// run once shortly after server starts
+setTimeout(runDailyJob, 60 * 1000);
+
+// then run every 24 hours
+setInterval(runDailyJob, ONE_DAY);
+
+async function runDailyJob() {
+  try {
+    console.log("Running daily report job...");
+
+    await fetch("http://localhost:" + PORT + "/generate-report", {
+      method: "POST"
+    });
+
+    console.log("Daily report completed");
+  } catch (err) {
+    console.error("Daily job failed:", err.message);
+  }
+}
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
