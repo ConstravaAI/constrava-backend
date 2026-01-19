@@ -63,6 +63,7 @@ app.post("/run-daily", async (req, res) => {
   }
 });
 // Generate a simple AI daily report (manual trigger)
+// Generate and save a daily AI report
 app.post("/generate-report", async (req, res) => {
   try {
     // 1) pull today's metrics
@@ -74,6 +75,53 @@ app.post("/generate-report", async (req, res) => {
     `);
 
     const metrics = metricsRes.rows;
+
+    // 2) call OpenAI
+    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: "You write short daily business reports." },
+          {
+            role: "user",
+            content: `Metrics: ${JSON.stringify(metrics)}.
+Write:
+1) Summary
+2) 3 next actions
+3) One metric to watch`
+          }
+        ]
+      })
+    });
+
+    const aiData = await aiRes.json();
+    const reportText = aiData?.choices?.[0]?.message?.content;
+    if (!reportText) throw new Error("AI response missing");
+
+    // 3) save report (per site)
+    for (const row of metrics) {
+      await pool.query(
+        `
+        INSERT INTO daily_reports (site_id, report_date, report_text)
+        VALUES ($1, CURRENT_DATE, $2)
+        ON CONFLICT (site_id, report_date)
+        DO UPDATE SET report_text = EXCLUDED.report_text
+        `,
+        [row.site_id, reportText]
+      );
+    }
+
+    res.json({ ok: true, report: reportText });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 
     // 2) call OpenAI (GPT-4o) to turn metrics into advice
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
