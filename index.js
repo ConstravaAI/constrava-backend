@@ -27,6 +27,26 @@ app.get("/db-test", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+// Receive events from client websites
+app.post("/events", async (req, res) => {
+  const { site_id, event_name, page_type, device } = req.body;
+
+  if (!site_id || !event_name) {
+    return res.status(400).json({ error: "site_id and event_name required" });
+  }
+
+  try {
+    await pool.query(
+      `INSERT INTO events_raw (site_id, event_name, page_type, device)
+       VALUES ($1, $2, $3, $4)`,
+      [site_id, event_name, page_type || null, device || null]
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
