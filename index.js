@@ -104,15 +104,18 @@ Write:
     if (!reportText) throw new Error("AI response missing");
 
     // 3) save report (per site)
-    for (const row of metrics) {
-      await pool.query(
-        `
-        INSERT INTO daily_reports (site_id, report_date, report_text)
-        VALUES ($1, CURRENT_DATE, $2)
-        ON CONFLICT (site_id, report_date)
-        DO UPDATE SET report_text = EXCLUDED.report_text
-        `,
-        [row.site_id, reportText]
+   const siteId = metrics[0]?.site_id || "test_site";
+
+await pool.query(
+  `
+  INSERT INTO daily_reports (site_id, report_date, report_text)
+  VALUES ($1, CURRENT_DATE, $2)
+  ON CONFLICT (site_id, report_date)
+  DO UPDATE SET report_text = EXCLUDED.report_text
+  `,
+  [siteId, reportText]
+);
+
       );
     }
 
