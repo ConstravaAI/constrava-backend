@@ -51,14 +51,11 @@ app.post("/events", async (req, res) => {
 app.post("/run-daily", async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT
-        site_id,
-        COUNT(*) as total_events
+      SELECT site_id, COUNT(*) as total_events
       FROM events_raw
       WHERE created_at::date = CURRENT_DATE
       GROUP BY site_id
     `);
-
     res.json({ ok: true, metrics: result.rows });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
