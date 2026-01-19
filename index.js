@@ -162,6 +162,58 @@ app.get("/reports/latest", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+app.post("/email-latest", async (req, res) => {
+  try {
+    const site_id = req.body.site_id || "test_site";
+    const to_email = req.body.to_email; // required
+
+    if (!to_email) {
+      return res.status(400).json({ ok: false, error: "to_email required" });
+    }
+
+    const r = await pool.query(
+      `
+      SELECT site_id, report_date, report_text
+      FROM daily_reports
+      WHERE site_id = $1
+      ORDER BY report_date DESC, created_at DESC
+      LIMIT 1
+      `,
+      [site_id]
+    );
+
+    if (r.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: "No report found" });
+    }
+
+    const report = r.rows[0];
+    const fromEmail = process.env.FROM_EMAIL || "onboarding@resend.dev";
+
+    const emailResp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [to_email],
+        subject: `Your Daily Report (${report.site_id})`,
+        html: `
+          <h2>Daily Report for ${report.site_id}</h2>
+          <p><strong>Date:</strong> ${new Date(report.report_date).toDateString()}</p>
+          <pre style="white-space:pre-wrap;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${report.report_text}</pre>
+        `
+      })
+    });
+
+    const emailData = await emailResp.json();
+
+    res.json({ ok: true, resend: emailData });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
