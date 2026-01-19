@@ -12,14 +12,12 @@ app.use(express.json());
 const PORT = process.env.PORT || 10000;
 const DATABASE_URL = process.env.DATABASE_URL;
 
-// Connect to Neon via DATABASE_URL
 const pool = new Pool({ connectionString: DATABASE_URL });
 
 app.get("/", (req, res) => {
   res.send("Backend is running ✅");
 });
 
-// DB test route
 app.get("/db-test", async (req, res) => {
   try {
     const result = await pool.query("SELECT NOW() as now");
@@ -28,7 +26,7 @@ app.get("/db-test", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
-// Receive events from client websites
+
 app.post("/events", async (req, res) => {
   const { site_id, event_name, page_type, device } = req.body;
 
@@ -48,7 +46,7 @@ app.post("/events", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
-// Daily aggregation (manual trigger for now)
+
 app.post("/run-daily", async (req, res) => {
   try {
     const result = await pool.query(`
@@ -57,16 +55,16 @@ app.post("/run-daily", async (req, res) => {
       WHERE created_at::date = CURRENT_DATE
       GROUP BY site_id
     `);
+
     res.json({ ok: true, metrics: result.rows });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
-// Generate a simple AI daily report (manual trigger)
-// Generate and save a daily AI report
+
+// Generate + SAVE a daily report (always saves at least one row)
 app.post("/generate-report", async (req, res) => {
   try {
-    // 1) pull today's metrics
     const metricsRes = await pool.query(`
       SELECT site_id, COUNT(*) as total_events
       FROM events_raw
@@ -76,7 +74,6 @@ app.post("/generate-report", async (req, res) => {
 
     const metrics = metricsRes.rows;
 
-    // 2) call OpenAI
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -89,11 +86,9 @@ app.post("/generate-report", async (req, res) => {
           { role: "system", content: "You write short daily business reports." },
           {
             role: "user",
-            content: `Metrics: ${JSON.stringify(metrics)}.
-Write:
-1) Summary
-2) 3 next actions
-3) One metric to watch`
+            content:
+              `Metrics (JSON): ${JSON.stringify(metrics)}\n` +
+              `Write:\n1) Summary\n2) 3 next actions\n3) One metric to watch`
           }
         ]
       })
@@ -103,65 +98,19 @@ Write:
     const reportText = aiData?.choices?.[0]?.message?.content;
     if (!reportText) throw new Error("AI response missing");
 
-    // 3) save report (per site)
-   const siteId = metrics[0]?.site_id || "test_site";
+    const siteId = metrics[0]?.site_id || "test_site";
 
-await pool.query(
-  `
-  INSERT INTO daily_reports (site_id, report_date, report_text)
-  VALUES ($1, CURRENT_DATE, $2)
-  ON CONFLICT (site_id, report_date)
-  DO UPDATE SET report_text = EXCLUDED.report_text
-  `,
-  [siteId, reportText]
-);
+    await pool.query(
+      `
+      INSERT INTO daily_reports (site_id, report_date, report_text)
+      VALUES ($1, CURRENT_DATE, $2)
+      ON CONFLICT (site_id, report_date)
+      DO UPDATE SET report_text = EXCLUDED.report_text
+      `,
+      [siteId, reportText]
+    );
 
-      );
-    }
-
-    res.json({ ok: true, report: reportText });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-
-    // 2) call OpenAI (GPT-4o) to turn metrics into advice
-    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You generate short daily business reports. Be specific, actionable, and concise."
-          },
-          {
-            role: "user",
-            content:
-              `Here are today's metrics (JSON): ${JSON.stringify(metrics)}\n` +
-              `Write a daily report with:\n` +
-              `1) Summary of what happened\n` +
-              `2) 3 prioritized next actions\n` +
-              `3) One metric to watch tomorrow\n`
-          }
-        ]
-      })
-    });
-
-    const aiData = await aiRes.json();
-    const reportText = aiData?.choices?.[0]?.message?.content;
-
-    if (!reportText) {
-      return res.status(500).json({ ok: false, error: "AI response missing" });
-    }
-
-    res.json({ ok: true, report: reportText });
+    res.json({ ok: true, site_id: siteId, report: reportText });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
