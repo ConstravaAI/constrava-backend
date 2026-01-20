@@ -586,10 +586,13 @@ app.post("/sites", async (req, res) => {
 
     const base = process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
 
-    res.json({
-      ok: true,
-      site_id,
-      install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`
+  res.json({
+  ok: true,
+  site_id,
+  install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
+  dashboard_url: `${base}/dashboard?key=${process.env.DASHBOARD_KEY}`
+});
+
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
