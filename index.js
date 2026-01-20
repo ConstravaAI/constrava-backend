@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import pkg from "pg";
-import fetch from "node-fetch"; // keep this to avoid runtime surprises on Render
+import fetch from "node-fetch";
 
 const { Pool } = pkg;
 
@@ -12,11 +12,29 @@ app.use(express.json());
 const PORT = process.env.PORT || 10000;
 const DATABASE_URL = process.env.DATABASE_URL;
 
-if (!DATABASE_URL) {
-  console.error("Missing DATABASE_URL env var");
-}
+if (!DATABASE_URL) console.error("❌ Missing DATABASE_URL env var");
 
 const pool = new Pool({ connectionString: DATABASE_URL });
+
+/* -------------------------
+   Helpers
+-------------------------- */
+function requireDashboardKey(req, res) {
+  // If DASHBOARD_KEY is set, enforce it for dashboard/report endpoints
+  if (process.env.DASHBOARD_KEY && req.query.key !== process.env.DASHBOARD_KEY) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return false;
+  }
+  return true;
+}
+
+function makeSiteId() {
+  return (
+    "site_" +
+    Math.random().toString(36).slice(2, 10) +
+    Math.random().toString(36).slice(2, 6)
+  );
+}
 
 /* -------------------------
    BASIC
@@ -28,6 +46,51 @@ app.get("/db-test", async (req, res) => {
     const r = await pool.query("SELECT NOW() as now");
     res.json({ ok: true, now: r.rows[0].now });
   } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/* -------------------------
+   ONBOARDING: create a site
+-------------------------- */
+app.post("/sites", async (req, res) => {
+  try {
+    const { site_name, owner_email } = req.body;
+
+    if (!site_name || !owner_email) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "site_name and owner_email required" });
+    }
+
+    let site_id = makeSiteId();
+
+    // ensure uniqueness (usually 1 try)
+    for (let i = 0; i < 5; i++) {
+      const exists = await pool.query("SELECT 1 FROM sites WHERE site_id=$1", [
+        site_id
+      ]);
+      if (exists.rows.length === 0) break;
+      site_id = makeSiteId();
+    }
+
+    await pool.query(
+      `INSERT INTO sites (site_id, site_name, owner_email)
+       VALUES ($1, $2, $3)`,
+      [site_id, site_name, owner_email]
+    );
+
+    const base =
+      process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
+
+    res.json({
+      ok: true,
+      site_id,
+      install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
+      dashboard_url: `${base}/dashboard?key=${process.env.DASHBOARD_KEY}`
+    });
+  } catch (err) {
+    console.error("Create site failed:", err);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
@@ -83,6 +146,10 @@ app.post("/run-daily", async (req, res) => {
 -------------------------- */
 app.post("/generate-report", async (req, res) => {
   try {
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ ok: false, error: "Missing OPENAI_API_KEY" });
+    }
+
     const metricsRes = await pool.query(`
       SELECT site_id, COUNT(*) AS total_events
       FROM events_raw
@@ -92,10 +159,6 @@ app.post("/generate-report", async (req, res) => {
 
     const metrics = metricsRes.rows;
     const siteId = metrics[0]?.site_id || "test_site";
-
-    if (!process.env.OPENAI_API_KEY) {
-      return res.status(500).json({ ok: false, error: "Missing OPENAI_API_KEY" });
-    }
 
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -138,18 +201,8 @@ app.post("/generate-report", async (req, res) => {
 });
 
 /* -------------------------
-   REPORTS APIs
+   REPORTS APIs (protected by key)
 -------------------------- */
-function requireDashboardKey(req, res) {
-  // if DASHBOARD_KEY is set, enforce it
-  if (process.env.DASHBOARD_KEY && req.query.key !== process.env.DASHBOARD_KEY) {
-    res.status(401).json({ ok: false, error: "Unauthorized" });
-    return false;
-  }
-  return true;
-}
-
-// VIEW LATEST REPORT
 app.get("/reports/latest", async (req, res) => {
   try {
     if (!requireDashboardKey(req, res)) return;
@@ -176,7 +229,6 @@ app.get("/reports/latest", async (req, res) => {
   }
 });
 
-// LIST REPORTS
 app.get("/reports", async (req, res) => {
   try {
     if (!requireDashboardKey(req, res)) return;
@@ -208,6 +260,7 @@ app.post("/email-latest", async (req, res) => {
   try {
     const site_id = req.body.site_id || "test_site";
     const to_email = req.body.to_email;
+
     if (!to_email) {
       return res.status(400).json({ ok: false, error: "to_email required" });
     }
@@ -515,8 +568,9 @@ app.get("/dashboard", (req, res) => {
 app.get("/tracker.js", (req, res) => {
   res.setHeader("Content-Type", "application/javascript");
 
-  // loads site_id from <script data-site-id="...">
-  // sends a page_view event
+  const base =
+    process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
+
   res.send(`
 (function () {
   try {
@@ -524,8 +578,7 @@ app.get("/tracker.js", (req, res) => {
     var siteId = script && script.getAttribute("data-site-id");
     if (!siteId) return;
 
-    var base = "${process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com"}";
-    fetch(base + "/events", {
+    fetch("${base}/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -557,81 +610,6 @@ async function runDailyJob() {
     console.error("Daily job failed:", err.message);
   }
 }
-function makeSiteId() {
-  // short, URL-safe id
-  return "site_" + Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
-}
-
-app.post("/sites", async (req, res) => {
-  try {
-    const { site_name, owner_email } = req.body;
-
-    if (!site_name || !owner_email) {
-      return res.status(400).json({
-        ok: false,
-        error: "site_name and owner_email required"
-      });
-    }
-
-    function makeSiteId() {
-      return (
-        "site_" +
-        Math.random().toString(36).slice(2, 10) +
-        Math.random().toString(36).slice(2, 6)
-      );
-    }
-
-    let site_id = makeSiteId();
-
-    // ensure uniqueness
-    for (let i = 0; i < 5; i++) {
-      const exists = await pool.query(
-        "SELECT 1 FROM sites WHERE site_id = $1",
-        [site_id]
-      );
-      if (exists.rows.length === 0) break;
-      site_id = makeSiteId();
-    }
-
-    await pool.query(
-      `INSERT INTO sites (site_id, site_name, owner_email)
-       VALUES ($1, $2, $3)`,
-      [site_id, site_name, owner_email]
-    );
-
-    const base =
-      process.env.PUBLIC_BASE_URL ||
-      "https://constrava-backend.onrender.com";
-
-    res.json({
-      ok: true,
-      site_id,
-      install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
-      dashboard_url: `${base}/dashboard?key=${process.env.DASHBOARD_KEY}`
-    });
-  } catch (err) {
-    console.error("Create site failed:", err);
-    res.status(500).json({
-      ok: false,
-      error: err.message
-    });
-  }
-});
-
-    const base = process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
-
-  res.json({
-  ok: true,
-  site_id,
-  install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
-  dashboard_url: `${base}/dashboard?key=${process.env.DASHBOARD_KEY}`
-});
-
-    });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
 
 // DO NOT PUT ROUTES BELOW THIS
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
