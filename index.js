@@ -567,13 +567,28 @@ app.post("/sites", async (req, res) => {
     const { site_name, owner_email } = req.body;
 
     if (!site_name || !owner_email) {
-      return res.status(400).json({ ok: false, error: "site_name and owner_email required" });
+      return res.status(400).json({
+        ok: false,
+        error: "site_name and owner_email required"
+      });
     }
 
-    // generate until unique (usually 1 try)
+    function makeSiteId() {
+      return (
+        "site_" +
+        Math.random().toString(36).slice(2, 10) +
+        Math.random().toString(36).slice(2, 6)
+      );
+    }
+
     let site_id = makeSiteId();
+
+    // ensure uniqueness
     for (let i = 0; i < 5; i++) {
-      const exists = await pool.query("SELECT 1 FROM sites WHERE site_id = $1", [site_id]);
+      const exists = await pool.query(
+        "SELECT 1 FROM sites WHERE site_id = $1",
+        [site_id]
+      );
       if (exists.rows.length === 0) break;
       site_id = makeSiteId();
     }
@@ -583,6 +598,25 @@ app.post("/sites", async (req, res) => {
        VALUES ($1, $2, $3)`,
       [site_id, site_name, owner_email]
     );
+
+    const base =
+      process.env.PUBLIC_BASE_URL ||
+      "https://constrava-backend.onrender.com";
+
+    res.json({
+      ok: true,
+      site_id,
+      install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
+      dashboard_url: `${base}/dashboard?key=${process.env.DASHBOARD_KEY}`
+    });
+  } catch (err) {
+    console.error("Create site failed:", err);
+    res.status(500).json({
+      ok: false,
+      error: err.message
+    });
+  }
+});
 
     const base = process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
 
