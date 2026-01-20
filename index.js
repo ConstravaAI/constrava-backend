@@ -248,6 +248,86 @@ app.get("/reports", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+app.get("/dashboard", (req, res) => {
+  res.setHeader("Content-Type", "text/html");
+  res.send(`
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Constrava Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 30px auto; padding: 0 16px; }
+    input, button { padding: 10px; font-size: 14px; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 14px; margin: 12px 0; }
+    .muted { color: #666; font-size: 13px; }
+    pre { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Constrava Dashboard</h1>
+
+  <div>
+    <label>Site ID:</label>
+    <input id="siteId" value="test_site" />
+    <button onclick="loadAll()">Load</button>
+  </div>
+
+  <h2>Latest Report</h2>
+  <div id="latest" class="card">Loading...</div>
+
+  <h2>Report History</h2>
+  <div id="history"></div>
+
+<script>
+  const base = location.origin;
+
+  async function loadAll() {
+    const siteId = document.getElementById("siteId").value.trim();
+    await loadLatest(siteId);
+    await loadHistory(siteId);
+  }
+
+  async function loadLatest(siteId) {
+    const el = document.getElementById("latest");
+    el.textContent = "Loading...";
+    const r = await fetch(\`\${base}/reports/latest?site_id=\${encodeURIComponent(siteId)}\`);
+    const data = await r.json();
+    if (!data.ok) { el.textContent = data.error || "No latest report"; return; }
+    el.innerHTML = \`
+      <div class="muted">\${new Date(data.report.report_date).toDateString()} • \${data.report.site_id}</div>
+      <pre>\${escapeHtml(data.report.report_text)}</pre>
+    \`;
+  }
+
+  async function loadHistory(siteId) {
+    const el = document.getElementById("history");
+    el.textContent = "Loading...";
+    const r = await fetch(\`\${base}/reports?site_id=\${encodeURIComponent(siteId)}&limit=30\`);
+    const data = await r.json();
+    if (!data.ok) { el.textContent = data.error || "No history"; return; }
+
+    el.innerHTML = data.reports.map(rep => \`
+      <div class="card">
+        <div class="muted">\${new Date(rep.report_date).toDateString()} • \${rep.site_id}</div>
+        <div>\${escapeHtml(rep.preview)}...</div>
+      </div>
+    \`).join("");
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
+  }
+
+  loadAll();
+</script>
+
+</body>
+</html>
+  `);
+});
 
 // DO NOT PUT ROUTES BELOW THIS
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
