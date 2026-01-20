@@ -249,6 +249,12 @@ app.get("/reports", async (req, res) => {
   }
 });
 app.get("/dashboard", (req, res) => {
+  const key = req.query.key;
+
+  if (!process.env.DASHBOARD_KEY || key !== process.env.DASHBOARD_KEY) {
+    return res.status(401).send("Unauthorized. Add ?key=YOUR_KEY");
+  }
+
   res.setHeader("Content-Type", "text/html");
   res.send(`
 <!doctype html>
@@ -281,6 +287,7 @@ app.get("/dashboard", (req, res) => {
 
 <script>
   const base = location.origin;
+  const key = new URLSearchParams(location.search).get("key");
 
   async function loadAll() {
     const siteId = document.getElementById("siteId").value.trim();
@@ -291,11 +298,11 @@ app.get("/dashboard", (req, res) => {
   async function loadLatest(siteId) {
     const el = document.getElementById("latest");
     el.textContent = "Loading...";
-    const r = await fetch(\`\${base}/reports/latest?site_id=\${encodeURIComponent(siteId)}\`);
+    const r = await fetch(\`\${base}/reports/latest?site_id=\${siteId}&key=\${key}\`);
     const data = await r.json();
     if (!data.ok) { el.textContent = data.error || "No latest report"; return; }
     el.innerHTML = \`
-      <div class="muted">\${new Date(data.report.report_date).toDateString()} • \${data.report.site_id}</div>
+      <div class="muted">\${new Date(data.report.report_date).toDateString()}</div>
       <pre>\${escapeHtml(data.report.report_text)}</pre>
     \`;
   }
@@ -303,13 +310,13 @@ app.get("/dashboard", (req, res) => {
   async function loadHistory(siteId) {
     const el = document.getElementById("history");
     el.textContent = "Loading...";
-    const r = await fetch(\`\${base}/reports?site_id=\${encodeURIComponent(siteId)}&limit=30\`);
+    const r = await fetch(\`\${base}/reports?site_id=\${siteId}&key=\${key}\`);
     const data = await r.json();
     if (!data.ok) { el.textContent = data.error || "No history"; return; }
 
     el.innerHTML = data.reports.map(rep => \`
       <div class="card">
-        <div class="muted">\${new Date(rep.report_date).toDateString()} • \${rep.site_id}</div>
+        <div class="muted">\${new Date(rep.report_date).toDateString()}</div>
         <div>\${escapeHtml(rep.preview)}...</div>
       </div>
     \`).join("");
@@ -326,8 +333,9 @@ app.get("/dashboard", (req, res) => {
 
 </body>
 </html>
-  `);
+`);
 });
+
 
 // DO NOT PUT ROUTES BELOW THIS
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
