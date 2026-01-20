@@ -559,14 +559,6 @@ const DASHBOARD_HTML = `<!doctype html>
 </body>
 </html>`;
 
-app.get("/dashboard", (req, res) => {
-  const key = req.query.key;
-  if (!process.env.DASHBOARD_KEY || key !== process.env.DASHBOARD_KEY) {
-    return res.status(401).send("Unauthorized. Add ?key=YOUR_KEY");
-  }
-  res.setHeader("Content-Type", "text/html");
-  res.send(DASHBOARD_HTML);
-});
 
 /* -------------------------
    TRACKER SCRIPT (JS ONLY)
