@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import pkg from "pg";
+import fetch from "node-fetch"; // keep this to avoid runtime surprises on Render
 
 const { Pool } = pkg;
 
@@ -11,8 +12,15 @@ app.use(express.json());
 const PORT = process.env.PORT || 10000;
 const DATABASE_URL = process.env.DATABASE_URL;
 
+if (!DATABASE_URL) {
+  console.error("Missing DATABASE_URL env var");
+}
+
 const pool = new Pool({ connectionString: DATABASE_URL });
 
+/* -------------------------
+   BASIC
+-------------------------- */
 app.get("/", (req, res) => res.send("Backend is running ✅"));
 
 app.get("/db-test", async (req, res) => {
@@ -24,7 +32,9 @@ app.get("/db-test", async (req, res) => {
   }
 });
 
-// EVENTS (validated site_id)
+/* -------------------------
+   EVENTS (validated site_id)
+-------------------------- */
 app.post("/events", async (req, res) => {
   const { site_id, event_name, page_type, device } = req.body;
   if (!site_id || !event_name) {
@@ -51,7 +61,9 @@ app.post("/events", async (req, res) => {
   }
 });
 
-// DAILY METRICS (manual trigger)
+/* -------------------------
+   DAILY METRICS (manual trigger)
+-------------------------- */
 app.post("/run-daily", async (req, res) => {
   try {
     const r = await pool.query(`
@@ -66,7 +78,9 @@ app.post("/run-daily", async (req, res) => {
   }
 });
 
-// GENERATE + SAVE REPORT
+/* -------------------------
+   GENERATE + SAVE REPORT
+-------------------------- */
 app.post("/generate-report", async (req, res) => {
   try {
     const metricsRes = await pool.query(`
@@ -78,6 +92,10 @@ app.post("/generate-report", async (req, res) => {
 
     const metrics = metricsRes.rows;
     const siteId = metrics[0]?.site_id || "test_site";
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ ok: false, error: "Missing OPENAI_API_KEY" });
+    }
 
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -119,9 +137,23 @@ app.post("/generate-report", async (req, res) => {
   }
 });
 
+/* -------------------------
+   REPORTS APIs
+-------------------------- */
+function requireDashboardKey(req, res) {
+  // if DASHBOARD_KEY is set, enforce it
+  if (process.env.DASHBOARD_KEY && req.query.key !== process.env.DASHBOARD_KEY) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return false;
+  }
+  return true;
+}
+
 // VIEW LATEST REPORT
 app.get("/reports/latest", async (req, res) => {
   try {
+    if (!requireDashboardKey(req, res)) return;
+
     const site_id = req.query.site_id || "test_site";
     const r = await pool.query(
       `
@@ -144,13 +176,43 @@ app.get("/reports/latest", async (req, res) => {
   }
 });
 
-// EMAIL LATEST REPORT (Resend)
+// LIST REPORTS
+app.get("/reports", async (req, res) => {
+  try {
+    if (!requireDashboardKey(req, res)) return;
+
+    const site_id = req.query.site_id || "test_site";
+    const limit = Math.min(parseInt(req.query.limit || "30", 10), 100);
+
+    const r = await pool.query(
+      `
+      SELECT site_id, report_date, created_at, LEFT(report_text, 200) AS preview
+      FROM daily_reports
+      WHERE site_id = $1
+      ORDER BY report_date DESC, created_at DESC
+      LIMIT $2
+      `,
+      [site_id, limit]
+    );
+
+    res.json({ ok: true, reports: r.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/* -------------------------
+   EMAIL LATEST REPORT (Resend)
+-------------------------- */
 app.post("/email-latest", async (req, res) => {
   try {
     const site_id = req.body.site_id || "test_site";
     const to_email = req.body.to_email;
     if (!to_email) {
       return res.status(400).json({ ok: false, error: "to_email required" });
+    }
+    if (!process.env.RESEND_API_KEY) {
+      return res.status(500).json({ ok: false, error: "Missing RESEND_API_KEY" });
     }
 
     const r = await pool.query(
@@ -189,27 +251,10 @@ app.post("/email-latest", async (req, res) => {
   }
 });
 
-// AUTOMATION (runs once after boot, then every 24h)
-const ONE_DAY = 24 * 60 * 60 * 1000;
-
-setTimeout(runDailyJob, 60 * 1000);
-setInterval(runDailyJob, ONE_DAY);
-
-async function runDailyJob() {
-  try {
-    console.log("Running daily report job...");
-    await fetch(`http://localhost:${PORT}/generate-report`, { method: "POST" });
-    console.log("Daily report completed");
-  } catch (err) {
-    console.error("Daily job failed:", err.message);
-  }
-}
-// CLIENT TRACKER SCRIPT
-app.get("/tracker.js", (req, res) => {
-  res.setHeader("Content-Type", "application/javascript");
-
-  res.send(`
-<!doctype html>
+/* -------------------------
+   DASHBOARD (pretty UI)
+-------------------------- */
+const DASHBOARD_HTML = `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
@@ -218,8 +263,6 @@ app.get("/tracker.js", (req, res) => {
   <style>
     :root{
       --bg:#0b0f19;
-      --panel:#111827;
-      --panel2:#0f172a;
       --text:#e5e7eb;
       --muted:#9ca3af;
       --border:rgba(255,255,255,.08);
@@ -232,36 +275,29 @@ app.get("/tracker.js", (req, res) => {
     *{box-sizing:border-box}
     body{
       margin:0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
       background: radial-gradient(1200px 800px at 20% -10%, rgba(96,165,250,.25), transparent 60%),
                   radial-gradient(900px 600px at 90% 0%, rgba(52,211,153,.18), transparent 55%),
                   var(--bg);
       color:var(--text);
     }
-    a{color:inherit}
     .wrap{max-width:1100px; margin:0 auto; padding:28px 18px 60px;}
     .topbar{
       display:flex; align-items:center; justify-content:space-between;
-      gap:14px; padding:18px 18px;
+      gap:14px; padding:18px;
       background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
       border:1px solid var(--border);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
-      backdrop-filter: blur(10px);
     }
-    .brand{
-      display:flex; align-items:center; gap:12px;
-    }
+    .brand{display:flex; align-items:center; gap:12px;}
     .logo{
       width:40px; height:40px; border-radius:12px;
       background: linear-gradient(135deg, rgba(96,165,250,.9), rgba(52,211,153,.85));
-      box-shadow: 0 10px 25px rgba(96,165,250,.25);
     }
     h1{font-size:18px; margin:0;}
     .sub{font-size:12px; color:var(--muted); margin-top:2px;}
-    .controls{
-      display:flex; gap:10px; align-items:center; flex-wrap:wrap;
-    }
+    .controls{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
     .input{
       display:flex; align-items:center; gap:10px;
       padding:10px 12px; border-radius:12px;
@@ -284,8 +320,6 @@ app.get("/tracker.js", (req, res) => {
       cursor:pointer;
       font-weight:600;
     }
-    .btn:hover{border-color: rgba(96,165,250,.5)}
-    .btn:active{transform: translateY(1px)}
     .grid{
       margin-top:18px;
       display:grid;
@@ -304,12 +338,7 @@ app.get("/tracker.js", (req, res) => {
       box-shadow: var(--shadow);
       padding:16px;
     }
-    .card h2{
-      margin:0 0 10px 0; font-size:14px;
-      color: var(--text);
-      display:flex; align-items:center; justify-content:space-between;
-      letter-spacing:.2px;
-    }
+    .row{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;}
     .pill{
       font-size:12px;
       color: var(--muted);
@@ -320,7 +349,7 @@ app.get("/tracker.js", (req, res) => {
     }
     .latest{
       white-space: pre-wrap;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
       font-size: 13px;
       line-height: 1.45;
       background: rgba(15,23,42,.65);
@@ -331,20 +360,6 @@ app.get("/tracker.js", (req, res) => {
       min-height: 200px;
     }
     .muted{color:var(--muted); font-size:12px}
-    .row{
-      display:flex; align-items:center; justify-content:space-between;
-      gap:10px;
-      margin-bottom:10px;
-    }
-    .status{
-      display:flex; align-items:center; gap:8px;
-      font-size:12px; color:var(--muted);
-    }
-    .dot{
-      width:8px; height:8px; border-radius:50%;
-      background: var(--accent2);
-      box-shadow: 0 0 0 6px rgba(52,211,153,.12);
-    }
     .historyItem{
       padding:12px;
       border-radius: 14px;
@@ -354,16 +369,8 @@ app.get("/tracker.js", (req, res) => {
     }
     .historyItem .date{font-weight:700; font-size:12px}
     .historyItem .preview{margin-top:8px; font-size:13px; color: var(--text)}
-    .smallBtn{
-      padding:8px 10px;
-      border-radius:10px;
-      border:1px solid var(--border);
-      background: rgba(255,255,255,.04);
-      color: var(--text);
-      cursor:pointer;
-      font-size:12px;
-    }
-    .smallBtn:hover{border-color: rgba(255,255,255,.18)}
+    .status{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);}
+    .dot{width:8px; height:8px; border-radius:50%; background: var(--accent2);}
     .err{color: var(--danger); font-weight:600}
   </style>
 </head>
@@ -374,7 +381,7 @@ app.get("/tracker.js", (req, res) => {
         <div class="logo"></div>
         <div>
           <h1>Constrava Dashboard</h1>
-          <div class="sub">Daily AI reports • Live events • Minimal MVP UI</div>
+          <div class="sub">Daily AI reports • Live events • MVP UI</div>
         </div>
       </div>
 
@@ -400,11 +407,11 @@ app.get("/tracker.js", (req, res) => {
       </div>
 
       <div class="card">
-        <h2>
-          Report History
+        <div class="row" style="margin:0">
+          <div style="font-weight:700">Report History</div>
           <span class="pill" id="countPill">0</span>
-        </h2>
-        <div class="muted">Click a date to load it as “Latest”.</div>
+        </div>
+        <div class="muted" style="margin-top:8px">Recent reports for this site.</div>
         <div id="history"></div>
       </div>
     </div>
@@ -473,7 +480,6 @@ app.get("/tracker.js", (req, res) => {
         <div class="historyItem">
           <div class="row" style="margin:0">
             <div class="date">\${d.toDateString()}</div>
-            <button class="smallBtn" onclick="loadByDate('\${rep.site_id}', '\${rep.report_date}')">Load</button>
           </div>
           <div class="preview">\${safePreview}...</div>
         </div>
@@ -483,13 +489,6 @@ app.get("/tracker.js", (req, res) => {
     setStatus("Ready");
   }
 
-  async function loadByDate(siteId, reportDateIso) {
-    // simplest: just reuse latest endpoint by changing siteId and reloading latest.
-    // Later we can add /reports/by-date. For now, load latest again.
-    document.getElementById("siteId").value = siteId;
-    await loadLatest(siteId);
-  }
-
   function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, m => ({
       "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
@@ -499,119 +498,65 @@ app.get("/tracker.js", (req, res) => {
   loadAll();
 </script>
 </body>
-</html>
-`);
+</html>`;
 
-// List recent reports (for dashboard)
-app.get("/reports", async (req, res) => {
-  try {
-    const site_id = req.query.site_id || "test_site";
-    const limit = Math.min(parseInt(req.query.limit || "30", 10), 100);
-
-    const r = await pool.query(
-      `
-      SELECT site_id, report_date, created_at, LEFT(report_text, 200) AS preview
-      FROM daily_reports
-      WHERE site_id = $1
-      ORDER BY report_date DESC, created_at DESC
-      LIMIT $2
-      `,
-      [site_id, limit]
-    );
-
-    res.json({ ok: true, reports: r.rows });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
 app.get("/dashboard", (req, res) => {
   const key = req.query.key;
-
   if (!process.env.DASHBOARD_KEY || key !== process.env.DASHBOARD_KEY) {
     return res.status(401).send("Unauthorized. Add ?key=YOUR_KEY");
   }
-
   res.setHeader("Content-Type", "text/html");
+  res.send(DASHBOARD_HTML);
+});
+
+/* -------------------------
+   TRACKER SCRIPT (JS ONLY)
+-------------------------- */
+app.get("/tracker.js", (req, res) => {
+  res.setHeader("Content-Type", "application/javascript");
+
+  // loads site_id from <script data-site-id="...">
+  // sends a page_view event
   res.send(`
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Constrava Dashboard</title>
-  <style>
-    body { font-family: Arial, sans-serif; max-width: 900px; margin: 30px auto; padding: 0 16px; }
-    input, button { padding: 10px; font-size: 14px; }
-    .card { border: 1px solid #ddd; border-radius: 10px; padding: 14px; margin: 12px 0; }
-    .muted { color: #666; font-size: 13px; }
-    pre { white-space: pre-wrap; }
-  </style>
-</head>
-<body>
-  <h1>Constrava Dashboard</h1>
+(function () {
+  try {
+    var script = document.currentScript;
+    var siteId = script && script.getAttribute("data-site-id");
+    if (!siteId) return;
 
-  <div>
-    <label>Site ID:</label>
-    <input id="siteId" value="test_site" />
-    <button onclick="loadAll()">Load</button>
-  </div>
-
-  <h2>Latest Report</h2>
-  <div id="latest" class="card">Loading...</div>
-
-  <h2>Report History</h2>
-  <div id="history"></div>
-
-<script>
-  const base = location.origin;
-  const key = new URLSearchParams(location.search).get("key");
-
-  async function loadAll() {
-    const siteId = document.getElementById("siteId").value.trim();
-    await loadLatest(siteId);
-    await loadHistory(siteId);
-  }
-
-  async function loadLatest(siteId) {
-    const el = document.getElementById("latest");
-    el.textContent = "Loading...";
-    const r = await fetch(\`\${base}/reports/latest?site_id=\${siteId}&key=\${key}\`);
-    const data = await r.json();
-    if (!data.ok) { el.textContent = data.error || "No latest report"; return; }
-    el.innerHTML = \`
-      <div class="muted">\${new Date(data.report.report_date).toDateString()}</div>
-      <pre>\${escapeHtml(data.report.report_text)}</pre>
-    \`;
-  }
-
-  async function loadHistory(siteId) {
-    const el = document.getElementById("history");
-    el.textContent = "Loading...";
-    const r = await fetch(\`\${base}/reports?site_id=\${siteId}&key=\${key}\`);
-    const data = await r.json();
-    if (!data.ok) { el.textContent = data.error || "No history"; return; }
-
-    el.innerHTML = data.reports.map(rep => \`
-      <div class="card">
-        <div class="muted">\${new Date(rep.report_date).toDateString()}</div>
-        <div>\${escapeHtml(rep.preview)}...</div>
-      </div>
-    \`).join("");
-  }
-
-  function escapeHtml(str) {
-    return String(str).replace(/[&<>"']/g, m => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-    }[m]));
-  }
-
-  loadAll();
-</script>
-
-</body>
-</html>
+    var base = "${process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com"}";
+    fetch(base + "/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        site_id: siteId,
+        event_name: "page_view",
+        page_type: window.location.pathname,
+        device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop"
+      })
+    }).catch(function(){});
+  } catch (e) {}
+})();
 `);
 });
 
+/* -------------------------
+   AUTOMATION (runs once after boot, then every 24h)
+-------------------------- */
+const ONE_DAY = 24 * 60 * 60 * 1000;
+
+setTimeout(runDailyJob, 60 * 1000);
+setInterval(runDailyJob, ONE_DAY);
+
+async function runDailyJob() {
+  try {
+    console.log("Running daily report job...");
+    await fetch(`http://127.0.0.1:${PORT}/generate-report`, { method: "POST" });
+    console.log("Daily report completed");
+  } catch (err) {
+    console.error("Daily job failed:", err.message);
+  }
+}
 
 // DO NOT PUT ROUTES BELOW THIS
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
