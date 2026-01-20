@@ -6,6 +6,17 @@ import crypto from "crypto";
 
 const { Pool } = pkg;
 
+async function siteIdFromToken(token) {
+  if (!token) return null;
+
+  const r = await pool.query(
+    "SELECT site_id FROM sites WHERE dashboard_token = $1",
+    [token]
+  );
+
+  return r.rows[0]?.site_id || null;
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
