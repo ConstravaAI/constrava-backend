@@ -608,6 +608,32 @@ async function runDailyJob() {
     console.error("Daily job failed:", err.message);
   }
 }
+app.get("/dashboard", async (req, res) => {
+  try {
+    const token = req.query.token;
+    const site_id = await siteIdFromToken(token);
+
+    if (!site_id) {
+      return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+    }
+
+    res.setHeader("Content-Type", "text/html");
+    res.send(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Constrava Dashboard</title>
+</head>
+<body style="font-family:Arial;padding:20px;">
+  <h1>Constrava Dashboard ✅</h1>
+  <p>Authorized for site: <b>${site_id}</b></p>
+  <p>Now open: <code>/reports/latest?token=${token}</code></p>
+</body>
+</html>`);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
 
 // DO NOT PUT ROUTES BELOW THIS
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
