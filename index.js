@@ -226,6 +226,28 @@ app.get("/tracker.js", (req, res) => {
     })();
   `);
 });
+// List recent reports (for dashboard)
+app.get("/reports", async (req, res) => {
+  try {
+    const site_id = req.query.site_id || "test_site";
+    const limit = Math.min(parseInt(req.query.limit || "30", 10), 100);
+
+    const r = await pool.query(
+      `
+      SELECT site_id, report_date, created_at, LEFT(report_text, 200) AS preview
+      FROM daily_reports
+      WHERE site_id = $1
+      ORDER BY report_date DESC, created_at DESC
+      LIMIT $2
+      `,
+      [site_id, limit]
+    );
+
+    res.json({ ok: true, reports: r.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 // DO NOT PUT ROUTES BELOW THIS
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
