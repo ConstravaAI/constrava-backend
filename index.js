@@ -204,5 +204,28 @@ async function runDailyJob() {
     console.error("Daily job failed:", err.message);
   }
 }
+// CLIENT TRACKER SCRIPT
+app.get("/tracker.js", (req, res) => {
+  res.setHeader("Content-Type", "application/javascript");
 
+  res.send(`
+    (function () {
+      const siteId = document.currentScript.getAttribute("data-site-id");
+      if (!siteId) return;
+
+      fetch("${process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com"}/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          site_id: siteId,
+          event_name: "page_view",
+          page_type: window.location.pathname,
+          device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop"
+        })
+      });
+    })();
+  `);
+});
+
+// DO NOT PUT ROUTES BELOW THIS
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
