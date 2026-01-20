@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import pkg from "pg";
 import fetch from "node-fetch";
+import crypto from "crypto";
 
 const { Pool } = pkg;
 
@@ -64,6 +65,8 @@ app.post("/sites", async (req, res) => {
     }
 
     let site_id = makeSiteId();
+         const token = crypto.randomUUID();
+
 
     // ensure uniqueness (usually 1 try)
     for (let i = 0; i < 5; i++) {
@@ -74,21 +77,24 @@ app.post("/sites", async (req, res) => {
       site_id = makeSiteId();
     }
 
-    await pool.query(
-      `INSERT INTO sites (site_id, site_name, owner_email)
-       VALUES ($1, $2, $3)`,
-      [site_id, site_name, owner_email]
-    );
+  await pool.query(
+  `INSERT INTO sites (site_id, site_name, owner_email, dashboard_token)
+   VALUES ($1, $2, $3, $4)`,
+  [site_id, site_name, owner_email, token]
+);
+
 
     const base =
-      process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
+  process.env.PUBLIC_BASE_URL ||
+  "https://constrava-backend.onrender.com";
 
-    res.json({
-      ok: true,
-      site_id,
-      install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
-      dashboard_url: `${base}/dashboard?key=${process.env.DASHBOARD_KEY}`
-    });
+res.json({
+  ok: true,
+  site_id,
+  install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
+  client_dashboard_url: `${base}/dashboard?token=${token}`
+});
+
   } catch (err) {
     console.error("Create site failed:", err);
     res.status(500).json({ ok: false, error: err.message });
