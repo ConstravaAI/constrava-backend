@@ -957,6 +957,112 @@ app.get("/dashboard", async (req, res) => {
     res.status(500).send(err.message);
   }
 });
+// -----------------------------
+// DEV: seed fake data (token-secured)
+// -----------------------------
+
+function randInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// Creates fake events for last N days
+app.post("/dev/seed-events", async (req, res) => {
+  try {
+    const token = req.body?.token || req.query?.token;
+    const site_id = await siteIdFromToken(token);
+    if (!site_id) return res.status(401).json({ ok: false, error: "Invalid token" });
+
+    const days = Math.min(parseInt(req.body?.days || req.query?.days || "14", 10), 60);
+    const perDayMin = parseInt(req.body?.perDayMin || "40", 10);
+    const perDayMax = parseInt(req.body?.perDayMax || "180", 10);
+
+    const pages = ["/", "/products", "/pricing", "/about", "/contact", "/blog", "/product/widget", "/checkout"];
+    const devices = ["desktop", "mobile"];
+    const events = ["page_view", "view_product", "add_to_cart", "checkout_start"];
+
+    let inserted = 0;
+
+    for (let d = days - 1; d >= 0; d--) {
+      const count = randInt(perDayMin, perDayMax);
+      for (let i = 0; i < count; i++) {
+        const event_name = pick(events);
+        const page_type = pick(pages);
+        const device = Math.random() < 0.55 ? "mobile" : "desktop";
+
+        // random timestamp within that day
+        const created_at = new Date();
+        created_at.setDate(created_at.getDate() - d);
+        created_at.setHours(randInt(0, 23), randInt(0, 59), randInt(0, 59), 0);
+
+        await pool.query(
+          `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [site_id, event_name, page_type, device, created_at.toISOString()]
+        );
+
+        inserted++;
+      }
+    }
+
+    res.json({ ok: true, site_id, inserted, days });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Creates fake reports for last N days
+app.post("/dev/seed-reports", async (req, res) => {
+  try {
+    const token = req.body?.token || req.query?.token;
+    const site_id = await siteIdFromToken(token);
+    if (!site_id) return res.status(401).json({ ok: false, error: "Invalid token" });
+
+    const days = Math.min(parseInt(req.body?.days || req.query?.days || "14", 10), 60);
+
+    let inserted = 0;
+
+    for (let d = days - 1; d >= 0; d--) {
+      const date = new Date();
+      date.setDate(date.getDate() - d);
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, "0");
+      const dd = String(date.getDate()).padStart(2, "0");
+      const isoDate = `${yyyy}-${mm}-${dd}`;
+
+      const fake = `# Daily Business Report
+
+### Summary
+Traffic looks healthy with stronger interest in **/products** and **/pricing**. Mobile users are the majority, so speed + mobile layout matter most.
+
+### 3 Next Actions
+1) Add a clearer CTA on the homepage (top section + sticky button on mobile).
+2) Improve the pricing page: add FAQ + “who it’s for” section.
+3) Post 1 short piece of content driving to a product page (IG/TikTok/Reel style).
+
+### Metric to Watch Tomorrow
+**Checkout starts** vs **add_to_cart** (conversion drop-off).`;
+
+      await pool.query(
+        `
+        INSERT INTO daily_reports (site_id, report_date, report_text)
+        VALUES ($1, $2::date, $3)
+        ON CONFLICT (site_id, report_date)
+        DO UPDATE SET report_text = EXCLUDED.report_text
+        `,
+        [site_id, isoDate, fake]
+      );
+
+      inserted++;
+    }
+
+    res.json({ ok: true, site_id, inserted, days });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 /** ---------------------------
  * Start server (KEEP LAST)
