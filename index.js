@@ -13,7 +13,7 @@ import cors from "cors";
 import pkg from "pg";
 import crypto from "crypto";
 import fetch from "node-fetch";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
 const { Pool } = pkg;
