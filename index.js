@@ -1,20 +1,21 @@
-// index.js (ESM) — Constrava MVP backend
+// index.js (ESM) — Constrava MVP backend (FIXED + “everything you need”)
 // ✅ Neon Postgres (pg)
 // ✅ Event collector (/events)
-// ✅ Site onboarding (/sites) generates site_id + dashboard_token
-// ✅ Secure dashboard (/dashboard?token=...)
-// ✅ Reports: generate, list, latest (all token-secured)
-// ✅ Optional: email latest report via Resend (/email-latest)
-// ✅ Tracker script served at /tracker.js
-// ✅ Auth: /auth/register + /auth/login (JWT)  (for future login-based dashboard)
+// ✅ Site onboarding (/sites) -> site_id + dashboard_token + install snippet + dashboard link
+// ✅ Token-secured dashboard (/dashboard?token=...)
+// ✅ Token-secured APIs for dashboard data:
+//    - /api/reports/latest?token=...
+//    - /api/reports?token=...&limit=30
+//    - /api/stats?token=...  (adds 6+ data points + simple charts)
+// ✅ Generate daily AI report (manual): POST /generate-report  (optional cost)
+// ✅ Email latest report (manual): POST /email-latest          (optional)
+// ✅ Tracker script at /tracker.js (auto page_view)
 
 import express from "express";
 import cors from "cors";
 import pkg from "pg";
 import crypto from "crypto";
 import fetch from "node-fetch";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 
 const { Pool } = pkg;
 
@@ -26,14 +27,14 @@ const PORT = process.env.PORT || 10000;
 const DATABASE_URL = process.env.DATABASE_URL;
 
 if (!DATABASE_URL) {
-  console.error("Missing DATABASE_URL env var");
+  console.error("❌ Missing DATABASE_URL env var");
 }
 
 const pool = new Pool({ connectionString: DATABASE_URL });
 
 /** ---------------------------
- *  Helpers
- *  -------------------------*/
+ * Helpers
+ * --------------------------*/
 function makeSiteId() {
   return "site_" + crypto.randomBytes(6).toString("hex");
 }
@@ -46,6 +47,12 @@ function publicBaseUrl(req) {
   );
 }
 
+function requireEnv(name) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing ${name} env var`);
+  return v;
+}
+
 async function siteIdFromToken(token) {
   if (!token) return null;
   const r = await pool.query(
@@ -55,30 +62,15 @@ async function siteIdFromToken(token) {
   return r.rows[0]?.site_id || null;
 }
 
-function requireEnv(name) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing ${name} env var`);
-  return v;
-}
-
-// JWT middleware (for later login-based dashboard / APIs)
-function requireAuth(req, res, next) {
-  try {
-    const header = req.headers.authorization || "";
-    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-    if (!token) return res.status(401).json({ ok: false, error: "Missing token" });
-
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.auth = payload; // { user_id, site_id, email }
-    next();
-  } catch {
-    return res.status(401).json({ ok: false, error: "Invalid token" });
-  }
+function clampInt(n, min, max, fallback) {
+  const x = parseInt(String(n ?? ""), 10);
+  if (Number.isNaN(x)) return fallback;
+  return Math.max(min, Math.min(max, x));
 }
 
 /** ---------------------------
- *  Boot: ensure tables exist
- *  -------------------------*/
+ * Boot: ensure tables exist
+ * --------------------------*/
 async function ensureTables() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS sites (
@@ -86,16 +78,6 @@ async function ensureTables() {
       site_name TEXT NOT NULL,
       owner_email TEXT NOT NULL,
       dashboard_token TEXT UNIQUE NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id BIGSERIAL PRIMARY KEY,
-      site_id TEXT NOT NULL REFERENCES sites(site_id) ON DELETE CASCADE,
-      email TEXT NOT NULL UNIQUE,
-      password_hash TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
@@ -122,14 +104,13 @@ async function ensureTables() {
     );
   `);
 
-  console.log("Tables ensured ✅");
+  console.log("✅ Tables ensured");
 }
-
 ensureTables().catch((e) => console.error("ensureTables failed:", e.message));
 
 /** ---------------------------
- *  Basic routes
- *  -------------------------*/
+ * Basic routes
+ * --------------------------*/
 app.get("/", (req, res) => res.send("Backend is running ✅"));
 
 app.get("/db-test", async (req, res) => {
@@ -142,12 +123,12 @@ app.get("/db-test", async (req, res) => {
 });
 
 /** ---------------------------
- *  Onboarding: create a site
- *  POST /sites { site_name, owner_email }
- *  -------------------------*/
+ * Onboarding: create a site
+ * POST /sites { site_name, owner_email }
+ * --------------------------*/
 app.post("/sites", async (req, res) => {
   try {
-    const { site_name, owner_email } = req.body;
+    const { site_name, owner_email } = req.body || {};
 
     if (!site_name || !owner_email) {
       return res
@@ -158,6 +139,7 @@ app.post("/sites", async (req, res) => {
     let site_id = makeSiteId();
     const token = crypto.randomUUID();
 
+    // rare collision retry
     for (let i = 0; i < 3; i++) {
       try {
         await pool.query(
@@ -179,7 +161,7 @@ app.post("/sites", async (req, res) => {
       site_id,
       install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
       client_dashboard_url: `${base}/dashboard?token=${token}`,
-      token // (optional) for your testing
+      token // helpful for your testing; you can remove later
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -187,11 +169,16 @@ app.post("/sites", async (req, res) => {
 });
 
 /** ---------------------------
- *  Tracker script (client embeds)
- *  GET /tracker.js
- *  -------------------------*/
+ * Tracker script served to client sites
+ * GET /tracker.js
+ * --------------------------*/
 app.get("/tracker.js", (req, res) => {
   res.setHeader("Content-Type", "application/javascript");
+
+  // IMPORTANT:
+  // This is NOT HTML — it must be pure JS.
+  const eventsBase =
+    process.env.PUBLIC_EVENTS_URL || "https://constrava-backend.onrender.com";
 
   res.send(`
 (function () {
@@ -202,7 +189,7 @@ app.get("/tracker.js", (req, res) => {
     var siteId = script.getAttribute("data-site-id");
     if (!siteId) return;
 
-    var endpoint = "${process.env.PUBLIC_EVENTS_URL || "https://constrava-backend.onrender.com"}" + "/events";
+    var endpoint = "${eventsBase}".replace(/\\/$/, "") + "/events";
 
     fetch(endpoint, {
       method: "POST",
@@ -220,18 +207,23 @@ app.get("/tracker.js", (req, res) => {
 });
 
 /** ---------------------------
- *  Receive events
- *  POST /events
- *  -------------------------*/
+ * Receive events
+ * POST /events
+ * --------------------------*/
 app.post("/events", async (req, res) => {
-  const { site_id, event_name, page_type, device } = req.body;
+  const { site_id, event_name, page_type, device } = req.body || {};
 
   if (!site_id || !event_name) {
-    return res.status(400).json({ ok: false, error: "site_id and event_name required" });
+    return res
+      .status(400)
+      .json({ ok: false, error: "site_id and event_name required" });
   }
 
   try {
-    const site = await pool.query("SELECT 1 FROM sites WHERE site_id = $1", [site_id]);
+    // validate site exists
+    const site = await pool.query("SELECT 1 FROM sites WHERE site_id = $1", [
+      site_id
+    ]);
     if (site.rows.length === 0) {
       return res.status(403).json({ ok: false, error: "Invalid site_id" });
     }
@@ -249,48 +241,19 @@ app.post("/events", async (req, res) => {
 });
 
 /** ---------------------------
- *  Token-secured: list reports
- *  GET /reports?token=...&limit=30
- *  -------------------------*/
-app.get("/reports", async (req, res) => {
+ * Token-secured APIs for dashboard
+ * --------------------------*/
+
+// Latest report
+app.get("/api/reports/latest", async (req, res) => {
   try {
     const token = req.query.token;
     const site_id = await siteIdFromToken(token);
 
     if (!site_id) {
-      return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
-    }
-
-    const limit = Math.min(parseInt(req.query.limit || "30", 10), 100);
-
-    const r = await pool.query(
-      `
-      SELECT site_id, report_date, created_at, LEFT(report_text, 220) AS preview
-      FROM daily_reports
-      WHERE site_id = $1
-      ORDER BY report_date DESC, created_at DESC
-      LIMIT $2
-      `,
-      [site_id, limit]
-    );
-
-    res.json({ ok: true, reports: r.rows });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-/** ---------------------------
- *  Token-secured: latest report
- *  GET /reports/latest?token=...
- *  -------------------------*/
-app.get("/reports/latest", async (req, res) => {
-  try {
-    const token = req.query.token;
-    const site_id = await siteIdFromToken(token);
-
-    if (!site_id) {
-      return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+      return res
+        .status(401)
+        .json({ ok: false, error: "Unauthorized. Add ?token=..." });
     }
 
     const r = await pool.query(
@@ -314,18 +277,161 @@ app.get("/reports/latest", async (req, res) => {
   }
 });
 
+// Report history
+app.get("/api/reports", async (req, res) => {
+  try {
+    const token = req.query.token;
+    const site_id = await siteIdFromToken(token);
+
+    if (!site_id) {
+      return res
+        .status(401)
+        .json({ ok: false, error: "Unauthorized. Add ?token=..." });
+    }
+
+    const limit = clampInt(req.query.limit, 1, 100, 30);
+
+    const r = await pool.query(
+      `
+      SELECT site_id, report_date, created_at, LEFT(report_text, 220) AS preview
+      FROM daily_reports
+      WHERE site_id = $1
+      ORDER BY report_date DESC, created_at DESC
+      LIMIT $2
+      `,
+      [site_id, limit]
+    );
+
+    res.json({ ok: true, reports: r.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Stats for “boxes” + simple charts
+app.get("/api/stats", async (req, res) => {
+  try {
+    const token = req.query.token;
+    const site_id = await siteIdFromToken(token);
+
+    if (!site_id) {
+      return res
+        .status(401)
+        .json({ ok: false, error: "Unauthorized. Add ?token=..." });
+    }
+
+    // 1) Total events today
+    const today = await pool.query(
+      `
+      SELECT COUNT(*)::int AS total_events_today
+      FROM events_raw
+      WHERE site_id = $1 AND created_at::date = CURRENT_DATE
+      `,
+      [site_id]
+    );
+
+    // 2) Total events last 7 days
+    const last7 = await pool.query(
+      `
+      SELECT COUNT(*)::int AS total_events_7d
+      FROM events_raw
+      WHERE site_id = $1 AND created_at >= NOW() - INTERVAL '7 days'
+      `,
+      [site_id]
+    );
+
+    // 3) Events by device (7d)
+    const byDevice = await pool.query(
+      `
+      SELECT COALESCE(device,'unknown') AS device, COUNT(*)::int AS count
+      FROM events_raw
+      WHERE site_id = $1 AND created_at >= NOW() - INTERVAL '7 days'
+      GROUP BY COALESCE(device,'unknown')
+      ORDER BY count DESC
+      `,
+      [site_id]
+    );
+
+    // 4) Top pages (7d)
+    const topPages = await pool.query(
+      `
+      SELECT COALESCE(page_type,'(unknown)') AS page, COUNT(*)::int AS count
+      FROM events_raw
+      WHERE site_id = $1 AND created_at >= NOW() - INTERVAL '7 days'
+      GROUP BY COALESCE(page_type,'(unknown)')
+      ORDER BY count DESC
+      LIMIT 5
+      `,
+      [site_id]
+    );
+
+    // 5) Events by day (last 7 days) for a chart
+    const perDay = await pool.query(
+      `
+      SELECT (created_at::date) AS day, COUNT(*)::int AS count
+      FROM events_raw
+      WHERE site_id = $1 AND created_at::date >= CURRENT_DATE - INTERVAL '6 days'
+      GROUP BY (created_at::date)
+      ORDER BY day ASC
+      `,
+      [site_id]
+    );
+
+    // Fill missing days to always return 7 points
+    const map = new Map(perDay.rows.map((r) => [String(r.day), r.count]));
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const iso = d.toISOString().slice(0, 10);
+      days.push({ day: iso, count: map.get(iso) || 0 });
+    }
+
+    // 6) Most recent event
+    const lastEvent = await pool.query(
+      `
+      SELECT event_name, page_type, device, created_at
+      FROM events_raw
+      WHERE site_id = $1
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [site_id]
+    );
+
+    res.json({
+      ok: true,
+      site_id,
+      totals: {
+        today: today.rows[0]?.total_events_today ?? 0,
+        last7d: last7.rows[0]?.total_events_7d ?? 0
+      },
+      by_device: byDevice.rows,
+      top_pages: topPages.rows,
+      events_7d_series: days,
+      last_event: lastEvent.rows[0] || null
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 /** ---------------------------
- *  Generate + save report (manual trigger)
- *  POST /generate-report { token? }
- *  -------------------------*/
+ * Generate + save report (manual trigger)
+ * POST /generate-report  body: { token? }  (optional cost)
+ * If token provided: generates for that site only
+ * If no token: generates for sites that had events today (fallback: all sites)
+ * --------------------------*/
 app.post("/generate-report", async (req, res) => {
   try {
     const token = req.body?.token || req.query?.token || null;
+
     let siteIds = [];
 
     if (token) {
       const sid = await siteIdFromToken(token);
-      if (!sid) return res.status(401).json({ ok: false, error: "Unauthorized. Invalid token" });
+      if (!sid)
+        return res.status(401).json({ ok: false, error: "Invalid token" });
       siteIds = [sid];
     } else {
       const s = await pool.query(`
@@ -336,17 +442,21 @@ app.post("/generate-report", async (req, res) => {
       siteIds = s.rows.map((x) => x.site_id);
 
       if (siteIds.length === 0) {
-        const all = await pool.query(`SELECT site_id FROM sites LIMIT 50`);
+        const all = await pool.query(`SELECT site_id FROM sites LIMIT 100`);
         siteIds = all.rows.map((x) => x.site_id);
       }
     }
 
+    const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
+    const model = process.env.OPENAI_MODEL || "gpt-4o";
     const results = [];
 
     for (const site_id of siteIds) {
       const metricsRes = await pool.query(
         `
-        SELECT $1::text as site_id, COUNT(*)::int AS total_events
+        SELECT
+          $1::text AS site_id,
+          COUNT(*)::int AS total_events
         FROM events_raw
         WHERE site_id = $1 AND created_at::date = CURRENT_DATE
         `,
@@ -355,8 +465,6 @@ app.post("/generate-report", async (req, res) => {
 
       const metrics = metricsRes.rows;
 
-      const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
-
       const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -364,17 +472,21 @@ app.post("/generate-report", async (req, res) => {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          model: process.env.OPENAI_MODEL || "gpt-4o",
+          model,
           messages: [
             {
               role: "system",
-              content: "You generate short daily business reports. Be specific, actionable, and concise."
+              content:
+                "You generate short daily business reports. Be specific, actionable, and concise."
             },
             {
               role: "user",
               content:
                 `Here are today's metrics (JSON): ${JSON.stringify(metrics)}\n` +
-                `Write a daily report with:\n1) Summary\n2) 3 prioritized next actions\n3) One metric to watch tomorrow\n`
+                `Write a daily report with:\n` +
+                `1) Summary\n` +
+                `2) 3 prioritized next actions\n` +
+                `3) One metric to watch tomorrow\n`
             }
           ]
         })
@@ -409,21 +521,18 @@ app.post("/generate-report", async (req, res) => {
 });
 
 /** ---------------------------
- *  Email latest report via Resend (manual)
- *  POST /email-latest { token, to_email }
- *  -------------------------*/
+ * Email latest report via Resend (manual, optional)
+ * POST /email-latest { token, to_email }
+ * --------------------------*/
 app.post("/email-latest", async (req, res) => {
   try {
     const { token, to_email } = req.body || {};
-
     if (!to_email) {
       return res.status(400).json({ ok: false, error: "to_email required" });
     }
 
     const site_id = await siteIdFromToken(token);
-    if (!site_id) {
-      return res.status(401).json({ ok: false, error: "Unauthorized. Invalid token" });
-    }
+    if (!site_id) return res.status(401).json({ ok: false, error: "Invalid token" });
 
     const r = await pool.query(
       `
@@ -463,139 +572,11 @@ app.post("/email-latest", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
-// DASHBOARD SUMMARY (6 boxes)
-// GET /dashboard/summary?token=...
-app.get("/dashboard/summary", async (req, res) => {
-  try {
-    const token = req.query.token;
-    const site_id = await siteIdFromToken(token);
-
-    if (!site_id) {
-      return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
-    }
-
-    // 1) Today events + Yesterday events
-    const todayRes = await pool.query(
-      `SELECT COUNT(*)::int AS total
-       FROM events_raw
-       WHERE site_id = $1 AND created_at::date = CURRENT_DATE`,
-      [site_id]
-    );
-
-    const ydayRes = await pool.query(
-      `SELECT COUNT(*)::int AS total
-       FROM events_raw
-       WHERE site_id = $1 AND created_at::date = CURRENT_DATE - INTERVAL '1 day'`,
-      [site_id]
-    );
-
-    const today_total = todayRes.rows[0]?.total ?? 0;
-    const yday_total = ydayRes.rows[0]?.total ?? 0;
-
-    // 2) Engagement: actions per page_view (approx)
-    const pvRes = await pool.query(
-      `SELECT COUNT(*)::int AS page_views
-       FROM events_raw
-       WHERE site_id = $1
-         AND created_at::date = CURRENT_DATE
-         AND event_name = 'page_view'`,
-      [site_id]
-    );
-    const page_views = pvRes.rows[0]?.page_views ?? 0;
-    const actions_per_visit = page_views > 0 ? (today_total / page_views) : 0;
-
-    let engagement_label = "Low";
-    if (actions_per_visit >= 2.2) engagement_label = "High";
-    else if (actions_per_visit >= 1.3) engagement_label = "Medium";
-
-    // 3) Top Page today
-    const topPageRes = await pool.query(
-      `SELECT page_type, COUNT(*)::int AS views
-       FROM events_raw
-       WHERE site_id = $1 AND created_at::date = CURRENT_DATE
-       GROUP BY page_type
-       ORDER BY views DESC
-       LIMIT 1`,
-      [site_id]
-    );
-    const top_page = topPageRes.rows[0]?.page_type || "(none)";
-    const top_page_views = topPageRes.rows[0]?.views ?? 0;
-
-    // 4) Devices today
-    const deviceRes = await pool.query(
-      `SELECT COALESCE(device,'unknown') AS device, COUNT(*)::int AS c
-       FROM events_raw
-       WHERE site_id = $1 AND created_at::date = CURRENT_DATE
-       GROUP BY COALESCE(device,'unknown')`,
-      [site_id]
-    );
-
-    const deviceCounts = {};
-    for (const row of deviceRes.rows) deviceCounts[row.device] = row.c;
-
-    const desktop = deviceCounts.desktop ?? 0;
-    const mobile = deviceCounts.mobile ?? 0;
-    const unknown = deviceCounts.unknown ?? 0;
-    const devices_total = desktop + mobile + unknown;
-
-    const desktop_pct = devices_total ? Math.round((desktop / devices_total) * 100) : 0;
-    const mobile_pct = devices_total ? Math.round((mobile / devices_total) * 100) : 0;
-
-    // 5) Last Activity
-    const lastRes = await pool.query(
-      `SELECT MAX(created_at) AS last_event_at
-       FROM events_raw
-       WHERE site_id = $1`,
-      [site_id]
-    );
-    const last_event_at = lastRes.rows[0]?.last_event_at || null;
-
-    // 6) Quick Insight: first line / first sentence from latest report
-    const reportRes = await pool.query(
-      `SELECT report_text
-       FROM daily_reports
-       WHERE site_id = $1
-       ORDER BY report_date DESC, created_at DESC
-       LIMIT 1`,
-      [site_id]
-    );
-
-    const report_text = reportRes.rows[0]?.report_text || "";
-    const firstLine = report_text.split("\n").find(l => l.trim().length > 0) || "";
-    const quick_insight = firstLine.slice(0, 160);
-
-    res.json({
-      ok: true,
-      site_id,
-
-      today_total,
-      yday_total,
-      delta: today_total - yday_total,
-
-      engagement_label,
-      actions_per_visit: Number(actions_per_visit.toFixed(2)),
-
-      top_page,
-      top_page_views,
-
-      desktop_pct,
-      mobile_pct,
-      desktop,
-      mobile,
-      unknown,
-
-      last_event_at,
-      quick_insight
-    });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
 
 /** ---------------------------
- *  Secure Dashboard UI (token-based)
- *  GET /dashboard?token=...
- *  -------------------------*/
+ * Dashboard UI (token-based)
+ * GET /dashboard?token=...
+ * --------------------------*/
 app.get("/dashboard", async (req, res) => {
   try {
     const token = req.query.token;
@@ -635,7 +616,7 @@ app.get("/dashboard", async (req, res) => {
                   var(--bg);
       color:var(--text);
     }
-    .wrap{max-width:1100px; margin:0 auto; padding:28px 18px 60px;}
+    .wrap{max-width:1200px; margin:0 auto; padding:28px 18px 60px;}
     .topbar{
       display:flex; align-items:center; justify-content:space-between;
       gap:14px; padding:18px 18px;
@@ -671,7 +652,20 @@ app.get("/dashboard", async (req, res) => {
       font-weight:600;
     }
     .btn:hover{border-color: rgba(96,165,250,.5)}
-
+    .grid{
+      margin-top:18px;
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:16px;
+    }
+    .cards{
+      display:grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap:12px;
+      margin-top:16px;
+    }
+    @media (max-width: 1100px){ .cards{grid-template-columns: repeat(3, 1fr);} }
+    @media (max-width: 700px){ .cards{grid-template-columns: repeat(2, 1fr);} }
     .card{
       background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
       border:1px solid var(--border);
@@ -679,37 +673,12 @@ app.get("/dashboard", async (req, res) => {
       box-shadow: var(--shadow);
       padding:16px;
     }
-
-    .statsGrid{
-      margin-top:16px;
-      display:grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap:12px;
-    }
-    @media (max-width: 900px){
-      .statsGrid{grid-template-columns:1fr}
-    }
-    .statTitle{font-size:12px; color:var(--muted)}
-    .statValue{font-size:20px; font-weight:800; margin-top:6px}
-    .statSub{font-size:12px; color:var(--muted); margin-top:6px}
-    .deltaUp{color: var(--accent2); font-weight:800}
-    .deltaDown{color: var(--danger); font-weight:800}
-
-    .grid{
-      margin-top:14px;
-      display:grid;
-      grid-template-columns: 1.2fr .8fr;
-      gap:16px;
-    }
-    @media (max-width: 900px){ .grid{grid-template-columns:1fr} }
-
+    .statTitle{font-size:12px;color:var(--muted);margin-bottom:8px}
+    .statValue{font-size:20px;font-weight:900;letter-spacing:.2px}
+    .statSub{font-size:12px;color:var(--muted);margin-top:6px}
     .row{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;}
     .status{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);}
-    .dot{
-      width:8px; height:8px; border-radius:50%;
-      background: var(--accent2);
-      box-shadow: 0 0 0 6px rgba(52,211,153,.12);
-    }
+    .dot{width:8px; height:8px; border-radius:50%; background: var(--accent2); box-shadow: 0 0 0 6px rgba(52,211,153,.12);}
     .latest{
       white-space: pre-wrap;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
@@ -733,6 +702,31 @@ app.get("/dashboard", async (req, res) => {
     .historyItem .date{font-weight:700; font-size:12px}
     .historyItem .preview{margin-top:8px; font-size:13px; color: var(--text)}
     .err{color: var(--danger); font-weight:700}
+    .panelGrid{
+      display:grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap:16px;
+      margin-top:16px;
+    }
+    @media (max-width: 900px){ .panelGrid{grid-template-columns:1fr} }
+    .svgWrap{
+      margin-top:10px;
+      border:1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(15,23,42,.55);
+      padding: 10px;
+      overflow:hidden;
+    }
+    svg{display:block;width:100%;height:80px}
+    .barRow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    .chip{
+      font-size:12px;
+      border:1px solid var(--border);
+      border-radius:999px;
+      padding:6px 10px;
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+    }
   </style>
 </head>
 <body>
@@ -742,57 +736,59 @@ app.get("/dashboard", async (req, res) => {
         <div class="logo"></div>
         <div>
           <h1>Constrava Dashboard</h1>
-          <div class="sub">Daily AI reports • MVP Analytics</div>
+          <div class="sub">Daily AI reports • Events • MVP UI</div>
         </div>
       </div>
 
       <div class="controls">
         <span class="pill">Site: <b>${site_id}</b></span>
-        <button class="btn" onclick="refreshAll()">Refresh</button>
+        <button class="btn" onclick="loadAll()">Refresh</button>
       </div>
     </div>
 
-    <!-- 6 NEW BOXES -->
-    <div class="statsGrid">
+    <div class="cards">
       <div class="card">
-        <div class="statTitle">Today</div>
-        <div class="statValue" id="todayVal">—</div>
-        <div class="statSub" id="todayDelta">—</div>
+        <div class="statTitle">Events today</div>
+        <div class="statValue" id="statToday">—</div>
+        <div class="statSub" id="statTodaySub">—</div>
       </div>
 
       <div class="card">
-        <div class="statTitle">Engagement</div>
-        <div class="statValue" id="engLabel">—</div>
-        <div class="statSub" id="engSub">—</div>
+        <div class="statTitle">Events (last 7d)</div>
+        <div class="statValue" id="stat7d">—</div>
+        <div class="statSub">Rolling 7 days</div>
       </div>
 
       <div class="card">
-        <div class="statTitle">Top Page</div>
-        <div class="statValue" id="topPage">—</div>
-        <div class="statSub" id="topPageSub">—</div>
+        <div class="statTitle">Last event</div>
+        <div class="statValue" style="font-size:14px" id="statLastEvent">—</div>
+        <div class="statSub" id="statLastEventSub">—</div>
       </div>
 
       <div class="card">
-        <div class="statTitle">Devices</div>
-        <div class="statValue" id="devicesVal">—</div>
-        <div class="statSub" id="devicesSub">—</div>
+        <div class="statTitle">Top page</div>
+        <div class="statValue" style="font-size:14px" id="statTopPage">—</div>
+        <div class="statSub" id="statTopPageSub">—</div>
       </div>
 
       <div class="card">
-        <div class="statTitle">Last Activity</div>
-        <div class="statValue" id="lastVal">—</div>
-        <div class="statSub" id="lastSub">—</div>
+        <div class="statTitle">Device mix</div>
+        <div class="statValue" style="font-size:14px" id="statDevice">—</div>
+        <div class="statSub">Last 7 days</div>
       </div>
 
       <div class="card">
-        <div class="statTitle">Quick Insight</div>
-        <div class="statValue" style="font-size:14px; font-weight:800; line-height:1.3;" id="insightVal">—</div>
-        <div class="statSub">From your latest report</div>
+        <div class="statTitle">7-day trend</div>
+        <div class="svgWrap">
+          <svg viewBox="0 0 300 80" preserveAspectRatio="none">
+            <polyline id="trendLine" fill="none" stroke="rgba(96,165,250,.95)" stroke-width="3" points=""></polyline>
+          </svg>
+        </div>
+        <div class="statSub">Events per day</div>
       </div>
     </div>
 
-    <!-- EXISTING REPORT PANELS -->
-    <div class="grid">
+    <div class="panelGrid">
       <div class="card">
         <div class="row">
           <div>
@@ -807,12 +803,15 @@ app.get("/dashboard", async (req, res) => {
       <div class="card">
         <div class="row" style="margin:0 0 10px 0;">
           <div>
-            <div style="font-weight:800;">Report History</div>
+            <div style="font-weight:900;">Report History</div>
             <div class="muted">Recent reports for this site.</div>
           </div>
           <span class="pill" id="countPill">0</span>
         </div>
         <div id="history"></div>
+
+        <div style="margin-top:14px" class="muted">Top pages (7d)</div>
+        <div class="barRow" id="topPagesRow"></div>
       </div>
     </div>
   </div>
@@ -827,58 +826,67 @@ app.get("/dashboard", async (req, res) => {
     el.className = isError ? "err" : "";
   }
 
-  function timeAgo(iso){
-    if(!iso) return "No events yet";
-    const then = new Date(iso).getTime();
-    const now = Date.now();
-    const s = Math.max(0, Math.floor((now-then)/1000));
-    if (s < 60) return s + "s ago";
-    const m = Math.floor(s/60);
-    if (m < 60) return m + "m ago";
-    const h = Math.floor(m/60);
-    if (h < 24) return h + "h ago";
-    const d = Math.floor(h/24);
-    return d + "d ago";
+  // ✅ YOU SAID “there is no loadAll()” — HERE IT IS:
+  async function loadAll(){
+    await Promise.all([loadStats(), loadLatest(), loadHistory()]);
   }
 
-  async function loadSummary(){
-    const r = await fetch(\`\${base}/dashboard/summary?token=\${encodeURIComponent(token)}\`);
-    const data = await r.json();
-    if(!data.ok){
-      // keep dashboard usable even if summary fails
-      document.getElementById("todayVal").textContent = "—";
-      document.getElementById("todayDelta").textContent = data.error || "Summary error";
-      return;
+  async function loadStats(){
+    try{
+      const r = await fetch(\`\${base}/api/stats?token=\${encodeURIComponent(token)}\`);
+      const data = await r.json();
+      if(!data.ok){
+        document.getElementById("statToday").textContent = "—";
+        return;
+      }
+
+      // events today / 7d
+      document.getElementById("statToday").textContent = data.totals.today;
+      document.getElementById("statTodaySub").textContent = data.totals.today === 1 ? "1 event today" : \`\${data.totals.today} events today\`;
+      document.getElementById("stat7d").textContent = data.totals.last7d;
+
+      // last event
+      if(data.last_event){
+        document.getElementById("statLastEvent").textContent = data.last_event.event_name || "(event)";
+        const when = new Date(data.last_event.created_at);
+        document.getElementById("statLastEventSub").textContent = \`\${when.toLocaleString()} • \${data.last_event.device || "unknown"}\`;
+      } else {
+        document.getElementById("statLastEvent").textContent = "None yet";
+        document.getElementById("statLastEventSub").textContent = "No events recorded";
+      }
+
+      // top page
+      const top = (data.top_pages && data.top_pages[0]) ? data.top_pages[0] : null;
+      document.getElementById("statTopPage").textContent = top ? top.page : "—";
+      document.getElementById("statTopPageSub").textContent = top ? \`\${top.count} views (7d)\` : "No page data (7d)";
+
+      // device mix
+      const dev = (data.by_device || []).slice(0,3).map(d => \`\${d.device}: \${d.count}\`).join(" • ");
+      document.getElementById("statDevice").textContent = dev || "—";
+
+      // top pages chips
+      const row = document.getElementById("topPagesRow");
+      row.innerHTML = "";
+      (data.top_pages || []).forEach(p => {
+        const div = document.createElement("div");
+        div.className = "chip";
+        div.textContent = \`\${p.page} • \${p.count}\`;
+        row.appendChild(div);
+      });
+
+      // 7-day trend polyline
+      const series = data.events_7d_series || [];
+      const max = Math.max(1, ...series.map(x => x.count));
+      const pts = series.map((x, i) => {
+        const px = (i/(series.length-1 || 1)) * 300;
+        const py = 70 - (x.count/max) * 60;
+        return \`\${px.toFixed(1)},\${py.toFixed(1)}\`;
+      }).join(" ");
+      document.getElementById("trendLine").setAttribute("points", pts);
+
+    }catch(e){
+      // keep silent for MVP
     }
-
-    // Today + delta
-    document.getElementById("todayVal").textContent = data.today_total + " events";
-    const d = data.delta;
-    const deltaEl = document.getElementById("todayDelta");
-    if (d > 0) deltaEl.innerHTML = \`<span class="deltaUp">▲ +\${d}</span> vs yesterday\`;
-    else if (d < 0) deltaEl.innerHTML = \`<span class="deltaDown">▼ \${d}</span> vs yesterday\`;
-    else deltaEl.textContent = "No change vs yesterday";
-
-    // Engagement
-    document.getElementById("engLabel").textContent = data.engagement_label;
-    document.getElementById("engSub").textContent =
-      (data.actions_per_visit ? data.actions_per_visit : 0) + " actions per visit (approx)";
-
-    // Top page
-    document.getElementById("topPage").textContent = data.top_page;
-    document.getElementById("topPageSub").textContent = data.top_page_views + " views today";
-
-    // Devices
-    document.getElementById("devicesVal").textContent = data.desktop_pct + "% desktop";
-    document.getElementById("devicesSub").textContent =
-      data.mobile_pct + "% mobile (+" + (data.unknown || 0) + " unknown)";
-
-    // Last activity
-    document.getElementById("lastVal").textContent = timeAgo(data.last_event_at);
-    document.getElementById("lastSub").textContent = data.last_event_at ? new Date(data.last_event_at).toLocaleString() : "";
-
-    // Quick insight
-    document.getElementById("insightVal").textContent = data.quick_insight || "Generate a report to see this.";
   }
 
   async function loadLatest() {
@@ -887,11 +895,11 @@ app.get("/dashboard", async (req, res) => {
     const box = document.getElementById("latest");
     box.textContent = "Loading...";
 
-    const r = await fetch(\`\${base}/reports/latest?token=\${encodeURIComponent(token)}\`);
+    const r = await fetch(\`\${base}/api/reports/latest?token=\${encodeURIComponent(token)}\`);
     const data = await r.json();
 
     if (!data.ok) {
-      setStatus("Ready");
+      setStatus("Error", true);
       meta.textContent = "";
       box.textContent = data.error || "No latest report";
       return;
@@ -909,13 +917,13 @@ app.get("/dashboard", async (req, res) => {
     const pill = document.getElementById("countPill");
     el.innerHTML = "";
 
-    const r = await fetch(\`\${base}/reports?limit=30&token=\${encodeURIComponent(token)}\`);
+    const r = await fetch(\`\${base}/api/reports?limit=30&token=\${encodeURIComponent(token)}\`);
     const data = await r.json();
 
     if (!data.ok) {
+      setStatus("Error", true);
       el.innerHTML = \`<div class="historyItem"><div class="err">\${data.error || "No history"}</div></div>\`;
       pill.textContent = "0";
-      setStatus("Ready");
       return;
     }
 
@@ -941,13 +949,7 @@ app.get("/dashboard", async (req, res) => {
     }[m]));
   }
 
-  async function refreshAll(){
-    await loadSummary();
-    await loadLatest();
-    await loadHistory();
-  }
-
-  refreshAll();
+  loadAll();
 </script>
 </body>
 </html>`);
@@ -956,82 +958,9 @@ app.get("/dashboard", async (req, res) => {
   }
 });
 
-
 /** ---------------------------
- *  AUTH (JWT) — for future login-based dashboard
- *  -------------------------*/
-app.post("/auth/register", async (req, res) => {
-  try {
-    const { site_id, email, password } = req.body;
-
-    if (!site_id || !email || !password) {
-      return res.status(400).json({ ok: false, error: "site_id, email, password required" });
-    }
-
-    const site = await pool.query("SELECT 1 FROM sites WHERE site_id=$1", [site_id]);
-    if (site.rows.length === 0) return res.status(404).json({ ok: false, error: "Invalid site_id" });
-
-    const password_hash = await bcrypt.hash(password, 12);
-
-    await pool.query(
-      `INSERT INTO users (site_id, email, password_hash)
-       VALUES ($1,$2,$3)`,
-      [site_id, email.toLowerCase(), password_hash]
-    );
-
-    res.json({ ok: true });
-  } catch (err) {
-    if (String(err.message).toLowerCase().includes("duplicate")) {
-      return res.status(409).json({ ok: false, error: "Email already exists" });
-    }
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-app.post("/auth/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ ok: false, error: "email and password required" });
-    }
-
-    const r = await pool.query(
-      `SELECT id, site_id, email, password_hash
-       FROM users
-       WHERE email=$1
-       LIMIT 1`,
-      [email.toLowerCase()]
-    );
-
-    if (r.rows.length === 0) return res.status(401).json({ ok: false, error: "Invalid login" });
-
-    const user = r.rows[0];
-    const ok = await bcrypt.compare(password, user.password_hash);
-    if (!ok) return res.status(401).json({ ok: false, error: "Invalid login" });
-
-    const jwtSecret = requireEnv("JWT_SECRET");
-
-    const token = jwt.sign(
-      { user_id: user.id, site_id: user.site_id, email: user.email },
-      jwtSecret,
-      { expiresIn: "7d" }
-    );
-
-    res.json({ ok: true, token });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-// Example protected endpoint (optional test)
-app.get("/me", requireAuth, async (req, res) => {
-  res.json({ ok: true, auth: req.auth });
-});
-
-/** ---------------------------
- *  Start server (keep last)
- *  -------------------------*/
+ * Start server (KEEP LAST)
+ * --------------------------*/
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
 });
