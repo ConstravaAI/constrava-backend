@@ -6,12 +6,15 @@
 // ✅ Reports: generate, list, latest (all token-secured)
 // ✅ Optional: email latest report via Resend (/email-latest)
 // ✅ Tracker script served at /tracker.js
+// ✅ Auth: /auth/register + /auth/login (JWT)  (for future login-based dashboard)
 
 import express from "express";
 import cors from "cors";
 import pkg from "pg";
 import crypto from "crypto";
 import fetch from "node-fetch";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 
 const { Pool } = pkg;
 
@@ -31,15 +34,11 @@ const pool = new Pool({ connectionString: DATABASE_URL });
 /** ---------------------------
  *  Helpers
  *  -------------------------*/
-
 function makeSiteId() {
-  // simple unique-ish id
   return "site_" + crypto.randomBytes(6).toString("hex");
 }
 
 function publicBaseUrl(req) {
-  // If you set PUBLIC_BASE_URL on Render, this will use it.
-  // Otherwise, it falls back to request host.
   return (
     process.env.PUBLIC_BASE_URL ||
     `${req.protocol}://${req.get("host")}` ||
@@ -62,6 +61,21 @@ function requireEnv(name) {
   return v;
 }
 
+// JWT middleware (for later login-based dashboard / APIs)
+function requireAuth(req, res, next) {
+  try {
+    const header = req.headers.authorization || "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+    if (!token) return res.status(401).json({ ok: false, error: "Missing token" });
+
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    req.auth = payload; // { user_id, site_id, email }
+    next();
+  } catch {
+    return res.status(401).json({ ok: false, error: "Invalid token" });
+  }
+}
+
 /** ---------------------------
  *  Boot: ensure tables exist
  *  -------------------------*/
@@ -72,6 +86,16 @@ async function ensureTables() {
       site_name TEXT NOT NULL,
       owner_email TEXT NOT NULL,
       dashboard_token TEXT UNIQUE NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id BIGSERIAL PRIMARY KEY,
+      site_id TEXT NOT NULL REFERENCES sites(site_id) ON DELETE CASCADE,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
@@ -100,6 +124,7 @@ async function ensureTables() {
 
   console.log("Tables ensured ✅");
 }
+
 ensureTables().catch((e) => console.error("ensureTables failed:", e.message));
 
 /** ---------------------------
@@ -130,11 +155,9 @@ app.post("/sites", async (req, res) => {
         .json({ ok: false, error: "site_name and owner_email required" });
     }
 
-    // generate ids
     let site_id = makeSiteId();
     const token = crypto.randomUUID();
 
-    // rare collision retry
     for (let i = 0; i < 3; i++) {
       try {
         await pool.query(
@@ -156,7 +179,7 @@ app.post("/sites", async (req, res) => {
       site_id,
       install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
       client_dashboard_url: `${base}/dashboard?token=${token}`,
-      token // helpful for your testing; you can remove later if you want
+      token // (optional) for your testing
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -170,8 +193,6 @@ app.post("/sites", async (req, res) => {
 app.get("/tracker.js", (req, res) => {
   res.setHeader("Content-Type", "application/javascript");
 
-  // This script fires a basic page_view event on load.
-  // Minimal by design. Expand later.
   res.send(`
 (function () {
   try {
@@ -210,7 +231,6 @@ app.post("/events", async (req, res) => {
   }
 
   try {
-    // validate site exists
     const site = await pool.query("SELECT 1 FROM sites WHERE site_id = $1", [site_id]);
     if (site.rows.length === 0) {
       return res.status(403).json({ ok: false, error: "Invalid site_id" });
@@ -296,14 +316,11 @@ app.get("/reports/latest", async (req, res) => {
 
 /** ---------------------------
  *  Generate + save report (manual trigger)
- *  POST /generate-report { token? } (token optional for your testing)
- *  If token provided => generates report for that site only
- *  If no token => generates report for ALL sites that had events today
+ *  POST /generate-report { token? }
  *  -------------------------*/
 app.post("/generate-report", async (req, res) => {
   try {
     const token = req.body?.token || req.query?.token || null;
-
     let siteIds = [];
 
     if (token) {
@@ -311,14 +328,13 @@ app.post("/generate-report", async (req, res) => {
       if (!sid) return res.status(401).json({ ok: false, error: "Unauthorized. Invalid token" });
       siteIds = [sid];
     } else {
-      // all sites that have events today
       const s = await pool.query(`
         SELECT DISTINCT site_id
         FROM events_raw
         WHERE created_at::date = CURRENT_DATE
       `);
       siteIds = s.rows.map((x) => x.site_id);
-      // if no events today, still allow fallback
+
       if (siteIds.length === 0) {
         const all = await pool.query(`SELECT site_id FROM sites LIMIT 50`);
         siteIds = all.rows.map((x) => x.site_id);
@@ -328,12 +344,9 @@ app.post("/generate-report", async (req, res) => {
     const results = [];
 
     for (const site_id of siteIds) {
-      // metrics per site for today
       const metricsRes = await pool.query(
         `
-        SELECT
-          $1::text as site_id,
-          COUNT(*)::int AS total_events
+        SELECT $1::text as site_id, COUNT(*)::int AS total_events
         FROM events_raw
         WHERE site_id = $1 AND created_at::date = CURRENT_DATE
         `,
@@ -342,7 +355,6 @@ app.post("/generate-report", async (req, res) => {
 
       const metrics = metricsRes.rows;
 
-      // call OpenAI
       const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
 
       const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -356,17 +368,13 @@ app.post("/generate-report", async (req, res) => {
           messages: [
             {
               role: "system",
-              content:
-                "You generate short daily business reports. Be specific, actionable, and concise."
+              content: "You generate short daily business reports. Be specific, actionable, and concise."
             },
             {
               role: "user",
               content:
                 `Here are today's metrics (JSON): ${JSON.stringify(metrics)}\n` +
-                `Write a daily report with:\n` +
-                `1) Summary\n` +
-                `2) 3 prioritized next actions\n` +
-                `3) One metric to watch tomorrow\n`
+                `Write a daily report with:\n1) Summary\n2) 3 prioritized next actions\n3) One metric to watch tomorrow\n`
             }
           ]
         })
@@ -380,7 +388,6 @@ app.post("/generate-report", async (req, res) => {
         continue;
       }
 
-      // save
       const saved = await pool.query(
         `
         INSERT INTO daily_reports (site_id, report_date, report_text)
@@ -458,7 +465,7 @@ app.post("/email-latest", async (req, res) => {
 });
 
 /** ---------------------------
- *  Secure Dashboard UI
+ *  Secure Dashboard UI (token-based)
  *  GET /dashboard?token=...
  *  -------------------------*/
 app.get("/dashboard", async (req, res) => {
@@ -477,250 +484,92 @@ app.get("/dashboard", async (req, res) => {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Constrava Dashboard</title>
-  <style>
-    :root{
-      --bg:#0b0f19;
-      --panel:#111827;
-      --panel2:#0f172a;
-      --text:#e5e7eb;
-      --muted:#9ca3af;
-      --border:rgba(255,255,255,.08);
-      --accent:#60a5fa;
-      --accent2:#34d399;
-      --danger:#fb7185;
-      --shadow: 0 10px 30px rgba(0,0,0,.35);
-      --radius:16px;
-    }
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      background: radial-gradient(1200px 800px at 20% -10%, rgba(96,165,250,.25), transparent 60%),
-                  radial-gradient(900px 600px at 90% 0%, rgba(52,211,153,.18), transparent 55%),
-                  var(--bg);
-      color:var(--text);
-    }
-    .wrap{max-width:1100px; margin:0 auto; padding:28px 18px 60px;}
-    .topbar{
-      display:flex; align-items:center; justify-content:space-between;
-      gap:14px; padding:18px 18px;
-      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-      border:1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(10px);
-    }
-    .brand{display:flex; align-items:center; gap:12px;}
-    .logo{
-      width:40px; height:40px; border-radius:12px;
-      background: linear-gradient(135deg, rgba(96,165,250,.9), rgba(52,211,153,.85));
-      box-shadow: 0 10px 25px rgba(96,165,250,.25);
-    }
-    h1{font-size:18px; margin:0;}
-    .sub{font-size:12px; color:var(--muted); margin-top:2px;}
-    .controls{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
-    .pill{
-      font-size:12px; color: var(--muted);
-      border:1px solid var(--border);
-      padding:6px 10px;
-      border-radius:999px;
-      background: rgba(15,23,42,.6);
-    }
-    .btn{
-      padding:10px 14px;
-      border-radius:12px;
-      border:1px solid var(--border);
-      background: rgba(96,165,250,.12);
-      color: var(--text);
-      cursor:pointer;
-      font-weight:600;
-    }
-    .btn:hover{border-color: rgba(96,165,250,.5)}
-    .grid{
-      margin-top:18px;
-      display:grid;
-      grid-template-columns: 1.2fr .8fr;
-      gap:16px;
-    }
-    @media (max-width: 900px){ .grid{grid-template-columns:1fr} }
-    .card{
-      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
-      border:1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding:16px;
-    }
-    .row{
-      display:flex; align-items:center; justify-content:space-between;
-      gap:10px; margin-bottom:10px;
-    }
-    .status{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);}
-    .dot{
-      width:8px; height:8px; border-radius:50%;
-      background: var(--accent2);
-      box-shadow: 0 0 0 6px rgba(52,211,153,.12);
-    }
-    .latest{
-      white-space: pre-wrap;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
-      font-size: 13px;
-      line-height: 1.45;
-      background: rgba(15,23,42,.65);
-      border:1px solid var(--border);
-      border-radius: 12px;
-      padding: 12px;
-      overflow:auto;
-      min-height: 220px;
-    }
-    .muted{color:var(--muted); font-size:12px}
-    .historyItem{
-      padding:12px;
-      border-radius: 14px;
-      border:1px solid var(--border);
-      background: rgba(15,23,42,.55);
-      margin-top:10px;
-    }
-    .historyItem .date{font-weight:700; font-size:12px}
-    .historyItem .preview{margin-top:8px; font-size:13px; color: var(--text)}
-    .smallBtn{
-      padding:8px 10px;
-      border-radius:10px;
-      border:1px solid var(--border);
-      background: rgba(255,255,255,.04);
-      color: var(--text);
-      cursor:pointer;
-      font-size:12px;
-    }
-    .smallBtn:hover{border-color: rgba(255,255,255,.18)}
-    .err{color: var(--danger); font-weight:600}
-  </style>
 </head>
-<body>
-  <div class="wrap">
-    <div class="topbar">
-      <div class="brand">
-        <div class="logo"></div>
-        <div>
-          <h1>Constrava Dashboard</h1>
-          <div class="sub">Daily AI reports • Live events • MVP UI</div>
-        </div>
-      </div>
-
-      <div class="controls">
-        <span class="pill">Site: <b>${site_id}</b></span>
-        <button class="btn" onclick="loadAll()">Refresh</button>
-      </div>
-    </div>
-
-    <div class="grid">
-      <div class="card">
-        <div class="row">
-          <div>
-            <div class="muted">Latest report</div>
-            <div id="latestMeta" class="muted"></div>
-          </div>
-          <div class="status"><span class="dot"></span><span id="statusText">Ready</span></div>
-        </div>
-        <div id="latest" class="latest">Loading...</div>
-      </div>
-
-      <div class="card">
-        <div class="row" style="margin:0 0 10px 0;">
-          <div>
-            <div style="font-weight:800;">Report History</div>
-            <div class="muted">Recent reports for this site.</div>
-          </div>
-          <span class="pill" id="countPill">0</span>
-        </div>
-        <div id="history"></div>
-      </div>
-    </div>
-  </div>
-
-<script>
-  const base = location.origin;
-  const token = new URLSearchParams(location.search).get("token");
-
-  function setStatus(text, isError=false){
-    const el = document.getElementById("statusText");
-    el.textContent = text;
-    el.className = isError ? "err" : "";
-  }
-
-  async function loadAll() {
-    await loadLatest();
-    await loadHistory();
-  }
-
-  async function loadLatest() {
-    setStatus("Loading latest...");
-    const meta = document.getElementById("latestMeta");
-    const box = document.getElementById("latest");
-    box.textContent = "Loading...";
-
-    const r = await fetch(\`\${base}/reports/latest?token=\${encodeURIComponent(token)}\`);
-    const data = await r.json();
-
-    if (!data.ok) {
-      setStatus("Error", true);
-      meta.textContent = "";
-      box.textContent = data.error || "No latest report";
-      return;
-    }
-
-    const d = new Date(data.report.report_date);
-    meta.textContent = \`\${d.toDateString()} • \${data.report.site_id}\`;
-    box.textContent = data.report.report_text;
-    setStatus("Up to date");
-  }
-
-  async function loadHistory() {
-    setStatus("Loading history...");
-    const el = document.getElementById("history");
-    const pill = document.getElementById("countPill");
-    el.innerHTML = "";
-
-    const r = await fetch(\`\${base}/reports?limit=30&token=\${encodeURIComponent(token)}\`);
-    const data = await r.json();
-
-    if (!data.ok) {
-      setStatus("Error", true);
-      el.innerHTML = \`<div class="historyItem"><div class="err">\${data.error || "No history"}</div></div>\`;
-      pill.textContent = "0";
-      return;
-    }
-
-    pill.textContent = data.reports.length;
-
-    el.innerHTML = data.reports.map(rep => {
-      const d = new Date(rep.report_date);
-      const safePreview = escapeHtml(rep.preview || "");
-      return \`
-        <div class="historyItem">
-          <div class="row" style="margin:0">
-            <div class="date">\${d.toDateString()}</div>
-          </div>
-          <div class="preview">\${safePreview}...</div>
-        </div>
-      \`;
-    }).join("");
-
-    setStatus("Ready");
-  }
-
-  function escapeHtml(str) {
-    return String(str).replace(/[&<>"']/g, m => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-    }[m]));
-  }
-
-  loadAll();
-</script>
+<body style="font-family:Arial; padding:20px;">
+  <h1>Constrava Dashboard ✅</h1>
+  <p>Authorized for site: <b>${site_id}</b></p>
+  <p>Now open:</p>
+  <ul>
+    <li><a href="/reports/latest?token=${token}">/reports/latest?token=...</a></li>
+    <li><a href="/reports?token=${token}">/reports?token=...</a></li>
+  </ul>
 </body>
 </html>`);
   } catch (err) {
     res.status(500).send(err.message);
   }
+});
+
+/** ---------------------------
+ *  AUTH (JWT) — for future login-based dashboard
+ *  -------------------------*/
+app.post("/auth/register", async (req, res) => {
+  try {
+    const { site_id, email, password } = req.body;
+
+    if (!site_id || !email || !password) {
+      return res.status(400).json({ ok: false, error: "site_id, email, password required" });
+    }
+
+    const site = await pool.query("SELECT 1 FROM sites WHERE site_id=$1", [site_id]);
+    if (site.rows.length === 0) return res.status(404).json({ ok: false, error: "Invalid site_id" });
+
+    const password_hash = await bcrypt.hash(password, 12);
+
+    await pool.query(
+      `INSERT INTO users (site_id, email, password_hash)
+       VALUES ($1,$2,$3)`,
+      [site_id, email.toLowerCase(), password_hash]
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    if (String(err.message).toLowerCase().includes("duplicate")) {
+      return res.status(409).json({ ok: false, error: "Email already exists" });
+    }
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ ok: false, error: "email and password required" });
+    }
+
+    const r = await pool.query(
+      `SELECT id, site_id, email, password_hash
+       FROM users
+       WHERE email=$1
+       LIMIT 1`,
+      [email.toLowerCase()]
+    );
+
+    if (r.rows.length === 0) return res.status(401).json({ ok: false, error: "Invalid login" });
+
+    const user = r.rows[0];
+    const ok = await bcrypt.compare(password, user.password_hash);
+    if (!ok) return res.status(401).json({ ok: false, error: "Invalid login" });
+
+    const jwtSecret = requireEnv("JWT_SECRET");
+
+    const token = jwt.sign(
+      { user_id: user.id, site_id: user.site_id, email: user.email },
+      jwtSecret,
+      { expiresIn: "7d" }
+    );
+
+    res.json({ ok: true, token });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Example protected endpoint (optional test)
+app.get("/me", requireAuth, async (req, res) => {
+  res.json({ ok: true, auth: req.auth });
 });
 
 /** ---------------------------
