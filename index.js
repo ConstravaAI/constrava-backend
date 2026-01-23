@@ -1,21 +1,18 @@
-// index.js (ESM) — Constrava MVP backend (FIXED + “everything you need”)
+// index.js (ESM) — Constrava MVP backend (NO bcrypt needed)
 // ✅ Neon Postgres (pg)
-// ✅ Event collector (/events)
-// ✅ Site onboarding (/sites) -> site_id + dashboard_token + install snippet + dashboard link
-// ✅ Token-secured dashboard (/dashboard?token=...)
-// ✅ Token-secured APIs for dashboard data:
-//    - /api/reports/latest?token=...
-//    - /api/reports?token=...&limit=30
-//    - /api/stats?token=...  (adds 6+ data points + simple charts)
-// ✅ Generate daily AI report (manual): POST /generate-report  (optional cost)
-// ✅ Email latest report (manual): POST /email-latest          (optional)
-// ✅ Tracker script at /tracker.js (auto page_view)
+// ✅ /sites creates site_id + dashboard_token
+// ✅ /tracker.js + /events collector
+// ✅ Token-secured dashboard: /dashboard?token=...
+// ✅ Token-secured APIs: /metrics, /reports, /reports/latest
+// ✅ Demo data: /seed-demo (token-secured)
+// ✅ Optional AI reports: /generate-report (requires OPENAI_API_KEY)
+// ✅ Optional email: /email-latest (requires RESEND_API_KEY + FROM_EMAIL)
+// ✅ Optional login: /auth/register + /auth/login (uses crypto.scrypt, not bcrypt)
 
 import express from "express";
 import cors from "cors";
 import pkg from "pg";
 import crypto from "crypto";
-import fetch from "node-fetch";
 
 const { Pool } = pkg;
 
@@ -26,19 +23,15 @@ app.use(express.json());
 const PORT = process.env.PORT || 10000;
 const DATABASE_URL = process.env.DATABASE_URL;
 
-if (!DATABASE_URL) {
-  console.error("❌ Missing DATABASE_URL env var");
-}
-
+if (!DATABASE_URL) console.error("Missing DATABASE_URL env var");
 const pool = new Pool({ connectionString: DATABASE_URL });
 
-/** ---------------------------
- * Helpers
- * --------------------------*/
+/* ---------------------------
+   Helpers
+----------------------------*/
 function makeSiteId() {
   return "site_" + crypto.randomBytes(6).toString("hex");
 }
-
 function publicBaseUrl(req) {
   return (
     process.env.PUBLIC_BASE_URL ||
@@ -46,31 +39,33 @@ function publicBaseUrl(req) {
     "https://constrava-backend.onrender.com"
   );
 }
-
+async function siteIdFromToken(token) {
+  if (!token) return null;
+  const r = await pool.query("SELECT site_id FROM sites WHERE dashboard_token=$1", [token]);
+  return r.rows[0]?.site_id || null;
+}
 function requireEnv(name) {
   const v = process.env[name];
   if (!v) throw new Error(`Missing ${name} env var`);
   return v;
 }
 
-async function siteIdFromToken(token) {
-  if (!token) return null;
-  const r = await pool.query(
-    "SELECT site_id FROM sites WHERE dashboard_token = $1",
-    [token]
-  );
-  return r.rows[0]?.site_id || null;
+// password hashing (no bcrypt)
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.scryptSync(password, salt, 64);
+  return { salt: salt.toString("hex"), hash: hash.toString("hex") };
+}
+function verifyPassword(password, saltHex, hashHex) {
+  const salt = Buffer.from(saltHex, "hex");
+  const hash = Buffer.from(hashHex, "hex");
+  const test = crypto.scryptSync(password, salt, 64);
+  return crypto.timingSafeEqual(hash, test);
 }
 
-function clampInt(n, min, max, fallback) {
-  const x = parseInt(String(n ?? ""), 10);
-  if (Number.isNaN(x)) return fallback;
-  return Math.max(min, Math.min(max, x));
-}
-
-/** ---------------------------
- * Boot: ensure tables exist
- * --------------------------*/
+/* ---------------------------
+   Boot: ensure tables exist
+----------------------------*/
 async function ensureTables() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS sites (
@@ -78,6 +73,17 @@ async function ensureTables() {
       site_name TEXT NOT NULL,
       owner_email TEXT NOT NULL,
       dashboard_token TEXT UNIQUE NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id BIGSERIAL PRIMARY KEY,
+      site_id TEXT NOT NULL REFERENCES sites(site_id) ON DELETE CASCADE,
+      email TEXT NOT NULL UNIQUE,
+      password_salt TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
@@ -104,13 +110,13 @@ async function ensureTables() {
     );
   `);
 
-  console.log("✅ Tables ensured");
+  console.log("Tables ensured ✅");
 }
 ensureTables().catch((e) => console.error("ensureTables failed:", e.message));
 
-/** ---------------------------
- * Basic routes
- * --------------------------*/
+/* ---------------------------
+   Basic routes
+----------------------------*/
 app.get("/", (req, res) => res.send("Backend is running ✅"));
 
 app.get("/db-test", async (req, res) => {
@@ -122,29 +128,25 @@ app.get("/db-test", async (req, res) => {
   }
 });
 
-/** ---------------------------
- * Onboarding: create a site
- * POST /sites { site_name, owner_email }
- * --------------------------*/
+/* ---------------------------
+   Onboarding: create a site
+   POST /sites { site_name, owner_email }
+----------------------------*/
 app.post("/sites", async (req, res) => {
   try {
     const { site_name, owner_email } = req.body || {};
-
     if (!site_name || !owner_email) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "site_name and owner_email required" });
+      return res.status(400).json({ ok: false, error: "site_name and owner_email required" });
     }
 
     let site_id = makeSiteId();
     const token = crypto.randomUUID();
 
-    // rare collision retry
     for (let i = 0; i < 3; i++) {
       try {
         await pool.query(
           `INSERT INTO sites (site_id, site_name, owner_email, dashboard_token)
-           VALUES ($1, $2, $3, $4)`,
+           VALUES ($1,$2,$3,$4)`,
           [site_id, site_name, owner_email, token]
         );
         break;
@@ -161,24 +163,21 @@ app.post("/sites", async (req, res) => {
       site_id,
       install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
       client_dashboard_url: `${base}/dashboard?token=${token}`,
-      token // helpful for your testing; you can remove later
+      token // keep for YOUR testing; remove later if you want
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-/** ---------------------------
- * Tracker script served to client sites
- * GET /tracker.js
- * --------------------------*/
+/* ---------------------------
+   Tracker script
+   GET /tracker.js
+----------------------------*/
 app.get("/tracker.js", (req, res) => {
   res.setHeader("Content-Type", "application/javascript");
 
-  // IMPORTANT:
-  // This is NOT HTML — it must be pure JS.
-  const eventsBase =
-    process.env.PUBLIC_EVENTS_URL || "https://constrava-backend.onrender.com";
+  const endpoint = (process.env.PUBLIC_EVENTS_URL || "https://constrava-backend.onrender.com") + "/events";
 
   res.send(`
 (function () {
@@ -189,9 +188,7 @@ app.get("/tracker.js", (req, res) => {
     var siteId = script.getAttribute("data-site-id");
     if (!siteId) return;
 
-    var endpoint = "${eventsBase}".replace(/\\/$/, "") + "/events";
-
-    fetch(endpoint, {
+    fetch("${endpoint}", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -206,31 +203,25 @@ app.get("/tracker.js", (req, res) => {
 `);
 });
 
-/** ---------------------------
- * Receive events
- * POST /events
- * --------------------------*/
+/* ---------------------------
+   Receive events
+   POST /events
+----------------------------*/
 app.post("/events", async (req, res) => {
   const { site_id, event_name, page_type, device } = req.body || {};
-
   if (!site_id || !event_name) {
-    return res
-      .status(400)
-      .json({ ok: false, error: "site_id and event_name required" });
+    return res.status(400).json({ ok: false, error: "site_id and event_name required" });
   }
 
   try {
-    // validate site exists
-    const site = await pool.query("SELECT 1 FROM sites WHERE site_id = $1", [
-      site_id
-    ]);
+    const site = await pool.query("SELECT 1 FROM sites WHERE site_id=$1", [site_id]);
     if (site.rows.length === 0) {
       return res.status(403).json({ ok: false, error: "Invalid site_id" });
     }
 
     await pool.query(
       `INSERT INTO events_raw (site_id, event_name, page_type, device)
-       VALUES ($1, $2, $3, $4)`,
+       VALUES ($1,$2,$3,$4)`,
       [site_id, event_name, page_type || null, device || null]
     );
 
@@ -240,65 +231,103 @@ app.post("/events", async (req, res) => {
   }
 });
 
-/** ---------------------------
- * Token-secured APIs for dashboard
- * --------------------------*/
-
-// Latest report
-app.get("/api/reports/latest", async (req, res) => {
+/* ---------------------------
+   Token-secured metrics for dashboard
+   GET /metrics?token=...
+----------------------------*/
+app.get("/metrics", async (req, res) => {
   try {
     const token = req.query.token;
     const site_id = await siteIdFromToken(token);
+    if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
-    if (!site_id) {
-      return res
-        .status(401)
-        .json({ ok: false, error: "Unauthorized. Add ?token=..." });
-    }
-
-    const r = await pool.query(
-      `
-      SELECT site_id, report_date, report_text, created_at
-      FROM daily_reports
-      WHERE site_id = $1
-      ORDER BY report_date DESC, created_at DESC
-      LIMIT 1
-      `,
+    const today = await pool.query(
+      `SELECT COUNT(*)::int AS events_today
+       FROM events_raw
+       WHERE site_id=$1 AND created_at::date = CURRENT_DATE`,
       [site_id]
     );
 
-    if (r.rows.length === 0) {
-      return res.status(404).json({ ok: false, error: "No report found" });
-    }
+    const last7 = await pool.query(
+      `SELECT COUNT(*)::int AS events_7d
+       FROM events_raw
+       WHERE site_id=$1 AND created_at >= NOW() - INTERVAL '7 days'`,
+      [site_id]
+    );
 
-    res.json({ ok: true, report: r.rows[0] });
+    const lastEvent = await pool.query(
+      `SELECT event_name, page_type, device, created_at
+       FROM events_raw
+       WHERE site_id=$1
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [site_id]
+    );
+
+    const topPage = await pool.query(
+      `SELECT COALESCE(page_type,'(unknown)') AS page, COUNT(*)::int AS cnt
+       FROM events_raw
+       WHERE site_id=$1 AND created_at >= NOW() - INTERVAL '7 days'
+       GROUP BY page
+       ORDER BY cnt DESC
+       LIMIT 1`,
+      [site_id]
+    );
+
+    const deviceMix = await pool.query(
+      `SELECT COALESCE(device,'unknown') AS device, COUNT(*)::int AS cnt
+       FROM events_raw
+       WHERE site_id=$1 AND created_at >= NOW() - INTERVAL '7 days'
+       GROUP BY device
+       ORDER BY cnt DESC`,
+      [site_id]
+    );
+
+    const trend = await pool.query(
+      `SELECT to_char(d, 'YYYY-MM-DD') AS day, COALESCE(c.cnt,0)::int AS cnt
+       FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, INTERVAL '1 day') d
+       LEFT JOIN (
+         SELECT created_at::date AS day, COUNT(*)::int AS cnt
+         FROM events_raw
+         WHERE site_id=$1 AND created_at >= NOW() - INTERVAL '7 days'
+         GROUP BY day
+       ) c ON c.day = d::date
+       ORDER BY d`,
+      [site_id]
+    );
+
+    res.json({
+      ok: true,
+      site_id,
+      events_today: today.rows[0].events_today,
+      events_7d: last7.rows[0].events_7d,
+      last_event: lastEvent.rows[0] || null,
+      top_page: topPage.rows[0] || null,
+      device_mix: deviceMix.rows,
+      trend_7d: trend.rows
+    });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-// Report history
-app.get("/api/reports", async (req, res) => {
+/* ---------------------------
+   Reports: list + latest (token-secured)
+----------------------------*/
+app.get("/reports", async (req, res) => {
   try {
     const token = req.query.token;
     const site_id = await siteIdFromToken(token);
+    if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
-    if (!site_id) {
-      return res
-        .status(401)
-        .json({ ok: false, error: "Unauthorized. Add ?token=..." });
-    }
-
-    const limit = clampInt(req.query.limit, 1, 100, 30);
+    const limit = Math.min(parseInt(req.query.limit || "30", 10), 100);
 
     const r = await pool.query(
-      `
-      SELECT site_id, report_date, created_at, LEFT(report_text, 220) AS preview
-      FROM daily_reports
-      WHERE site_id = $1
-      ORDER BY report_date DESC, created_at DESC
-      LIMIT $2
-      `,
+      `SELECT site_id, report_date, created_at, LEFT(report_text, 220) AS preview
+       FROM daily_reports
+       WHERE site_id=$1
+       ORDER BY report_date DESC, created_at DESC
+       LIMIT $2`,
       [site_id, limit]
     );
 
@@ -308,249 +337,179 @@ app.get("/api/reports", async (req, res) => {
   }
 });
 
-// Stats for “boxes” + simple charts
-app.get("/api/stats", async (req, res) => {
+app.get("/reports/latest", async (req, res) => {
   try {
     const token = req.query.token;
     const site_id = await siteIdFromToken(token);
+    if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
-    if (!site_id) {
-      return res
-        .status(401)
-        .json({ ok: false, error: "Unauthorized. Add ?token=..." });
-    }
-
-    // 1) Total events today
-    const today = await pool.query(
-      `
-      SELECT COUNT(*)::int AS total_events_today
-      FROM events_raw
-      WHERE site_id = $1 AND created_at::date = CURRENT_DATE
-      `,
+    const r = await pool.query(
+      `SELECT site_id, report_date, report_text, created_at
+       FROM daily_reports
+       WHERE site_id=$1
+       ORDER BY report_date DESC, created_at DESC
+       LIMIT 1`,
       [site_id]
     );
 
-    // 2) Total events last 7 days
-    const last7 = await pool.query(
-      `
-      SELECT COUNT(*)::int AS total_events_7d
-      FROM events_raw
-      WHERE site_id = $1 AND created_at >= NOW() - INTERVAL '7 days'
-      `,
-      [site_id]
-    );
-
-    // 3) Events by device (7d)
-    const byDevice = await pool.query(
-      `
-      SELECT COALESCE(device,'unknown') AS device, COUNT(*)::int AS count
-      FROM events_raw
-      WHERE site_id = $1 AND created_at >= NOW() - INTERVAL '7 days'
-      GROUP BY COALESCE(device,'unknown')
-      ORDER BY count DESC
-      `,
-      [site_id]
-    );
-
-    // 4) Top pages (7d)
-    const topPages = await pool.query(
-      `
-      SELECT COALESCE(page_type,'(unknown)') AS page, COUNT(*)::int AS count
-      FROM events_raw
-      WHERE site_id = $1 AND created_at >= NOW() - INTERVAL '7 days'
-      GROUP BY COALESCE(page_type,'(unknown)')
-      ORDER BY count DESC
-      LIMIT 5
-      `,
-      [site_id]
-    );
-
-    // 5) Events by day (last 7 days) for a chart
-    const perDay = await pool.query(
-      `
-      SELECT (created_at::date) AS day, COUNT(*)::int AS count
-      FROM events_raw
-      WHERE site_id = $1 AND created_at::date >= CURRENT_DATE - INTERVAL '6 days'
-      GROUP BY (created_at::date)
-      ORDER BY day ASC
-      `,
-      [site_id]
-    );
-
-    // Fill missing days to always return 7 points
-    const map = new Map(perDay.rows.map((r) => [String(r.day), r.count]));
-    const days = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const iso = d.toISOString().slice(0, 10);
-      days.push({ day: iso, count: map.get(iso) || 0 });
-    }
-
-    // 6) Most recent event
-    const lastEvent = await pool.query(
-      `
-      SELECT event_name, page_type, device, created_at
-      FROM events_raw
-      WHERE site_id = $1
-      ORDER BY created_at DESC
-      LIMIT 1
-      `,
-      [site_id]
-    );
-
-    res.json({
-      ok: true,
-      site_id,
-      totals: {
-        today: today.rows[0]?.total_events_today ?? 0,
-        last7d: last7.rows[0]?.total_events_7d ?? 0
-      },
-      by_device: byDevice.rows,
-      top_pages: topPages.rows,
-      events_7d_series: days,
-      last_event: lastEvent.rows[0] || null
-    });
+    if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
+    res.json({ ok: true, report: r.rows[0] });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-/** ---------------------------
- * Generate + save report (manual trigger)
- * POST /generate-report  body: { token? }  (optional cost)
- * If token provided: generates for that site only
- * If no token: generates for sites that had events today (fallback: all sites)
- * --------------------------*/
+/* ---------------------------
+   Demo data generator (token-secured)
+   POST /seed-demo?token=...
+----------------------------*/
+app.post("/seed-demo", async (req, res) => {
+  try {
+    const token = req.query.token || req.body?.token;
+    const site_id = await siteIdFromToken(token);
+    if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+    // create 7 days of events
+    const pages = ["/", "/pricing", "/about", "/contact", "/demo", "/signup"];
+    const devices = ["desktop", "mobile"];
+
+    const inserts = [];
+    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+      const base = new Date();
+      base.setDate(base.getDate() - dayOffset);
+
+      const eventsCount = 15 + Math.floor(Math.random() * 35); // 15–49/day
+      for (let i = 0; i < eventsCount; i++) {
+        const t = new Date(base);
+        t.setHours(Math.floor(Math.random() * 24), Math.floor(Math.random() * 60), Math.floor(Math.random() * 60), 0);
+
+        const page = pages[Math.floor(Math.random() * pages.length)];
+        const device = devices[Math.floor(Math.random() * devices.length)];
+
+        inserts.push(
+          pool.query(
+            `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
+             VALUES ($1,'page_view',$2,$3,$4)`,
+            [site_id, page, device, t.toISOString()]
+          )
+        );
+      }
+    }
+
+    await Promise.all(inserts);
+
+    // add 2 sample reports so the dashboard isn't empty
+    const sample1 =
+      `**Summary:**\nTraffic increased today with strong interest in your pricing and demo pages.\n\n` +
+      `**Next actions:**\n1) Add a clearer CTA on /pricing\n2) Put a short testimonial on /demo\n3) Track signup clicks as a separate event\n\n` +
+      `**Metric to watch:**\nSignup conversion rate`;
+    const sample2 =
+      `**Summary:**\nVisitors are browsing multiple pages but not converting yet.\n\n` +
+      `**Next actions:**\n1) Add “Book a demo” button above the fold\n2) Improve /signup speed and clarity\n3) Add a follow-up email sequence\n\n` +
+      `**Metric to watch:**\nClicks to /signup`;
+
+    await pool.query(
+      `INSERT INTO daily_reports (site_id, report_date, report_text)
+       VALUES ($1, CURRENT_DATE - INTERVAL '1 day', $2)
+       ON CONFLICT (site_id, report_date) DO NOTHING`,
+      [site_id, sample1]
+    );
+    await pool.query(
+      `INSERT INTO daily_reports (site_id, report_date, report_text)
+       VALUES ($1, CURRENT_DATE, $2)
+       ON CONFLICT (site_id, report_date) DO NOTHING`,
+      [site_id, sample2]
+    );
+
+    res.json({ ok: true, seeded_for: site_id });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/* ---------------------------
+   Optional: AI report generator (manual)
+   POST /generate-report?token=...
+----------------------------*/
 app.post("/generate-report", async (req, res) => {
   try {
-    const token = req.body?.token || req.query?.token || null;
-
-    let siteIds = [];
-
-    if (token) {
-      const sid = await siteIdFromToken(token);
-      if (!sid)
-        return res.status(401).json({ ok: false, error: "Invalid token" });
-      siteIds = [sid];
-    } else {
-      const s = await pool.query(`
-        SELECT DISTINCT site_id
-        FROM events_raw
-        WHERE created_at::date = CURRENT_DATE
-      `);
-      siteIds = s.rows.map((x) => x.site_id);
-
-      if (siteIds.length === 0) {
-        const all = await pool.query(`SELECT site_id FROM sites LIMIT 100`);
-        siteIds = all.rows.map((x) => x.site_id);
-      }
-    }
+    const token = req.query.token || req.body?.token;
+    const site_id = await siteIdFromToken(token);
+    if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
     const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
-    const model = process.env.OPENAI_MODEL || "gpt-4o";
-    const results = [];
 
-    for (const site_id of siteIds) {
-      const metricsRes = await pool.query(
-        `
-        SELECT
-          $1::text AS site_id,
-          COUNT(*)::int AS total_events
-        FROM events_raw
-        WHERE site_id = $1 AND created_at::date = CURRENT_DATE
-        `,
-        [site_id]
-      );
+    const metricsRes = await pool.query(
+      `SELECT $1::text as site_id, COUNT(*)::int AS total_events
+       FROM events_raw
+       WHERE site_id=$1 AND created_at::date = CURRENT_DATE`,
+      [site_id]
+    );
 
-      const metrics = metricsRes.rows;
+    const metrics = metricsRes.rows;
 
-      const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model,
-          messages: [
-            {
-              role: "system",
-              content:
-                "You generate short daily business reports. Be specific, actionable, and concise."
-            },
-            {
-              role: "user",
-              content:
-                `Here are today's metrics (JSON): ${JSON.stringify(metrics)}\n` +
-                `Write a daily report with:\n` +
-                `1) Summary\n` +
-                `2) 3 prioritized next actions\n` +
-                `3) One metric to watch tomorrow\n`
-            }
-          ]
-        })
-      });
+    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL || "gpt-4o",
+        messages: [
+          { role: "system", content: "You generate short daily business reports. Be specific, actionable, and concise." },
+          {
+            role: "user",
+            content:
+              `Here are today's metrics (JSON): ${JSON.stringify(metrics)}\n` +
+              `Write a daily report with:\n1) Summary\n2) 3 prioritized next actions\n3) One metric to watch tomorrow\n`
+          }
+        ]
+      })
+    });
 
-      const aiData = await aiRes.json();
-      const reportText = aiData?.choices?.[0]?.message?.content;
+    const aiData = await aiRes.json();
+    const reportText = aiData?.choices?.[0]?.message?.content;
+    if (!reportText) return res.status(500).json({ ok: false, error: "AI response missing" });
 
-      if (!reportText) {
-        results.push({ site_id, ok: false, error: "AI response missing" });
-        continue;
-      }
+    const saved = await pool.query(
+      `INSERT INTO daily_reports (site_id, report_date, report_text)
+       VALUES ($1, CURRENT_DATE, $2)
+       ON CONFLICT (site_id, report_date) DO UPDATE SET report_text=EXCLUDED.report_text
+       RETURNING site_id, report_date, report_text, created_at`,
+      [site_id, reportText]
+    );
 
-      const saved = await pool.query(
-        `
-        INSERT INTO daily_reports (site_id, report_date, report_text)
-        VALUES ($1, CURRENT_DATE, $2)
-        ON CONFLICT (site_id, report_date)
-        DO UPDATE SET report_text = EXCLUDED.report_text
-        RETURNING site_id, report_date, report_text, created_at
-        `,
-        [site_id, reportText]
-      );
-
-      results.push({ ok: true, report: saved.rows[0] });
-    }
-
-    res.json({ ok: true, results });
+    res.json({ ok: true, report: saved.rows[0] });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-/** ---------------------------
- * Email latest report via Resend (manual, optional)
- * POST /email-latest { token, to_email }
- * --------------------------*/
+/* ---------------------------
+   Optional: Email latest report (manual)
+   POST /email-latest { token, to_email }
+----------------------------*/
 app.post("/email-latest", async (req, res) => {
   try {
     const { token, to_email } = req.body || {};
-    if (!to_email) {
-      return res.status(400).json({ ok: false, error: "to_email required" });
-    }
+    if (!to_email) return res.status(400).json({ ok: false, error: "to_email required" });
 
     const site_id = await siteIdFromToken(token);
-    if (!site_id) return res.status(401).json({ ok: false, error: "Invalid token" });
+    if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Invalid token" });
 
     const r = await pool.query(
-      `
-      SELECT report_text, report_date
-      FROM daily_reports
-      WHERE site_id = $1
-      ORDER BY report_date DESC, created_at DESC
-      LIMIT 1
-      `,
+      `SELECT report_text, report_date
+       FROM daily_reports
+       WHERE site_id=$1
+       ORDER BY report_date DESC, created_at DESC
+       LIMIT 1`,
       [site_id]
     );
-
-    if (r.rows.length === 0) {
-      return res.status(404).json({ ok: false, error: "No report found" });
-    }
+    if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
 
     const RESEND_API_KEY = requireEnv("RESEND_API_KEY");
-    const from = process.env.FROM_EMAIL || "onboarding@resend.dev";
+    const from = requireEnv("FROM_EMAIL");
 
     const emailRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -573,18 +532,79 @@ app.post("/email-latest", async (req, res) => {
   }
 });
 
-/** ---------------------------
- * Dashboard UI (token-based)
- * GET /dashboard?token=...
- * --------------------------*/
+/* ---------------------------
+   Simple username/password login (NO bcrypt)
+   - Register requires SITE token (so random people can’t create accounts)
+   POST /auth/register { token, email, password }
+   POST /auth/login { email, password }
+----------------------------*/
+app.post("/auth/register", async (req, res) => {
+  try {
+    const { token, email, password } = req.body || {};
+    if (!token || !email || !password) {
+      return res.status(400).json({ ok: false, error: "token, email, password required" });
+    }
+
+    const site_id = await siteIdFromToken(token);
+    if (!site_id) return res.status(401).json({ ok: false, error: "Invalid site token" });
+
+    const { salt, hash } = hashPassword(password);
+
+    await pool.query(
+      `INSERT INTO users (site_id, email, password_salt, password_hash)
+       VALUES ($1,$2,$3,$4)`,
+      [site_id, email.toLowerCase(), salt, hash]
+    );
+
+    res.json({ ok: true, site_id });
+  } catch (err) {
+    if (String(err.message).toLowerCase().includes("duplicate")) {
+      return res.status(409).json({ ok: false, error: "Email already exists" });
+    }
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ ok: false, error: "email and password required" });
+
+    const r = await pool.query(
+      `SELECT u.site_id, u.email, u.password_salt, u.password_hash, s.dashboard_token
+       FROM users u
+       JOIN sites s ON s.site_id = u.site_id
+       WHERE u.email=$1
+       LIMIT 1`,
+      [email.toLowerCase()]
+    );
+
+    if (r.rows.length === 0) return res.status(401).json({ ok: false, error: "Invalid login" });
+
+    const u = r.rows[0];
+    const ok = verifyPassword(password, u.password_salt, u.password_hash);
+    if (!ok) return res.status(401).json({ ok: false, error: "Invalid login" });
+
+    const base = process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
+    res.json({
+      ok: true,
+      site_id: u.site_id,
+      dashboard_url: `${base}/dashboard?token=${u.dashboard_token}`
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/* ---------------------------
+   Dashboard UI (token based)
+   GET /dashboard?token=...
+----------------------------*/
 app.get("/dashboard", async (req, res) => {
   try {
     const token = req.query.token;
     const site_id = await siteIdFromToken(token);
-
-    if (!site_id) {
-      return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
-    }
+    if (!site_id) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
 
     res.setHeader("Content-Type", "text/html");
     res.send(`<!doctype html>
@@ -652,33 +672,38 @@ app.get("/dashboard", async (req, res) => {
       font-weight:600;
     }
     .btn:hover{border-color: rgba(96,165,250,.5)}
-    .grid{
-      margin-top:18px;
-      display:grid;
-      grid-template-columns: 1fr;
-      gap:16px;
-    }
-    .cards{
+    .grid6{
+      margin-top:16px;
       display:grid;
       grid-template-columns: repeat(6, 1fr);
       gap:12px;
-      margin-top:16px;
     }
-    @media (max-width: 1100px){ .cards{grid-template-columns: repeat(3, 1fr);} }
-    @media (max-width: 700px){ .cards{grid-template-columns: repeat(2, 1fr);} }
+    @media (max-width: 1100px){ .grid6{grid-template-columns: repeat(3, 1fr);} }
+    @media (max-width: 700px){ .grid6{grid-template-columns: repeat(2, 1fr);} }
+
+    .grid{
+      margin-top:16px;
+      display:grid;
+      grid-template-columns: 1.4fr .9fr;
+      gap:16px;
+    }
+    @media (max-width: 900px){ .grid{grid-template-columns:1fr} }
+
     .card{
       background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
       border:1px solid var(--border);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
       padding:16px;
+      overflow:hidden;
     }
-    .statTitle{font-size:12px;color:var(--muted);margin-bottom:8px}
-    .statValue{font-size:20px;font-weight:900;letter-spacing:.2px}
-    .statSub{font-size:12px;color:var(--muted);margin-top:6px}
+    .miniTitle{font-size:12px; color:var(--muted); margin-bottom:8px;}
+    .bigNum{font-size:26px; font-weight:900; letter-spacing:.3px;}
+    .miniSub{font-size:12px; color:var(--muted); margin-top:8px;}
     .row{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;}
     .status{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);}
     .dot{width:8px; height:8px; border-radius:50%; background: var(--accent2); box-shadow: 0 0 0 6px rgba(52,211,153,.12);}
+    .err{color: var(--danger); font-weight:700}
     .latest{
       white-space: pre-wrap;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
@@ -689,9 +714,8 @@ app.get("/dashboard", async (req, res) => {
       border-radius: 12px;
       padding: 12px;
       overflow:auto;
-      min-height: 220px;
+      min-height: 240px;
     }
-    .muted{color:var(--muted); font-size:12px}
     .historyItem{
       padding:12px;
       border-radius: 14px;
@@ -699,34 +723,14 @@ app.get("/dashboard", async (req, res) => {
       background: rgba(15,23,42,.55);
       margin-top:10px;
     }
-    .historyItem .date{font-weight:700; font-size:12px}
-    .historyItem .preview{margin-top:8px; font-size:13px; color: var(--text)}
-    .err{color: var(--danger); font-weight:700}
-    .panelGrid{
-      display:grid;
-      grid-template-columns: 1.2fr .8fr;
-      gap:16px;
-      margin-top:16px;
+    .historyItem .date{font-weight:800; font-size:12px}
+    .historyItem .preview{margin-top:8px; font-size:13px;}
+    .sparkWrap{
+      height:64px; border:1px solid var(--border);
+      border-radius: 12px; background: rgba(15,23,42,.55);
+      padding:8px; display:flex; align-items:center;
     }
-    @media (max-width: 900px){ .panelGrid{grid-template-columns:1fr} }
-    .svgWrap{
-      margin-top:10px;
-      border:1px solid var(--border);
-      border-radius: 12px;
-      background: rgba(15,23,42,.55);
-      padding: 10px;
-      overflow:hidden;
-    }
-    svg{display:block;width:100%;height:80px}
-    .barRow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-    .chip{
-      font-size:12px;
-      border:1px solid var(--border);
-      border-radius:999px;
-      padding:6px 10px;
-      background: rgba(255,255,255,.04);
-      color: var(--text);
-    }
+    svg{width:100%; height:100%;}
   </style>
 </head>
 <body>
@@ -746,54 +750,45 @@ app.get("/dashboard", async (req, res) => {
       </div>
     </div>
 
-    <div class="cards">
+    <div class="grid6">
       <div class="card">
-        <div class="statTitle">Events today</div>
-        <div class="statValue" id="statToday">—</div>
-        <div class="statSub" id="statTodaySub">—</div>
+        <div class="miniTitle">Events today</div>
+        <div class="bigNum" id="m_events_today">—</div>
+        <div class="miniSub" id="m_events_today_sub">—</div>
       </div>
-
       <div class="card">
-        <div class="statTitle">Events (last 7d)</div>
-        <div class="statValue" id="stat7d">—</div>
-        <div class="statSub">Rolling 7 days</div>
+        <div class="miniTitle">Events (last 7d)</div>
+        <div class="bigNum" id="m_events_7d">—</div>
+        <div class="miniSub">Rolling 7 days</div>
       </div>
-
       <div class="card">
-        <div class="statTitle">Last event</div>
-        <div class="statValue" style="font-size:14px" id="statLastEvent">—</div>
-        <div class="statSub" id="statLastEventSub">—</div>
+        <div class="miniTitle">Last event</div>
+        <div class="bigNum" style="font-size:16px;" id="m_last_event">—</div>
+        <div class="miniSub" id="m_last_event_sub">—</div>
       </div>
-
       <div class="card">
-        <div class="statTitle">Top page</div>
-        <div class="statValue" style="font-size:14px" id="statTopPage">—</div>
-        <div class="statSub" id="statTopPageSub">—</div>
+        <div class="miniTitle">Top page</div>
+        <div class="bigNum" style="font-size:16px;" id="m_top_page">—</div>
+        <div class="miniSub" id="m_top_page_sub">—</div>
       </div>
-
       <div class="card">
-        <div class="statTitle">Device mix</div>
-        <div class="statValue" style="font-size:14px" id="statDevice">—</div>
-        <div class="statSub">Last 7 days</div>
+        <div class="miniTitle">Device mix</div>
+        <div class="bigNum" style="font-size:16px;" id="m_device_mix">—</div>
+        <div class="miniSub">Last 7 days</div>
       </div>
-
       <div class="card">
-        <div class="statTitle">7-day trend</div>
-        <div class="svgWrap">
-          <svg viewBox="0 0 300 80" preserveAspectRatio="none">
-            <polyline id="trendLine" fill="none" stroke="rgba(96,165,250,.95)" stroke-width="3" points=""></polyline>
-          </svg>
-        </div>
-        <div class="statSub">Events per day</div>
+        <div class="miniTitle">7-day trend</div>
+        <div class="sparkWrap" id="m_spark"></div>
+        <div class="miniSub">Events per day</div>
       </div>
     </div>
 
-    <div class="panelGrid">
+    <div class="grid">
       <div class="card">
         <div class="row">
           <div>
-            <div class="muted">Latest report</div>
-            <div id="latestMeta" class="muted"></div>
+            <div class="miniTitle">Latest report</div>
+            <div id="latestMeta" class="miniSub"></div>
           </div>
           <div class="status"><span class="dot"></span><span id="statusText">Ready</span></div>
         </div>
@@ -803,15 +798,12 @@ app.get("/dashboard", async (req, res) => {
       <div class="card">
         <div class="row" style="margin:0 0 10px 0;">
           <div>
-            <div style="font-weight:900;">Report History</div>
-            <div class="muted">Recent reports for this site.</div>
+            <div style="font-weight:900; font-size:18px;">Report History</div>
+            <div class="miniTitle">Recent reports for this site.</div>
           </div>
           <span class="pill" id="countPill">0</span>
         </div>
         <div id="history"></div>
-
-        <div style="margin-top:14px" class="muted">Top pages (7d)</div>
-        <div class="barRow" id="topPagesRow"></div>
       </div>
     </div>
   </div>
@@ -826,67 +818,65 @@ app.get("/dashboard", async (req, res) => {
     el.className = isError ? "err" : "";
   }
 
-  // ✅ YOU SAID “there is no loadAll()” — HERE IT IS:
-  async function loadAll(){
-    await Promise.all([loadStats(), loadLatest(), loadHistory()]);
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, m => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[m]));
   }
 
-  async function loadStats(){
-    try{
-      const r = await fetch(\`\${base}/api/stats?token=\${encodeURIComponent(token)}\`);
-      const data = await r.json();
-      if(!data.ok){
-        document.getElementById("statToday").textContent = "—";
-        return;
-      }
+  function sparkline(points){
+    const max = Math.max(...points, 1);
+    const min = Math.min(...points, 0);
+    const w = 200, h = 40;
+    const pad = 4;
+    const span = Math.max(max - min, 1);
 
-      // events today / 7d
-      document.getElementById("statToday").textContent = data.totals.today;
-      document.getElementById("statTodaySub").textContent = data.totals.today === 1 ? "1 event today" : \`\${data.totals.today} events today\`;
-      document.getElementById("stat7d").textContent = data.totals.last7d;
+    const xs = points.map((_, i) => pad + (i * (w - pad*2) / (points.length - 1 || 1)));
+    const ys = points.map(v => (h - pad) - ((v - min) * (h - pad*2) / span));
 
-      // last event
-      if(data.last_event){
-        document.getElementById("statLastEvent").textContent = data.last_event.event_name || "(event)";
-        const when = new Date(data.last_event.created_at);
-        document.getElementById("statLastEventSub").textContent = \`\${when.toLocaleString()} • \${data.last_event.device || "unknown"}\`;
-      } else {
-        document.getElementById("statLastEvent").textContent = "None yet";
-        document.getElementById("statLastEventSub").textContent = "No events recorded";
-      }
+    const d = xs.map((x,i)=> (i===0? "M":"L") + x.toFixed(1) + "," + ys[i].toFixed(1)).join(" ");
+    return \`
+      <svg viewBox="0 0 \${w} \${h}" preserveAspectRatio="none">
+        <path d="\${d}" fill="none" stroke="rgba(96,165,250,.95)" stroke-width="2.5" />
+      </svg>\`;
+  }
 
-      // top page
-      const top = (data.top_pages && data.top_pages[0]) ? data.top_pages[0] : null;
-      document.getElementById("statTopPage").textContent = top ? top.page : "—";
-      document.getElementById("statTopPageSub").textContent = top ? \`\${top.count} views (7d)\` : "No page data (7d)";
-
-      // device mix
-      const dev = (data.by_device || []).slice(0,3).map(d => \`\${d.device}: \${d.count}\`).join(" • ");
-      document.getElementById("statDevice").textContent = dev || "—";
-
-      // top pages chips
-      const row = document.getElementById("topPagesRow");
-      row.innerHTML = "";
-      (data.top_pages || []).forEach(p => {
-        const div = document.createElement("div");
-        div.className = "chip";
-        div.textContent = \`\${p.page} • \${p.count}\`;
-        row.appendChild(div);
-      });
-
-      // 7-day trend polyline
-      const series = data.events_7d_series || [];
-      const max = Math.max(1, ...series.map(x => x.count));
-      const pts = series.map((x, i) => {
-        const px = (i/(series.length-1 || 1)) * 300;
-        const py = 70 - (x.count/max) * 60;
-        return \`\${px.toFixed(1)},\${py.toFixed(1)}\`;
-      }).join(" ");
-      document.getElementById("trendLine").setAttribute("points", pts);
-
-    }catch(e){
-      // keep silent for MVP
+  async function loadMetrics() {
+    const r = await fetch(\`\${base}/metrics?token=\${encodeURIComponent(token)}\`);
+    const data = await r.json();
+    if (!data.ok) {
+      setStatus("Error", true);
+      return;
     }
+
+    document.getElementById("m_events_today").textContent = data.events_today;
+    document.getElementById("m_events_today_sub").textContent = data.events_today + " events today";
+
+    document.getElementById("m_events_7d").textContent = data.events_7d;
+
+    if (data.last_event) {
+      document.getElementById("m_last_event").textContent = data.last_event.event_name;
+      const dt = new Date(data.last_event.created_at);
+      document.getElementById("m_last_event_sub").textContent =
+        (data.last_event.page_type || "") + " • " + (data.last_event.device || "") + " • " + dt.toLocaleString();
+    } else {
+      document.getElementById("m_last_event").textContent = "None yet";
+      document.getElementById("m_last_event_sub").textContent = "No events recorded";
+    }
+
+    if (data.top_page) {
+      document.getElementById("m_top_page").textContent = data.top_page.page;
+      document.getElementById("m_top_page_sub").textContent = data.top_page.cnt + " events (7d)";
+    } else {
+      document.getElementById("m_top_page").textContent = "—";
+      document.getElementById("m_top_page_sub").textContent = "No page data (7d)";
+    }
+
+    const mix = (data.device_mix || []).map(x => \`\${x.device}: \${x.cnt}\`).join(" • ");
+    document.getElementById("m_device_mix").textContent = mix || "—";
+
+    const points = (data.trend_7d || []).map(x => x.cnt);
+    document.getElementById("m_spark").innerHTML = sparkline(points);
   }
 
   async function loadLatest() {
@@ -895,33 +885,31 @@ app.get("/dashboard", async (req, res) => {
     const box = document.getElementById("latest");
     box.textContent = "Loading...";
 
-    const r = await fetch(\`\${base}/api/reports/latest?token=\${encodeURIComponent(token)}\`);
+    const r = await fetch(\`\${base}/reports/latest?token=\${encodeURIComponent(token)}\`);
     const data = await r.json();
 
     if (!data.ok) {
-      setStatus("Error", true);
       meta.textContent = "";
       box.textContent = data.error || "No latest report";
+      setStatus("Error", true);
       return;
     }
 
     const d = new Date(data.report.report_date);
     meta.textContent = \`\${d.toDateString()} • \${data.report.site_id}\`;
     box.textContent = data.report.report_text;
-    setStatus("Up to date");
+    setStatus("Ready");
   }
 
   async function loadHistory() {
-    setStatus("Loading history...");
     const el = document.getElementById("history");
     const pill = document.getElementById("countPill");
     el.innerHTML = "";
 
-    const r = await fetch(\`\${base}/api/reports?limit=30&token=\${encodeURIComponent(token)}\`);
+    const r = await fetch(\`\${base}/reports?limit=30&token=\${encodeURIComponent(token)}\`);
     const data = await r.json();
 
     if (!data.ok) {
-      setStatus("Error", true);
       el.innerHTML = \`<div class="historyItem"><div class="err">\${data.error || "No history"}</div></div>\`;
       pill.textContent = "0";
       return;
@@ -936,17 +924,14 @@ app.get("/dashboard", async (req, res) => {
         <div class="historyItem">
           <div class="date">\${d.toDateString()}</div>
           <div class="preview">\${safePreview}...</div>
-        </div>
-      \`;
+        </div>\`;
     }).join("");
-
-    setStatus("Ready");
   }
 
-  function escapeHtml(str) {
-    return String(str).replace(/[&<>"']/g, m => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-    }[m]));
+  async function loadAll(){
+    await loadMetrics();
+    await loadLatest();
+    await loadHistory();
   }
 
   loadAll();
@@ -957,116 +942,10 @@ app.get("/dashboard", async (req, res) => {
     res.status(500).send(err.message);
   }
 });
-// -----------------------------
-// DEV: seed fake data (token-secured)
-// -----------------------------
 
-function randInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
-function pick(arr) {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-// Creates fake events for last N days
-app.post("/dev/seed-events", async (req, res) => {
-  try {
-    const token = req.body?.token || req.query?.token;
-    const site_id = await siteIdFromToken(token);
-    if (!site_id) return res.status(401).json({ ok: false, error: "Invalid token" });
-
-    const days = Math.min(parseInt(req.body?.days || req.query?.days || "14", 10), 60);
-    const perDayMin = parseInt(req.body?.perDayMin || "40", 10);
-    const perDayMax = parseInt(req.body?.perDayMax || "180", 10);
-
-    const pages = ["/", "/products", "/pricing", "/about", "/contact", "/blog", "/product/widget", "/checkout"];
-    const devices = ["desktop", "mobile"];
-    const events = ["page_view", "view_product", "add_to_cart", "checkout_start"];
-
-    let inserted = 0;
-
-    for (let d = days - 1; d >= 0; d--) {
-      const count = randInt(perDayMin, perDayMax);
-      for (let i = 0; i < count; i++) {
-        const event_name = pick(events);
-        const page_type = pick(pages);
-        const device = Math.random() < 0.55 ? "mobile" : "desktop";
-
-        // random timestamp within that day
-        const created_at = new Date();
-        created_at.setDate(created_at.getDate() - d);
-        created_at.setHours(randInt(0, 23), randInt(0, 59), randInt(0, 59), 0);
-
-        await pool.query(
-          `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [site_id, event_name, page_type, device, created_at.toISOString()]
-        );
-
-        inserted++;
-      }
-    }
-
-    res.json({ ok: true, site_id, inserted, days });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-// Creates fake reports for last N days
-app.post("/dev/seed-reports", async (req, res) => {
-  try {
-    const token = req.body?.token || req.query?.token;
-    const site_id = await siteIdFromToken(token);
-    if (!site_id) return res.status(401).json({ ok: false, error: "Invalid token" });
-
-    const days = Math.min(parseInt(req.body?.days || req.query?.days || "14", 10), 60);
-
-    let inserted = 0;
-
-    for (let d = days - 1; d >= 0; d--) {
-      const date = new Date();
-      date.setDate(date.getDate() - d);
-      const yyyy = date.getFullYear();
-      const mm = String(date.getMonth() + 1).padStart(2, "0");
-      const dd = String(date.getDate()).padStart(2, "0");
-      const isoDate = `${yyyy}-${mm}-${dd}`;
-
-      const fake = `# Daily Business Report
-
-### Summary
-Traffic looks healthy with stronger interest in **/products** and **/pricing**. Mobile users are the majority, so speed + mobile layout matter most.
-
-### 3 Next Actions
-1) Add a clearer CTA on the homepage (top section + sticky button on mobile).
-2) Improve the pricing page: add FAQ + “who it’s for” section.
-3) Post 1 short piece of content driving to a product page (IG/TikTok/Reel style).
-
-### Metric to Watch Tomorrow
-**Checkout starts** vs **add_to_cart** (conversion drop-off).`;
-
-      await pool.query(
-        `
-        INSERT INTO daily_reports (site_id, report_date, report_text)
-        VALUES ($1, $2::date, $3)
-        ON CONFLICT (site_id, report_date)
-        DO UPDATE SET report_text = EXCLUDED.report_text
-        `,
-        [site_id, isoDate, fake]
-      );
-
-      inserted++;
-    }
-
-    res.json({ ok: true, site_id, inserted, days });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-/** ---------------------------
- * Start server (KEEP LAST)
- * --------------------------*/
+/* ---------------------------
+   Start server (keep LAST)
+----------------------------*/
 app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
