@@ -595,6 +595,117 @@ app.post("/auth/login", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+app.get("/metrics", async (req, res) => {
+  try {
+    const token = req.query.token;
+    const site_id = await siteIdFromToken(token);
+
+    if (!site_id) {
+      return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+    }
+
+    // Visits today (page_view only)
+    const todayRes = await pool.query(
+      `
+      SELECT COUNT(*)::int AS visits_today
+      FROM events_raw
+      WHERE site_id = $1
+        AND event_name = 'page_view'
+        AND created_at::date = CURRENT_DATE
+      `,
+      [site_id]
+    );
+
+    // Total visits last 7 days + daily trend
+    const trendRes = await pool.query(
+      `
+      SELECT d::date AS day, COALESCE(COUNT(e.*),0)::int AS visits
+      FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, INTERVAL '1 day') d
+      LEFT JOIN events_raw e
+        ON e.site_id = $1
+       AND e.event_name = 'page_view'
+       AND e.created_at::date = d::date
+      GROUP BY d
+      ORDER BY d
+      `,
+      [site_id]
+    );
+
+    const visits_7d = trendRes.rows.reduce((sum, r) => sum + (r.visits || 0), 0);
+
+    // Last event (any event)
+    const lastEventRes = await pool.query(
+      `
+      SELECT event_name, page_type, device, created_at
+      FROM events_raw
+      WHERE site_id = $1
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [site_id]
+    );
+
+    // Top page (page_view) last 7 days
+    const topPageRes = await pool.query(
+      `
+      SELECT page_type, COUNT(*)::int AS views
+      FROM events_raw
+      WHERE site_id = $1
+        AND event_name = 'page_view'
+        AND created_at >= NOW() - INTERVAL '7 days'
+        AND page_type IS NOT NULL
+      GROUP BY page_type
+      ORDER BY views DESC
+      LIMIT 1
+      `,
+      [site_id]
+    );
+
+    // Device mix (page_view) last 7 days
+    const deviceRes = await pool.query(
+      `
+      SELECT
+        SUM(CASE WHEN device = 'mobile' THEN 1 ELSE 0 END)::int AS mobile,
+        SUM(CASE WHEN device = 'desktop' THEN 1 ELSE 0 END)::int AS desktop
+      FROM events_raw
+      WHERE site_id = $1
+        AND event_name = 'page_view'
+        AND created_at >= NOW() - INTERVAL '7 days'
+      `,
+      [site_id]
+    );
+
+    // Pages visited today (to make it feel more “assistant”)
+    const todayTopRes = await pool.query(
+      `
+      SELECT page_type, COUNT(*)::int AS views
+      FROM events_raw
+      WHERE site_id = $1
+        AND event_name = 'page_view'
+        AND created_at::date = CURRENT_DATE
+        AND page_type IS NOT NULL
+      GROUP BY page_type
+      ORDER BY views DESC
+      LIMIT 3
+      `,
+      [site_id]
+    );
+
+    res.json({
+      ok: true,
+      site_id,
+      visits_today: todayRes.rows[0]?.visits_today || 0,
+      visits_7d,
+      trend_7d: trendRes.rows, // [{day, visits}, ... 7 items]
+      last_event: lastEventRes.rows[0] || null,
+      top_page_7d: topPageRes.rows[0] || null,
+      device_mix_7d: deviceRes.rows[0] || { mobile: 0, desktop: 0 },
+      top_pages_today: todayTopRes.rows || []
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 /* ---------------------------
    Dashboard UI (token based)
