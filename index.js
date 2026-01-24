@@ -604,45 +604,18 @@ app.get("/dashboard", async (req, res) => {
   try {
     const token = req.query.token;
     const site_id = await siteIdFromToken(token);
-    if (!site_id) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+
+    if (!site_id) {
+      return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+    }
 
     res.setHeader("Content-Type", "text/html");
     res.send(`<!doctype html>
-    <div class="grid">
-  <div class="card span2">
-    <h2>Assistant Brief <span class="pill" id="briefMood">—</span></h2>
-    <div id="briefText" class="brief">Loading...</div>
-  </div>
-
-  <!-- your 6 small cards go under -->
-</div>
 <html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Constrava Dashboard</title>
-  .grid{
-  margin-top:18px;
-  display:grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap:16px;
-}
-.span2{ grid-column: 1 / -1; }  /* full width */
-.brief{
-  margin-top:10px;
-  line-height:1.55;
-  font-size:14px;
-  color:var(--text);
-  background: rgba(15,23,42,.55);
-  border:1px solid var(--border);
-  border-radius: 14px;
-  padding:14px;
-}
-@media (max-width: 1100px){
-  .grid{ grid-template-columns: repeat(2, 1fr); }
-  .span2{ grid-column: 1 / -1; }
-}
-
   <style>
     :root{
       --bg:#0b0f19;
@@ -666,7 +639,7 @@ app.get("/dashboard", async (req, res) => {
                   var(--bg);
       color:var(--text);
     }
-    .wrap{max-width:1200px; margin:0 auto; padding:28px 18px 60px;}
+    .wrap{max-width:1100px; margin:0 auto; padding:28px 18px 60px;}
     .topbar{
       display:flex; align-items:center; justify-content:space-between;
       gap:14px; padding:18px 18px;
@@ -702,38 +675,30 @@ app.get("/dashboard", async (req, res) => {
       font-weight:600;
     }
     .btn:hover{border-color: rgba(96,165,250,.5)}
-    .grid6{
-      margin-top:16px;
-      display:grid;
-      grid-template-columns: repeat(6, 1fr);
-      gap:12px;
-    }
-    @media (max-width: 1100px){ .grid6{grid-template-columns: repeat(3, 1fr);} }
-    @media (max-width: 700px){ .grid6{grid-template-columns: repeat(2, 1fr);} }
-
     .grid{
-      margin-top:16px;
+      margin-top:18px;
       display:grid;
-      grid-template-columns: 1.4fr .9fr;
+      grid-template-columns: 1.2fr .8fr;
       gap:16px;
     }
     @media (max-width: 900px){ .grid{grid-template-columns:1fr} }
-
     .card{
       background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
       border:1px solid var(--border);
       border-radius: var(--radius);
       box-shadow: var(--shadow);
       padding:16px;
-      overflow:hidden;
     }
-    .miniTitle{font-size:12px; color:var(--muted); margin-bottom:8px;}
-    .bigNum{font-size:26px; font-weight:900; letter-spacing:.3px;}
-    .miniSub{font-size:12px; color:var(--muted); margin-top:8px;}
-    .row{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;}
+    .row{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:10px; margin-bottom:10px;
+    }
     .status{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);}
-    .dot{width:8px; height:8px; border-radius:50%; background: var(--accent2); box-shadow: 0 0 0 6px rgba(52,211,153,.12);}
-    .err{color: var(--danger); font-weight:700}
+    .dot{
+      width:8px; height:8px; border-radius:50%;
+      background: var(--accent2);
+      box-shadow: 0 0 0 6px rgba(52,211,153,.12);
+    }
     .latest{
       white-space: pre-wrap;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
@@ -744,8 +709,9 @@ app.get("/dashboard", async (req, res) => {
       border-radius: 12px;
       padding: 12px;
       overflow:auto;
-      min-height: 240px;
+      min-height: 220px;
     }
+    .muted{color:var(--muted); font-size:12px}
     .historyItem{
       padding:12px;
       border-radius: 14px;
@@ -753,14 +719,9 @@ app.get("/dashboard", async (req, res) => {
       background: rgba(15,23,42,.55);
       margin-top:10px;
     }
-    .historyItem .date{font-weight:800; font-size:12px}
-    .historyItem .preview{margin-top:8px; font-size:13px;}
-    .sparkWrap{
-      height:64px; border:1px solid var(--border);
-      border-radius: 12px; background: rgba(15,23,42,.55);
-      padding:8px; display:flex; align-items:center;
-    }
-    svg{width:100%; height:100%;}
+    .historyItem .date{font-weight:700; font-size:12px}
+    .historyItem .preview{margin-top:8px; font-size:13px; color: var(--text)}
+    .err{color: var(--danger); font-weight:600}
   </style>
 </head>
 <body>
@@ -770,7 +731,7 @@ app.get("/dashboard", async (req, res) => {
         <div class="logo"></div>
         <div>
           <h1>Constrava Dashboard</h1>
-          <div class="sub">Daily AI reports • Events • MVP UI</div>
+          <div class="sub">Reports • Metrics • Tech-assistant style</div>
         </div>
       </div>
 
@@ -780,45 +741,12 @@ app.get("/dashboard", async (req, res) => {
       </div>
     </div>
 
-    <div class="grid6">
-      <div class="card">
-        <div class="miniTitle">Events today</div>
-        <div class="bigNum" id="m_events_today">—</div>
-        <div class="miniSub" id="m_events_today_sub">—</div>
-      </div>
-      <div class="card">
-        <div class="miniTitle">Events (last 7d)</div>
-        <div class="bigNum" id="m_events_7d">—</div>
-        <div class="miniSub">Rolling 7 days</div>
-      </div>
-      <div class="card">
-        <div class="miniTitle">Last event</div>
-        <div class="bigNum" style="font-size:16px;" id="m_last_event">—</div>
-        <div class="miniSub" id="m_last_event_sub">—</div>
-      </div>
-      <div class="card">
-        <div class="miniTitle">Top page</div>
-        <div class="bigNum" style="font-size:16px;" id="m_top_page">—</div>
-        <div class="miniSub" id="m_top_page_sub">—</div>
-      </div>
-      <div class="card">
-        <div class="miniTitle">Device mix</div>
-        <div class="bigNum" style="font-size:16px;" id="m_device_mix">—</div>
-        <div class="miniSub">Last 7 days</div>
-      </div>
-      <div class="card">
-        <div class="miniTitle">7-day trend</div>
-        <div class="sparkWrap" id="m_spark"></div>
-        <div class="miniSub">Events per day</div>
-      </div>
-    </div>
-
     <div class="grid">
       <div class="card">
         <div class="row">
           <div>
-            <div class="miniTitle">Latest report</div>
-            <div id="latestMeta" class="miniSub"></div>
+            <div class="muted">Latest report</div>
+            <div id="latestMeta" class="muted"></div>
           </div>
           <div class="status"><span class="dot"></span><span id="statusText">Ready</span></div>
         </div>
@@ -828,8 +756,8 @@ app.get("/dashboard", async (req, res) => {
       <div class="card">
         <div class="row" style="margin:0 0 10px 0;">
           <div>
-            <div style="font-weight:900; font-size:18px;">Report History</div>
-            <div class="miniTitle">Recent reports for this site.</div>
+            <div style="font-weight:800;">Report History</div>
+            <div class="muted">Recent reports for this site.</div>
           </div>
           <span class="pill" id="countPill">0</span>
         </div>
@@ -837,65 +765,6 @@ app.get("/dashboard", async (req, res) => {
       </div>
     </div>
   </div>
-function buildAssistantBrief(m) {
-  // expected fields:
-  // m.events_today, m.events_7d, m.trend_7d (array), m.top_page, m.top_page_count,
-  // m.last_event_page, m.last_event_at, m.device_mobile, m.device_desktop
-
-  const today = m.events_today || 0;
-  const last7 = m.events_7d || 0;
-  const avg7 = last7 / 7;
-
-  const pct = avg7 > 0 ? Math.round(((today - avg7) / avg7) * 100) : null;
-
-  let trendLine = "Not enough history yet to call a trend.";
-  let mood = "Neutral";
-
-  if (pct !== null) {
-    if (pct >= 25) { trendLine = `You're up about ${pct}% vs your 7-day average.`; mood = "Up"; }
-    else if (pct <= -25) { trendLine = `You're down about ${Math.abs(pct)}% vs your 7-day average.`; mood = "Down"; }
-    else { trendLine = `You're roughly steady vs your 7-day average.`; mood = "Stable"; }
-  }
-
-  const topPage = m.top_page ? prettyPage(m.top_page) : null;
-  const deviceMajor =
-    (m.device_mobile || 0) > (m.device_desktop || 0) ? "mobile" :
-    (m.device_desktop || 0) > (m.device_mobile || 0) ? "desktop" : "mixed";
-
-  let conclusion = "";
-  let advice = [];
-
-  if (today === 0 && last7 === 0) {
-    conclusion = "Tracking is installed, but no visits have been recorded yet.";
-    advice = [
-      "Open your site yourself (incognito) to confirm events are coming in.",
-      "Make sure the tracker snippet is placed in the <head> or near the top of <body>.",
-      "Once you see visits, we can add a 'Lead' event (button click or form submit)."
-    ];
-  } else {
-    conclusion = topPage
-      ? `Most interest is landing on **${topPage}**.`
-      : "People are visiting, but we don’t have page breakdown yet.";
-
-    if (deviceMajor === "mobile") advice.push("Most visitors are on **mobile** — make sure your CTA is big and above the fold.");
-    if (deviceMajor === "desktop") advice.push("Most visitors are on **desktop** — add a clear CTA and a short proof section near the top.");
-    if (topPage) advice.push(`Put a clear next step on **${topPage}** (ex: “Book a call”, “Get a quote”).`);
-    advice.push("Track one high-value action next (button click or form submit) so we measure leads, not just visits.");
-  }
-
-  const whatHappened = topPage
-    ? `Today you had **${today} visits**, and the most viewed page is **${topPage}**.`
-    : `Today you had **${today} visits**.`;
-
-  return { mood, text: `**What happened:** ${whatHappened}\n\n**Trend:** ${trendLine}\n\n**Conclusion:** ${conclusion}\n\n**Next step:**\n- ${advice.slice(0,3).join("\n- ")}` };
-}
-
-function prettyPage(path) {
-  if (!path) return "Unknown page";
-  if (path === "/") return "Homepage";
-  if (path.includes("C:\\") || path.includes("file://")) return "Test page";
-  return path.replace(/\//g, " ").trim().replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()) + " page";
-}
 
 <script>
   const base = location.origin;
@@ -913,59 +782,9 @@ function prettyPage(path) {
     }[m]));
   }
 
-  function sparkline(points){
-    const max = Math.max(...points, 1);
-    const min = Math.min(...points, 0);
-    const w = 200, h = 40;
-    const pad = 4;
-    const span = Math.max(max - min, 1);
-
-    const xs = points.map((_, i) => pad + (i * (w - pad*2) / (points.length - 1 || 1)));
-    const ys = points.map(v => (h - pad) - ((v - min) * (h - pad*2) / span));
-
-    const d = xs.map((x,i)=> (i===0? "M":"L") + x.toFixed(1) + "," + ys[i].toFixed(1)).join(" ");
-    return \`
-      <svg viewBox="0 0 \${w} \${h}" preserveAspectRatio="none">
-        <path d="\${d}" fill="none" stroke="rgba(96,165,250,.95)" stroke-width="2.5" />
-      </svg>\`;
-  }
-
-  async function loadMetrics() {
-    const r = await fetch(\`\${base}/metrics?token=\${encodeURIComponent(token)}\`);
-    const data = await r.json();
-    if (!data.ok) {
-      setStatus("Error", true);
-      return;
-    }
-
-    document.getElementById("m_events_today").textContent = data.events_today;
-    document.getElementById("m_events_today_sub").textContent = data.events_today + " events today";
-
-    document.getElementById("m_events_7d").textContent = data.events_7d;
-
-    if (data.last_event) {
-      document.getElementById("m_last_event").textContent = data.last_event.event_name;
-      const dt = new Date(data.last_event.created_at);
-      document.getElementById("m_last_event_sub").textContent =
-        (data.last_event.page_type || "") + " • " + (data.last_event.device || "") + " • " + dt.toLocaleString();
-    } else {
-      document.getElementById("m_last_event").textContent = "None yet";
-      document.getElementById("m_last_event_sub").textContent = "No events recorded";
-    }
-
-    if (data.top_page) {
-      document.getElementById("m_top_page").textContent = data.top_page.page;
-      document.getElementById("m_top_page_sub").textContent = data.top_page.cnt + " events (7d)";
-    } else {
-      document.getElementById("m_top_page").textContent = "—";
-      document.getElementById("m_top_page_sub").textContent = "No page data (7d)";
-    }
-
-    const mix = (data.device_mix || []).map(x => \`\${x.device}: \${x.cnt}\`).join(" • ");
-    document.getElementById("m_device_mix").textContent = mix || "—";
-
-    const points = (data.trend_7d || []).map(x => x.cnt);
-    document.getElementById("m_spark").innerHTML = sparkline(points);
+  async function loadAll() {
+    await loadLatest();
+    await loadHistory();
   }
 
   async function loadLatest() {
@@ -974,32 +793,36 @@ function prettyPage(path) {
     const box = document.getElementById("latest");
     box.textContent = "Loading...";
 
-    const r = await fetch(\`\${base}/reports/latest?token=\${encodeURIComponent(token)}\`);
+    const url = base + "/reports/latest?token=" + encodeURIComponent(token);
+    const r = await fetch(url);
     const data = await r.json();
 
     if (!data.ok) {
+      setStatus("Error", true);
       meta.textContent = "";
       box.textContent = data.error || "No latest report";
-      setStatus("Error", true);
       return;
     }
 
     const d = new Date(data.report.report_date);
-    meta.textContent = \`\${d.toDateString()} • \${data.report.site_id}\`;
+    meta.textContent = d.toDateString() + " • " + data.report.site_id;
     box.textContent = data.report.report_text;
-    setStatus("Ready");
+    setStatus("Up to date");
   }
 
   async function loadHistory() {
+    setStatus("Loading history...");
     const el = document.getElementById("history");
     const pill = document.getElementById("countPill");
     el.innerHTML = "";
 
-    const r = await fetch(\`\${base}/reports?limit=30&token=\${encodeURIComponent(token)}\`);
+    const url = base + "/reports?limit=30&token=" + encodeURIComponent(token);
+    const r = await fetch(url);
     const data = await r.json();
 
     if (!data.ok) {
-      el.innerHTML = \`<div class="historyItem"><div class="err">\${data.error || "No history"}</div></div>\`;
+      setStatus("Error", true);
+      el.innerHTML = '<div class="historyItem"><div class="err">' + escapeHtml(data.error || "No history") + '</div></div>';
       pill.textContent = "0";
       return;
     }
@@ -1009,18 +832,15 @@ function prettyPage(path) {
     el.innerHTML = data.reports.map(rep => {
       const d = new Date(rep.report_date);
       const safePreview = escapeHtml(rep.preview || "");
-      return \`
-        <div class="historyItem">
-          <div class="date">\${d.toDateString()}</div>
-          <div class="preview">\${safePreview}...</div>
-        </div>\`;
+      return (
+        '<div class="historyItem">' +
+          '<div class="date">' + d.toDateString() + '</div>' +
+          '<div class="preview">' + safePreview + '...</div>' +
+        '</div>'
+      );
     }).join("");
-  }
 
-  async function loadAll(){
-    await loadMetrics();
-    await loadLatest();
-    await loadHistory();
+    setStatus("Ready");
   }
 
   loadAll();
@@ -1031,6 +851,7 @@ function prettyPage(path) {
     res.status(500).send(err.message);
   }
 });
+
 
 /* ---------------------------
    Start server (keep LAST)
