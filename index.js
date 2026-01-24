@@ -837,6 +837,65 @@ app.get("/dashboard", async (req, res) => {
       </div>
     </div>
   </div>
+function buildAssistantBrief(m) {
+  // expected fields:
+  // m.events_today, m.events_7d, m.trend_7d (array), m.top_page, m.top_page_count,
+  // m.last_event_page, m.last_event_at, m.device_mobile, m.device_desktop
+
+  const today = m.events_today || 0;
+  const last7 = m.events_7d || 0;
+  const avg7 = last7 / 7;
+
+  const pct = avg7 > 0 ? Math.round(((today - avg7) / avg7) * 100) : null;
+
+  let trendLine = "Not enough history yet to call a trend.";
+  let mood = "Neutral";
+
+  if (pct !== null) {
+    if (pct >= 25) { trendLine = `You're up about ${pct}% vs your 7-day average.`; mood = "Up"; }
+    else if (pct <= -25) { trendLine = `You're down about ${Math.abs(pct)}% vs your 7-day average.`; mood = "Down"; }
+    else { trendLine = `You're roughly steady vs your 7-day average.`; mood = "Stable"; }
+  }
+
+  const topPage = m.top_page ? prettyPage(m.top_page) : null;
+  const deviceMajor =
+    (m.device_mobile || 0) > (m.device_desktop || 0) ? "mobile" :
+    (m.device_desktop || 0) > (m.device_mobile || 0) ? "desktop" : "mixed";
+
+  let conclusion = "";
+  let advice = [];
+
+  if (today === 0 && last7 === 0) {
+    conclusion = "Tracking is installed, but no visits have been recorded yet.";
+    advice = [
+      "Open your site yourself (incognito) to confirm events are coming in.",
+      "Make sure the tracker snippet is placed in the <head> or near the top of <body>.",
+      "Once you see visits, we can add a 'Lead' event (button click or form submit)."
+    ];
+  } else {
+    conclusion = topPage
+      ? `Most interest is landing on **${topPage}**.`
+      : "People are visiting, but we don’t have page breakdown yet.";
+
+    if (deviceMajor === "mobile") advice.push("Most visitors are on **mobile** — make sure your CTA is big and above the fold.");
+    if (deviceMajor === "desktop") advice.push("Most visitors are on **desktop** — add a clear CTA and a short proof section near the top.");
+    if (topPage) advice.push(`Put a clear next step on **${topPage}** (ex: “Book a call”, “Get a quote”).`);
+    advice.push("Track one high-value action next (button click or form submit) so we measure leads, not just visits.");
+  }
+
+  const whatHappened = topPage
+    ? `Today you had **${today} visits**, and the most viewed page is **${topPage}**.`
+    : `Today you had **${today} visits**.`;
+
+  return { mood, text: `**What happened:** ${whatHappened}\n\n**Trend:** ${trendLine}\n\n**Conclusion:** ${conclusion}\n\n**Next step:**\n- ${advice.slice(0,3).join("\n- ")}` };
+}
+
+function prettyPage(path) {
+  if (!path) return "Unknown page";
+  if (path === "/") return "Homepage";
+  if (path.includes("C:\\") || path.includes("file://")) return "Test page";
+  return path.replace(/\//g, " ").trim().replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()) + " page";
+}
 
 <script>
   const base = location.origin;
