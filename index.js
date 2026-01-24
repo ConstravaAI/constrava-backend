@@ -621,6 +621,28 @@ app.get("/dashboard", async (req, res) => {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Constrava Dashboard</title>
+  .grid{
+  margin-top:18px;
+  display:grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap:16px;
+}
+.span2{ grid-column: 1 / -1; }  /* full width */
+.brief{
+  margin-top:10px;
+  line-height:1.55;
+  font-size:14px;
+  color:var(--text);
+  background: rgba(15,23,42,.55);
+  border:1px solid var(--border);
+  border-radius: 14px;
+  padding:14px;
+}
+@media (max-width: 1100px){
+  .grid{ grid-template-columns: repeat(2, 1fr); }
+  .span2{ grid-column: 1 / -1; }
+}
+
   <style>
     :root{
       --bg:#0b0f19;
