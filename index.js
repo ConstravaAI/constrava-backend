@@ -608,6 +608,14 @@ app.get("/dashboard", async (req, res) => {
 
     res.setHeader("Content-Type", "text/html");
     res.send(`<!doctype html>
+    <div class="grid">
+  <div class="card span2">
+    <h2>Assistant Brief <span class="pill" id="briefMood">—</span></h2>
+    <div id="briefText" class="brief">Loading...</div>
+  </div>
+
+  <!-- your 6 small cards go under -->
+</div>
 <html>
 <head>
   <meta charset="utf-8" />
