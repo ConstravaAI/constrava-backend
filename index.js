@@ -1230,6 +1230,69 @@ app.get("/dashboard", async (req, res) => {
 });
 
 
+// DEMO DATA SEEDER (DEV ONLY)
+// POST /demo/seed?token=...  body: { days: 7, events_per_day: 40 }
+app.post("/demo/seed", async (req, res) => {
+  try {
+    // Safety: only allow if you explicitly enable it
+    if (process.env.ENABLE_DEMO_SEED !== "true") {
+      return res.status(403).json({ ok: false, error: "Seeder disabled. Set ENABLE_DEMO_SEED=true" });
+    }
+
+    const token = req.query.token || req.body?.token;
+    const site_id = await siteIdFromToken(token);
+    if (!site_id) {
+      return res.status(401).json({ ok: false, error: "Unauthorized. Provide ?token=..." });
+    }
+
+    const days = Math.max(1, Math.min(parseInt(req.body?.days || "7", 10), 30));
+    const eventsPerDay = Math.max(5, Math.min(parseInt(req.body?.events_per_day || "40", 10), 300));
+
+    const pages = ["/", "/pricing", "/services", "/about", "/contact", "/blog", "/faq", "/checkout"];
+    const devices = ["mobile", "desktop"];
+
+    // Insert fake events with timestamps spread across each day
+    // Uses parameterized queries to stay safe
+    let inserted = 0;
+
+    for (let d = 0; d < days; d++) {
+      // dayStart is d days ago at 00:00
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      dayStart.setDate(dayStart.getDate() - d);
+
+      for (let i = 0; i < eventsPerDay; i++) {
+        // random seconds within the day
+        const seconds = Math.floor(Math.random() * 86400);
+        const ts = new Date(dayStart.getTime() + seconds * 1000);
+
+        // weighted pages (pricing/home more common)
+        const r = Math.random();
+        const page =
+          r < 0.30 ? "/" :
+          r < 0.55 ? "/pricing" :
+          r < 0.70 ? "/services" :
+          r < 0.80 ? "/contact" :
+          pages[Math.floor(Math.random() * pages.length)];
+
+        // weighted devices (mobile slightly more common)
+        const device = Math.random() < 0.62 ? "mobile" : "desktop";
+
+        await pool.query(
+          `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
+           VALUES ($1, 'page_view', $2, $3, $4)`,
+          [site_id, page, device, ts.toISOString()]
+        );
+
+        inserted++;
+      }
+    }
+
+    res.json({ ok: true, site_id, days, events_per_day: eventsPerDay, inserted });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 /* ---------------------------
    Start server (keep LAST)
