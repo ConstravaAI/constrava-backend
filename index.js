@@ -722,7 +722,7 @@ app.get("/dashboard", async (req, res) => {
 
     res.setHeader("Content-Type", "text/html");
     res.send(`<!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -750,7 +750,7 @@ app.get("/dashboard", async (req, res) => {
                   var(--bg);
       color:var(--text);
     }
-    .wrap{max-width:1100px; margin:0 auto; padding:28px 18px 60px;}
+    .wrap{max-width:1180px; margin:0 auto; padding:26px 18px 60px;}
     .topbar{
       display:flex; align-items:center; justify-content:space-between;
       gap:14px; padding:18px 18px;
@@ -783,16 +783,25 @@ app.get("/dashboard", async (req, res) => {
       background: rgba(96,165,250,.12);
       color: var(--text);
       cursor:pointer;
-      font-weight:600;
+      font-weight:700;
     }
     .btn:hover{border-color: rgba(96,165,250,.5)}
+    .btn:active{transform: translateY(1px)}
     .grid{
       margin-top:18px;
       display:grid;
-      grid-template-columns: 1.2fr .8fr;
+      grid-template-columns: repeat(12, 1fr);
       gap:16px;
     }
-    @media (max-width: 900px){ .grid{grid-template-columns:1fr} }
+    .span12{grid-column: 1 / -1;}
+    .span8{grid-column: span 8;}
+    .span6{grid-column: span 6;}
+    .span4{grid-column: span 4;}
+    .span3{grid-column: span 3;}
+    @media (max-width: 1000px){
+      .span8,.span6,.span4,.span3{grid-column: 1 / -1;}
+    }
+
     .card{
       background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
       border:1px solid var(--border);
@@ -800,16 +809,65 @@ app.get("/dashboard", async (req, res) => {
       box-shadow: var(--shadow);
       padding:16px;
     }
-    .row{
+    .card h2{
+      margin:0 0 10px 0;
+      font-size:13px;
+      color: var(--muted);
+      letter-spacing:.2px;
+      font-weight:800;
       display:flex; align-items:center; justify-content:space-between;
-      gap:10px; margin-bottom:10px;
+      gap:10px;
     }
-    .status{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);}
+    .bigTitle{
+      font-size:18px;
+      font-weight:900;
+      margin:0;
+      color: var(--text);
+    }
+    .status{
+      display:flex; align-items:center; gap:8px;
+      font-size:12px; color:var(--muted);
+    }
     .dot{
       width:8px; height:8px; border-radius:50%;
       background: var(--accent2);
       box-shadow: 0 0 0 6px rgba(52,211,153,.12);
     }
+    .err{color: var(--danger); font-weight:700}
+    .muted{color:var(--muted); font-size:12px}
+    .kpi{
+      font-size:26px;
+      font-weight:900;
+      letter-spacing:.2px;
+      margin-top:8px;
+    }
+    .hint{margin-top:8px; font-size:12px; color:var(--muted); line-height:1.4;}
+    .assistantBox{
+      background: rgba(15,23,42,.55);
+      border:1px solid var(--border);
+      border-radius: 14px;
+      padding:14px;
+      line-height:1.55;
+      font-size:14px;
+      white-space:pre-wrap;
+    }
+    .row{display:flex; align-items:center; justify-content:space-between; gap:12px;}
+    .mini{
+      display:flex; flex-direction:column; gap:6px;
+      background: rgba(15,23,42,.55);
+      border:1px solid var(--border);
+      border-radius: 14px;
+      padding:12px;
+    }
+    .mini .label{font-size:12px; color:var(--muted); font-weight:800;}
+    .mini .value{font-size:14px; font-weight:900;}
+    .sparkWrap{
+      background: rgba(15,23,42,.55);
+      border:1px solid var(--border);
+      border-radius: 14px;
+      padding:12px;
+    }
+    svg{width:100%; height:70px; display:block;}
     .latest{
       white-space: pre-wrap;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
@@ -822,7 +880,6 @@ app.get("/dashboard", async (req, res) => {
       overflow:auto;
       min-height: 220px;
     }
-    .muted{color:var(--muted); font-size:12px}
     .historyItem{
       padding:12px;
       border-radius: 14px;
@@ -830,9 +887,8 @@ app.get("/dashboard", async (req, res) => {
       background: rgba(15,23,42,.55);
       margin-top:10px;
     }
-    .historyItem .date{font-weight:700; font-size:12px}
+    .historyItem .date{font-weight:900; font-size:12px}
     .historyItem .preview{margin-top:8px; font-size:13px; color: var(--text)}
-    .err{color: var(--danger); font-weight:600}
   </style>
 </head>
 <body>
@@ -842,38 +898,95 @@ app.get("/dashboard", async (req, res) => {
         <div class="logo"></div>
         <div>
           <h1>Constrava Dashboard</h1>
-          <div class="sub">Reports • Metrics • Tech-assistant style</div>
+          <div class="sub">Your AI tech assistant — conclusions + next steps in plain English</div>
         </div>
       </div>
 
       <div class="controls">
         <span class="pill">Site: <b>${site_id}</b></span>
-        <button class="btn" onclick="loadAll()">Refresh</button>
+        <button class="btn" onclick="refreshAll()">Refresh</button>
       </div>
     </div>
 
     <div class="grid">
-      <div class="card">
-        <div class="row">
-          <div>
-            <div class="muted">Latest report</div>
-            <div id="latestMeta" class="muted"></div>
-          </div>
-          <div class="status"><span class="dot"></span><span id="statusText">Ready</span></div>
-        </div>
-        <div id="latest" class="latest">Loading...</div>
+
+      <!-- Assistant Brief (big) -->
+      <div class="card span12">
+        <h2>
+          Assistant Brief
+          <span class="pill" id="moodPill">Loading…</span>
+        </h2>
+        <div id="assistantBrief" class="assistantBox">Loading…</div>
       </div>
 
-      <div class="card">
-        <div class="row" style="margin:0 0 10px 0;">
-          <div>
-            <div style="font-weight:800;">Report History</div>
-            <div class="muted">Recent reports for this site.</div>
-          </div>
-          <span class="pill" id="countPill">0</span>
+      <!-- KPIs -->
+      <div class="card span3">
+        <h2>Visits today <span class="pill" id="todayNote">—</span></h2>
+        <div class="kpi" id="visitsToday">0</div>
+        <div class="hint" id="todayHint">How many people visited today.</div>
+      </div>
+
+      <div class="card span3">
+        <h2>Visits (7 days)</h2>
+        <div class="kpi" id="visits7d">0</div>
+        <div class="hint" id="trendHint">Compared to your 7-day average.</div>
+      </div>
+
+      <div class="card span3">
+        <h2>Latest activity</h2>
+        <div class="kpi" style="font-size:16px" id="lastActivity">—</div>
+        <div class="hint" id="lastActivityHint">Most recent interaction we recorded.</div>
+      </div>
+
+      <div class="card span3">
+        <h2>Most popular page (7d)</h2>
+        <div class="kpi" style="font-size:16px" id="topPage">—</div>
+        <div class="hint" id="topPageHint">Where most attention is going.</div>
+      </div>
+
+      <!-- Trend chart -->
+      <div class="card span6">
+        <h2>7-day traffic trend</h2>
+        <div class="sparkWrap">
+          <svg viewBox="0 0 300 70" preserveAspectRatio="none">
+            <polyline id="spark" fill="none" stroke="currentColor" stroke-width="3" points=""></polyline>
+          </svg>
+          <div class="muted" id="sparkLabel">Loading…</div>
         </div>
+      </div>
+
+      <!-- Device mix + Today pages -->
+      <div class="card span6">
+        <h2>Quick insights</h2>
+        <div class="row" style="margin-top:10px;">
+          <div class="mini" style="flex:1;">
+            <div class="label">Device mix (7d)</div>
+            <div class="value" id="deviceMix">—</div>
+            <div class="muted" id="deviceHint">Mobile vs Desktop visitors.</div>
+          </div>
+          <div class="mini" style="flex:1;">
+            <div class="label">Top pages today</div>
+            <div class="value" id="topToday">—</div>
+            <div class="muted">The pages people are viewing today.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reports (keep your report features) -->
+      <div class="card span8">
+        <h2>
+          Latest report
+          <span class="status"><span class="dot"></span><span id="statusText">Ready</span></span>
+        </h2>
+        <div id="latestMeta" class="muted"></div>
+        <div id="latestReport" class="latest">Loading…</div>
+      </div>
+
+      <div class="card span4">
+        <h2>Report history <span class="pill" id="countPill">0</span></h2>
         <div id="history"></div>
       </div>
+
     </div>
   </div>
 
@@ -881,80 +994,233 @@ app.get("/dashboard", async (req, res) => {
   const base = location.origin;
   const token = new URLSearchParams(location.search).get("token");
 
-  function setStatus(text, isError=false){
-    const el = document.getElementById("statusText");
+  function esc(s){
+    return String(s || "").replace(/[&<>"']/g, function(m){
+      return ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" })[m];
+    });
+  }
+
+  function prettyPage(path){
+    if(!path) return "Unknown";
+    if(path === "/") return "Homepage";
+    if(path.indexOf("file:") === 0 || path.indexOf("C:\\\\") === 0) return "Test page";
+    // turn "/pricing" into "Pricing"
+    var p = path.split("?")[0];
+    p = p.replace(/^\\/+/, "");
+    if(!p) return "Homepage";
+    p = p.replace(/[-_]/g, " ");
+    p = p.replace(/\\b\\w/g, function(c){ return c.toUpperCase(); });
+    return p;
+  }
+
+  function timeAgo(iso){
+    if(!iso) return "";
+    var t = new Date(iso).getTime();
+    var diff = Date.now() - t;
+    var mins = Math.floor(diff/60000);
+    if(mins < 1) return "just now";
+    if(mins < 60) return mins + " min ago";
+    var hrs = Math.floor(mins/60);
+    if(hrs < 24) return hrs + " hr ago";
+    var days = Math.floor(hrs/24);
+    return days + " day" + (days===1?"":"s") + " ago";
+  }
+
+  function setMood(text){
+    var el = document.getElementById("moodPill");
     el.textContent = text;
-    el.className = isError ? "err" : "";
   }
 
-  function escapeHtml(str) {
-    return String(str).replace(/[&<>"']/g, m => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
-    }[m]));
+  function setStatus(text, isErr){
+    var el = document.getElementById("statusText");
+    el.textContent = text;
+    el.className = isErr ? "err" : "";
   }
 
-  async function loadAll() {
-    await loadLatest();
-    await loadHistory();
-  }
+  function buildAssistantBrief(m){
+    var today = m.visits_today || 0;
+    var last7 = m.visits_7d || 0;
+    var avg7 = last7 / 7;
+    var pct = avg7 > 0 ? Math.round(((today - avg7) / avg7) * 100) : null;
 
-  async function loadLatest() {
-    setStatus("Loading latest...");
-    const meta = document.getElementById("latestMeta");
-    const box = document.getElementById("latest");
-    box.textContent = "Loading...";
+    var trendLine = "Not enough history yet to call a strong trend.";
+    var mood = "Neutral";
 
-    const url = base + "/reports/latest?token=" + encodeURIComponent(token);
-    const r = await fetch(url);
-    const data = await r.json();
-
-    if (!data.ok) {
-      setStatus("Error", true);
-      meta.textContent = "";
-      box.textContent = data.error || "No latest report";
-      return;
+    if(pct !== null){
+      if(pct >= 25){ trendLine = "Traffic is up about " + pct + "% vs your 7-day average."; mood = "📈 Up"; }
+      else if(pct <= -25){ trendLine = "Traffic is down about " + Math.abs(pct) + "% vs your 7-day average."; mood = "📉 Down"; }
+      else { trendLine = "Traffic is steady vs your 7-day average."; mood = "✅ Stable"; }
     }
 
-    const d = new Date(data.report.report_date);
-    meta.textContent = d.toDateString() + " • " + data.report.site_id;
-    box.textContent = data.report.report_text;
-    setStatus("Up to date");
+    var topPage = m.top_page_7d && m.top_page_7d.page_type ? prettyPage(m.top_page_7d.page_type) : null;
+    var topViews = m.top_page_7d && m.top_page_7d.views ? m.top_page_7d.views : 0;
+
+    var mobile = (m.device_mix_7d && m.device_mix_7d.mobile) ? m.device_mix_7d.mobile : 0;
+    var desktop = (m.device_mix_7d && m.device_mix_7d.desktop) ? m.device_mix_7d.desktop : 0;
+
+    var deviceMajor = (mobile > desktop) ? "mobile" : (desktop > mobile) ? "desktop" : "mixed";
+
+    var advice = [];
+
+    if(today === 0 && last7 === 0){
+      advice.push("Open your site yourself (incognito) to confirm visits are being recorded.");
+      advice.push("Make sure the tracker snippet is in the <head> or near the top of <body>.");
+      advice.push("Next: track one high-value action (button click or form submit).");
+      return { mood: "⚠️ No data yet", text:
+        "What happened: No visits have been recorded yet.\\n\\n" +
+        "Trend: " + trendLine + "\\n\\n" +
+        "What it means: Tracking is installed, but we have no traffic data to analyze yet.\\n\\n" +
+        "What to do next:\\n- " + advice.join("\\n- ")
+      };
+    }
+
+    if(deviceMajor === "mobile") advice.push("Most visitors are on mobile — make your main button big and near the top.");
+    if(deviceMajor === "desktop") advice.push("Most visitors are on desktop — add a clear CTA and a short proof section near the top.");
+    if(topPage) advice.push("Your hottest page is " + topPage + " — add a clear next step on that page (Book a call / Get a quote).");
+    advice.push("Track a lead action next (button click or form submit) so we measure leads, not just visits.");
+
+    var happened = "Today you had " + today + " visits.";
+    if(topPage) happened += " Most attention is on " + topPage + " (" + topViews + " views in 7 days).";
+
+    return { mood: mood, text:
+      "What happened: " + happened + "\\n\\n" +
+      "Trend: " + trendLine + "\\n\\n" +
+      "What it means: Your visitors are showing intent on specific pages. Let’s convert that interest into leads.\\n\\n" +
+      "What to do next:\\n- " + advice.slice(0,3).join("\\n- ")
+    };
   }
 
-  async function loadHistory() {
-    setStatus("Loading history...");
-    const el = document.getElementById("history");
-    const pill = document.getElementById("countPill");
-    el.innerHTML = "";
+  function drawSpark(trend){
+    // trend: [{day, visits}...]
+    var pts = [];
+    var values = (trend || []).map(function(x){ return x.visits || 0; });
+    var max = Math.max.apply(null, values.concat([1]));
+    var w = 300, h = 70, pad = 6;
 
-    const url = base + "/reports?limit=30&token=" + encodeURIComponent(token);
-    const r = await fetch(url);
-    const data = await r.json();
+    for(var i=0;i<values.length;i++){
+      var x = (values.length === 1) ? w/2 : (i * (w/(values.length-1)));
+      var y = h - pad - (values[i] / max) * (h - pad*2);
+      pts.push(x.toFixed(1) + "," + y.toFixed(1));
+    }
+    document.getElementById("spark").setAttribute("points", pts.join(" "));
+    document.getElementById("sparkLabel").textContent = "Daily visits: " + values.join(" • ");
+  }
 
-    if (!data.ok) {
-      setStatus("Error", true);
-      el.innerHTML = '<div class="historyItem"><div class="err">' + escapeHtml(data.error || "No history") + '</div></div>';
+  async function loadMetrics(){
+    var r = await fetch(base + "/metrics?token=" + encodeURIComponent(token));
+    var data = await r.json();
+    if(!data.ok){
+      setMood("Error");
+      document.getElementById("assistantBrief").textContent = data.error || "Failed to load metrics";
+      return null;
+    }
+
+    // KPIs
+    document.getElementById("visitsToday").textContent = data.visits_today;
+    document.getElementById("visits7d").textContent = data.visits_7d;
+
+    // Last activity
+    if(data.last_event){
+      var evt = data.last_event.event_name === "page_view" ? "Viewed" : data.last_event.event_name;
+      var page = prettyPage(data.last_event.page_type);
+      var when = timeAgo(data.last_event.created_at);
+      var device = data.last_event.device ? data.last_event.device : "unknown";
+      document.getElementById("lastActivity").textContent = evt + " " + page + " • " + when;
+      document.getElementById("lastActivityHint").textContent = "Device: " + device;
+    } else {
+      document.getElementById("lastActivity").textContent = "No activity yet";
+      document.getElementById("lastActivityHint").textContent = "Once your site gets visits, this will update.";
+    }
+
+    // Top page
+    if(data.top_page_7d){
+      var tp = prettyPage(data.top_page_7d.page_type);
+      document.getElementById("topPage").textContent = tp;
+      document.getElementById("topPageHint").textContent = data.top_page_7d.views + " views in last 7 days";
+    } else {
+      document.getElementById("topPage").textContent = "Not enough data";
+      document.getElementById("topPageHint").textContent = "We’ll show the most visited page once visits come in.";
+    }
+
+    // Device mix
+    var mob = data.device_mix_7d && data.device_mix_7d.mobile ? data.device_mix_7d.mobile : 0;
+    var desk = data.device_mix_7d && data.device_mix_7d.desktop ? data.device_mix_7d.desktop : 0;
+    var total = mob + desk;
+    var mobPct = total ? Math.round((mob/total)*100) : 0;
+    var deskPct = total ? Math.round((desk/total)*100) : 0;
+    document.getElementById("deviceMix").textContent = mobPct + "% mobile • " + deskPct + "% desktop";
+
+    // Top pages today
+    if(data.top_pages_today && data.top_pages_today.length){
+      var list = data.top_pages_today.map(function(p){
+        return prettyPage(p.page_type) + " (" + p.views + ")";
+      }).join(", ");
+      document.getElementById("topToday").textContent = list;
+    } else {
+      document.getElementById("topToday").textContent = "No visits yet today";
+    }
+
+    // Assistant brief
+    var brief = buildAssistantBrief(data);
+    setMood(brief.mood);
+    document.getElementById("assistantBrief").textContent = brief.text;
+
+    // Sparkline
+    drawSpark(data.trend_7d || []);
+
+    return data;
+  }
+
+  async function loadReports(){
+    // latest report
+    setStatus("Loading…", false);
+    var latestMeta = document.getElementById("latestMeta");
+    var latestBox = document.getElementById("latestReport");
+
+    var r1 = await fetch(base + "/reports/latest?token=" + encodeURIComponent(token));
+    var d1 = await r1.json();
+
+    if(!d1.ok){
+      latestMeta.textContent = "";
+      latestBox.textContent = d1.error || "No report found yet.";
+    } else {
+      var dt = new Date(d1.report.report_date);
+      latestMeta.textContent = dt.toDateString();
+      latestBox.textContent = d1.report.report_text;
+    }
+
+    // history
+    var r2 = await fetch(base + "/reports?limit=20&token=" + encodeURIComponent(token));
+    var d2 = await r2.json();
+    var hist = document.getElementById("history");
+    var pill = document.getElementById("countPill");
+    hist.innerHTML = "";
+
+    if(!d2.ok){
       pill.textContent = "0";
-      return;
+      hist.innerHTML = '<div class="historyItem"><div class="err">' + esc(d2.error || "No history") + '</div></div>';
+    } else {
+      pill.textContent = d2.reports.length;
+      hist.innerHTML = d2.reports.map(function(rep){
+        var dd = new Date(rep.report_date);
+        return (
+          '<div class="historyItem">' +
+            '<div class="date">' + dd.toDateString() + '</div>' +
+            '<div class="preview">' + esc(rep.preview || "") + '...</div>' +
+          '</div>'
+        );
+      }).join("");
     }
 
-    pill.textContent = data.reports.length;
-
-    el.innerHTML = data.reports.map(rep => {
-      const d = new Date(rep.report_date);
-      const safePreview = escapeHtml(rep.preview || "");
-      return (
-        '<div class="historyItem">' +
-          '<div class="date">' + d.toDateString() + '</div>' +
-          '<div class="preview">' + safePreview + '...</div>' +
-        '</div>'
-      );
-    }).join("");
-
-    setStatus("Ready");
+    setStatus("Ready", false);
   }
 
-  loadAll();
+  async function refreshAll(){
+    await loadMetrics();
+    await loadReports();
+  }
+
+  refreshAll();
 </script>
 </body>
 </html>`);
@@ -962,6 +1228,7 @@ app.get("/dashboard", async (req, res) => {
     res.status(500).send(err.message);
   }
 });
+
 
 
 /* ---------------------------
