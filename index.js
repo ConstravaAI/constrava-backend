@@ -1,13 +1,13 @@
-// index.js (ESM) — Constrava MVP backend (NO bcrypt needed)
+// index.js (ESM) — Constrava MVP backend (safe dashboard template + time-range selector)
 // ✅ Neon Postgres (pg)
 // ✅ /sites creates site_id + dashboard_token
 // ✅ /tracker.js + /events collector
 // ✅ Token-secured dashboard: /dashboard?token=...
-// ✅ Token-secured APIs: /metrics, /reports, /reports/latest, /analytics/7d
-// ✅ Demo data: /seed-demo (token-secured) + /demo/seed (guarded by ENABLE_DEMO_SEED)
+// ✅ Token-secured APIs: /metrics, /reports, /reports/latest
+// ✅ Demo data: /demo/seed (token-secured, ENABLE_DEMO_SEED=true)
 // ✅ Optional AI reports: /generate-report (requires OPENAI_API_KEY)
 // ✅ Optional email: /email-latest (requires RESEND_API_KEY + FROM_EMAIL)
-// ✅ Optional login: /auth/register + /auth/login (uses crypto.scrypt, not bcrypt)
+// ✅ Optional login: /auth/register + /auth/login (uses crypto.scrypt)
 
 import express from "express";
 import cors from "cors";
@@ -15,9 +15,6 @@ import pkg from "pg";
 import crypto from "crypto";
 
 const { Pool } = pkg;
-
-// Node 18+ has global fetch; for safety on some environments:
-const fetchFn = globalThis.fetch;
 
 const app = express();
 app.use(cors());
@@ -32,9 +29,16 @@ const pool = new Pool({ connectionString: DATABASE_URL });
 /* ---------------------------
    Helpers
 ----------------------------*/
+function setNoStore(res) {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+}
+
 function makeSiteId() {
   return "site_" + crypto.randomBytes(6).toString("hex");
 }
+
 function publicBaseUrl(req) {
   return (
     process.env.PUBLIC_BASE_URL ||
@@ -42,11 +46,13 @@ function publicBaseUrl(req) {
     "https://constrava-backend.onrender.com"
   );
 }
+
 async function siteIdFromToken(token) {
   if (!token) return null;
   const r = await pool.query("SELECT site_id FROM sites WHERE dashboard_token=$1", [token]);
   return r.rows[0]?.site_id || null;
 }
+
 function requireEnv(name) {
   const v = process.env[name];
   if (!v) throw new Error(`Missing ${name} env var`);
@@ -66,10 +72,11 @@ function verifyPassword(password, saltHex, hashHex) {
   return crypto.timingSafeEqual(hash, test);
 }
 
-function setNoStore(res) {
-  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-  res.setHeader("Pragma", "no-cache");
-  res.setHeader("Expires", "0");
+// Clamp + map day options (your dropdown options)
+function normalizeDays(input) {
+  const n = parseInt(String(input || "7"), 10);
+  const allowed = new Set([1, 7, 30, 365, 730, 1825]);
+  return allowed.has(n) ? n : 7;
 }
 
 /* ---------------------------
@@ -172,7 +179,7 @@ app.post("/sites", async (req, res) => {
       site_id,
       install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
       client_dashboard_url: `${base}/dashboard?token=${token}`,
-      token // keep for YOUR testing
+      token // keep for YOUR testing; remove later if you want
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -186,7 +193,8 @@ app.post("/sites", async (req, res) => {
 app.get("/tracker.js", (req, res) => {
   res.setHeader("Content-Type", "application/javascript");
 
-  const endpoint = (process.env.PUBLIC_EVENTS_URL || "https://constrava-backend.onrender.com") + "/events";
+  const endpoint =
+    (process.env.PUBLIC_EVENTS_URL || "https://constrava-backend.onrender.com") + "/events";
 
   res.send(`
 (function () {
@@ -241,8 +249,9 @@ app.post("/events", async (req, res) => {
 });
 
 /* ---------------------------
-   Metrics for dashboard (SINGLE SOURCE OF TRUTH)
-   GET /metrics?token=...
+   Token-secured metrics (range-aware)
+   GET /metrics?token=...&days=7
+   days allowed: 1, 7, 30, 365, 730, 1825
 ----------------------------*/
 app.get("/metrics", async (req, res) => {
   try {
@@ -251,6 +260,9 @@ app.get("/metrics", async (req, res) => {
     const token = req.query.token;
     const site_id = await siteIdFromToken(token);
     if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+    const days = normalizeDays(req.query.days);
+    const startDate = `${days - 1} days`;
 
     // Visits today (page_view only)
     const todayRes = await pool.query(
@@ -264,13 +276,11 @@ app.get("/metrics", async (req, res) => {
       [site_id]
     );
 
-    // 7-day daily trend (always 7 rows, fills missing days with 0)
+    // Trend series for selected range (always returns exactly N points)
     const trendRes = await pool.query(
       `
-      SELECT
-        to_char(d::date, 'YYYY-MM-DD') AS day,
-        COALESCE(COUNT(e.*),0)::int AS visits
-      FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, INTERVAL '1 day') d
+      SELECT d::date AS day, COALESCE(COUNT(e.*),0)::int AS visits
+      FROM generate_series(CURRENT_DATE - $2::interval, CURRENT_DATE, INTERVAL '1 day') d
       LEFT JOIN events_raw e
         ON e.site_id = $1
        AND e.event_name = 'page_view'
@@ -278,10 +288,10 @@ app.get("/metrics", async (req, res) => {
       GROUP BY d
       ORDER BY d
       `,
-      [site_id]
+      [site_id, startDate]
     );
 
-    const visits_7d = trendRes.rows.reduce((sum, r) => sum + (r.visits || 0), 0);
+    const visits_range = trendRes.rows.reduce((sum, r) => sum + (r.visits || 0), 0);
 
     // Last event (any event)
     const lastEventRes = await pool.query(
@@ -295,23 +305,23 @@ app.get("/metrics", async (req, res) => {
       [site_id]
     );
 
-    // Top page last 7 days (page_view only)
+    // Top page (page_view) in selected range
     const topPageRes = await pool.query(
       `
       SELECT page_type, COUNT(*)::int AS views
       FROM events_raw
       WHERE site_id = $1
         AND event_name = 'page_view'
-        AND created_at >= NOW() - INTERVAL '7 days'
+        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
         AND page_type IS NOT NULL
       GROUP BY page_type
       ORDER BY views DESC
       LIMIT 1
       `,
-      [site_id]
+      [site_id, days]
     );
 
-    // Device mix last 7 days (page_view only)
+    // Device mix (page_view) in selected range
     const deviceRes = await pool.query(
       `
       SELECT
@@ -320,12 +330,12 @@ app.get("/metrics", async (req, res) => {
       FROM events_raw
       WHERE site_id = $1
         AND event_name = 'page_view'
-        AND created_at >= NOW() - INTERVAL '7 days'
+        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
       `,
-      [site_id]
+      [site_id, days]
     );
 
-    // Top pages today
+    // Top pages today (for assistant vibe)
     const todayTopRes = await pool.query(
       `
       SELECT page_type, COUNT(*)::int AS views
@@ -344,48 +354,18 @@ app.get("/metrics", async (req, res) => {
     res.json({
       ok: true,
       site_id,
+      days,
       visits_today: todayRes.rows[0]?.visits_today || 0,
-      visits_7d,
-      trend_7d: trendRes.rows, // [{day, visits}, ... 7 items]
+      visits_range,
+      trend: trendRes.rows.map((r) => ({
+        day: String(r.day), // YYYY-MM-DD
+        visits: r.visits
+      })),
       last_event: lastEventRes.rows[0] || null,
-      top_page_7d: topPageRes.rows[0] || null,
-      device_mix_7d: deviceRes.rows[0] || { mobile: 0, desktop: 0 },
+      top_page: topPageRes.rows[0] || null,
+      device_mix: deviceRes.rows[0] || { mobile: 0, desktop: 0 },
       top_pages_today: todayTopRes.rows || []
     });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-/* ---------------------------
-   Analytics series (alt endpoint)
-   GET /analytics/7d?token=...
-   (returns same “always 7 days” series so charts never go blank)
-----------------------------*/
-app.get("/analytics/7d", async (req, res) => {
-  try {
-    setNoStore(res);
-
-    const token = req.query.token;
-    const site_id = await siteIdFromToken(token);
-    if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized" });
-
-    const r = await pool.query(
-      `
-      SELECT
-        to_char(d::date, 'YYYY-MM-DD') AS day,
-        COALESCE(COUNT(e.*),0)::int AS events
-      FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, INTERVAL '1 day') d
-      LEFT JOIN events_raw e
-        ON e.site_id = $1
-       AND e.created_at::date = d::date
-      GROUP BY d
-      ORDER BY d
-      `,
-      [site_id]
-    );
-
-    res.json({ ok: true, series: r.rows });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -405,7 +385,7 @@ app.get("/reports", async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit || "30", 10), 100);
 
     const r = await pool.query(
-      `SELECT site_id, report_date, created_at, LEFT(report_text, 220) AS preview
+      `SELECT site_id, report_date, created_at, LEFT(report_text, 240) AS preview
        FROM daily_reports
        WHERE site_id=$1
        ORDER BY report_date DESC, created_at DESC
@@ -444,78 +424,6 @@ app.get("/reports/latest", async (req, res) => {
 });
 
 /* ---------------------------
-   Demo data generator (token-secured)
-   POST /seed-demo?token=...
-----------------------------*/
-app.post("/seed-demo", async (req, res) => {
-  try {
-    const token = req.query.token || req.body?.token;
-    const site_id = await siteIdFromToken(token);
-    if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
-
-    const pages = ["/", "/pricing", "/about", "/contact", "/demo", "/signup"];
-    const devices = ["desktop", "mobile"];
-
-    const inserts = [];
-    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
-      const base = new Date();
-      base.setDate(base.getDate() - dayOffset);
-
-      const eventsCount = 30 + Math.floor(Math.random() * 90); // 30–119/day (more visible)
-      for (let i = 0; i < eventsCount; i++) {
-        const t = new Date(base);
-        t.setHours(
-          Math.floor(Math.random() * 24),
-          Math.floor(Math.random() * 60),
-          Math.floor(Math.random() * 60),
-          0
-        );
-
-        const page = pages[Math.floor(Math.random() * pages.length)];
-        const device = devices[Math.floor(Math.random() * devices.length)];
-
-        inserts.push(
-          pool.query(
-            `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
-             VALUES ($1,'page_view',$2,$3,$4)`,
-            [site_id, page, device, t.toISOString()]
-          )
-        );
-      }
-    }
-
-    await Promise.all(inserts);
-
-    // add sample reports
-    const sample1 =
-      `Summary:\nTraffic is building and your pricing page is pulling attention.\n\n` +
-      `Next actions:\n1) Add a clear “Book a demo” button on /pricing\n2) Add proof (testimonial/logo strip)\n3) Track “signup_click” and “contact_submit” events\n\n` +
-      `Metric to watch tomorrow:\nClicks to /signup`;
-    const sample2 =
-      `Summary:\nVisitors are browsing multiple pages. Now we need to convert them.\n\n` +
-      `Next actions:\n1) Add a single CTA to the homepage\n2) Simplify /signup form\n3) Add a “1-minute explainer” section\n\n` +
-      `Metric to watch tomorrow:\nContact form submissions`;
-
-    await pool.query(
-      `INSERT INTO daily_reports (site_id, report_date, report_text)
-       VALUES ($1, CURRENT_DATE - INTERVAL '1 day', $2)
-       ON CONFLICT (site_id, report_date) DO NOTHING`,
-      [site_id, sample1]
-    );
-    await pool.query(
-      `INSERT INTO daily_reports (site_id, report_date, report_text)
-       VALUES ($1, CURRENT_DATE, $2)
-       ON CONFLICT (site_id, report_date) DO NOTHING`,
-      [site_id, sample2]
-    );
-
-    res.json({ ok: true, seeded_for: site_id });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-/* ---------------------------
    Optional: AI report generator (manual)
    POST /generate-report?token=...
 ----------------------------*/
@@ -525,18 +433,23 @@ app.post("/generate-report", async (req, res) => {
     const site_id = await siteIdFromToken(token);
     if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
-    if (!fetchFn) return res.status(500).json({ ok: false, error: "fetch not available on this runtime" });
-
     const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
 
     const metricsRes = await pool.query(
-      `SELECT $1::text as site_id, COUNT(*)::int AS total_events
-       FROM events_raw
-       WHERE site_id=$1 AND created_at::date = CURRENT_DATE`,
+      `
+      SELECT
+        $1::text as site_id,
+        COUNT(*)::int AS total_events,
+        SUM(CASE WHEN event_name='page_view' THEN 1 ELSE 0 END)::int AS page_views
+      FROM events_raw
+      WHERE site_id=$1 AND created_at >= NOW() - INTERVAL '7 days'
+      `,
       [site_id]
     );
 
-    const aiRes = await fetchFn("https://api.openai.com/v1/chat/completions", {
+    const metrics = metricsRes.rows[0];
+
+    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${OPENAI_API_KEY}`,
@@ -545,12 +458,12 @@ app.post("/generate-report", async (req, res) => {
       body: JSON.stringify({
         model: process.env.OPENAI_MODEL || "gpt-4o",
         messages: [
-          { role: "system", content: "You generate short daily business reports. Be specific, actionable, and concise." },
+          { role: "system", content: "You are a helpful business analytics assistant. Be plain-English, actionable, and concise." },
           {
             role: "user",
             content:
-              `Here are today's metrics (JSON): ${JSON.stringify(metricsRes.rows)}\n` +
-              `Write a daily report with:\n1) Summary\n2) 3 prioritized next actions\n3) One metric to watch tomorrow\n`
+              "Here are metrics for the last 7 days (JSON): " + JSON.stringify(metrics) + "\n" +
+              "Write:\n1) What happened (plain English)\n2) Trend + what it means\n3) 3 next steps\n4) One metric to watch"
           }
         ]
       })
@@ -586,8 +499,6 @@ app.post("/email-latest", async (req, res) => {
     const site_id = await siteIdFromToken(token);
     if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Invalid token" });
 
-    if (!fetchFn) return res.status(500).json({ ok: false, error: "fetch not available on this runtime" });
-
     const r = await pool.query(
       `SELECT report_text, report_date
        FROM daily_reports
@@ -601,7 +512,7 @@ app.post("/email-latest", async (req, res) => {
     const RESEND_API_KEY = requireEnv("RESEND_API_KEY");
     const from = requireEnv("FROM_EMAIL");
 
-    const emailRes = await fetchFn("https://api.resend.com/emails", {
+    const emailRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${RESEND_API_KEY}`,
@@ -624,7 +535,7 @@ app.post("/email-latest", async (req, res) => {
 
 /* ---------------------------
    Simple username/password login (NO bcrypt)
-   - Register requires SITE token
+   - Register requires SITE token (so random people can’t create accounts)
    POST /auth/register { token, email, password }
    POST /auth/login { email, password }
 ----------------------------*/
@@ -687,11 +598,104 @@ app.post("/auth/login", async (req, res) => {
 });
 
 /* ---------------------------
-   Dashboard UI (token based)
+   DEMO DATA SEEDER (DEV ONLY)
+   POST /demo/seed?token=...
+   body: { days: 7, events_per_day: 40 }
+   - also inserts 2 sample reports so /reports/latest shows something
+----------------------------*/
+app.post("/demo/seed", async (req, res) => {
+  try {
+    if (process.env.ENABLE_DEMO_SEED !== "true") {
+      return res.status(403).json({ ok: false, error: "Seeder disabled. Set ENABLE_DEMO_SEED=true" });
+    }
+
+    const token = req.query.token || req.body?.token;
+    const site_id = await siteIdFromToken(token);
+    if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Provide ?token=..." });
+
+    const days = Math.max(1, Math.min(parseInt(req.body?.days || "7", 10), 3650));
+    const eventsPerDay = Math.max(5, Math.min(parseInt(req.body?.events_per_day || "40", 10), 500));
+
+    const pages = ["/", "/pricing", "/services", "/about", "/contact", "/blog", "/faq", "/checkout"];
+    let inserted = 0;
+
+    for (let d = 0; d < days; d++) {
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      dayStart.setDate(dayStart.getDate() - d);
+
+      for (let i = 0; i < eventsPerDay; i++) {
+        const seconds = Math.floor(Math.random() * 86400);
+        const ts = new Date(dayStart.getTime() + seconds * 1000);
+
+        const r = Math.random();
+        const page =
+          r < 0.30 ? "/" :
+          r < 0.55 ? "/pricing" :
+          r < 0.70 ? "/services" :
+          r < 0.80 ? "/contact" :
+          pages[Math.floor(Math.random() * pages.length)];
+
+        const device = Math.random() < 0.62 ? "mobile" : "desktop";
+
+        await pool.query(
+          `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
+           VALUES ($1, 'page_view', $2, $3, $4)`,
+          [site_id, page, device, ts.toISOString()]
+        );
+        inserted++;
+      }
+    }
+
+    // sample reports (so demo doesn't look empty)
+    const sample1 =
+      "Summary:\nTraffic is concentrating on Pricing and Services, which suggests purchase intent.\n\n" +
+      "Trend:\nVisitors are exploring multiple pages, but your next step is to capture leads.\n\n" +
+      "Next steps:\n1) Add a clear primary CTA on Pricing (Book a demo / Get quote)\n2) Add a short proof section (logos/testimonials) above the fold\n3) Track a lead event (button click or form submit)\n\n" +
+      "Metric to watch:\nClicks to your main CTA";
+
+    const sample2 =
+      "Summary:\nYou’re getting steady visits and people are repeatedly checking Pricing.\n\n" +
+      "Trend:\nInterest is consistent — improving conversion copy should raise leads.\n\n" +
+      "Next steps:\n1) Put a single strongest offer at the top of Pricing\n2) Add a “what happens next” 3-step section\n3) Reduce friction: shorter forms + faster page load\n\n" +
+      "Metric to watch:\nPricing → Contact rate";
+
+    await pool.query(
+      `INSERT INTO daily_reports (site_id, report_date, report_text)
+       VALUES ($1, CURRENT_DATE - INTERVAL '1 day', $2)
+       ON CONFLICT (site_id, report_date) DO NOTHING`,
+      [site_id, sample1]
+    );
+    await pool.query(
+      `INSERT INTO daily_reports (site_id, report_date, report_text)
+       VALUES ($1, CURRENT_DATE, $2)
+       ON CONFLICT (site_id, report_date) DO NOTHING`,
+      [site_id, sample2]
+    );
+
+    res.json({ ok: true, site_id, days, events_per_day: eventsPerDay, inserted });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/* ---------------------------
+   Dashboard UI (token based, range selector)
    GET /dashboard?token=...
 ----------------------------*/
 app.get("/dashboard", async (req, res) => {
-res.send(`<!doctype html>
+  try {
+    setNoStore(res);
+
+    const token = req.query.token;
+    const site_id = await siteIdFromToken(token);
+
+    if (!site_id) {
+      return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+    }
+
+    res.setHeader("Content-Type", "text/html");
+    res.send(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -753,10 +757,20 @@ res.send(`<!doctype html>
       background: rgba(96,165,250,.12);
       color: var(--text);
       cursor:pointer;
-      font-weight:700;
+      font-weight:800;
     }
     .btn:hover{border-color: rgba(96,165,250,.5)}
     .btn:active{transform: translateY(1px)}
+    select{
+      border-radius:12px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.6);
+      color: var(--text);
+      padding:10px 12px;
+      font-weight:800;
+      outline:none;
+    }
+    select:hover{border-color: rgba(255,255,255,.18)}
     .grid{
       margin-top:18px;
       display:grid;
@@ -783,27 +797,19 @@ res.send(`<!doctype html>
       font-size:13px;
       color: var(--muted);
       letter-spacing:.2px;
-      font-weight:800;
+      font-weight:900;
       display:flex; align-items:center; justify-content:space-between;
       gap:10px;
     }
-    .status{
-      display:flex; align-items:center; gap:8px;
-      font-size:12px; color:var(--muted);
-    }
+    .status{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);}
     .dot{
       width:8px; height:8px; border-radius:50%;
       background: var(--accent2);
       box-shadow: 0 0 0 6px rgba(52,211,153,.12);
     }
-    .err{color: var(--danger); font-weight:700}
+    .err{color: var(--danger); font-weight:900}
     .muted{color:var(--muted); font-size:12px}
-    .kpi{
-      font-size:26px;
-      font-weight:900;
-      letter-spacing:.2px;
-      margin-top:8px;
-    }
+    .kpi{font-size:26px; font-weight:950; letter-spacing:.2px; margin-top:8px;}
     .hint{margin-top:8px; font-size:12px; color:var(--muted); line-height:1.4;}
     .assistantBox{
       background: rgba(15,23,42,.55);
@@ -822,15 +828,15 @@ res.send(`<!doctype html>
       border-radius: 14px;
       padding:12px;
     }
-    .mini .label{font-size:12px; color:var(--muted); font-weight:800;}
-    .mini .value{font-size:14px; font-weight:900;}
+    .mini .label{font-size:12px; color:var(--muted); font-weight:900;}
+    .mini .value{font-size:14px; font-weight:950;}
     .sparkWrap{
       background: rgba(15,23,42,.55);
       border:1px solid var(--border);
       border-radius: 14px;
       padding:12px;
     }
-    svg{width:100%; height:70px; display:block;}
+    svg{width:100%; height:86px; display:block;}
     .latest{
       white-space: pre-wrap;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
@@ -850,7 +856,7 @@ res.send(`<!doctype html>
       background: rgba(15,23,42,.55);
       margin-top:10px;
     }
-    .historyItem .date{font-weight:900; font-size:12px}
+    .historyItem .date{font-weight:950; font-size:12px}
     .historyItem .preview{margin-top:8px; font-size:13px; color: var(--text)}
   </style>
 </head>
@@ -867,11 +873,22 @@ res.send(`<!doctype html>
 
       <div class="controls">
         <span class="pill">Site: <b>${site_id}</b></span>
-        <button class="btn" onclick="refreshAll()">Refresh</button>
+
+        <select id="rangeSel" title="Time range">
+          <option value="1">1 day</option>
+          <option value="7" selected>1 week</option>
+          <option value="30">1 month</option>
+          <option value="365">1 year</option>
+          <option value="730">2 years</option>
+          <option value="1825">5 years</option>
+        </select>
+
+        <button class="btn" id="refreshBtn">Refresh</button>
       </div>
     </div>
 
     <div class="grid">
+
       <div class="card span12">
         <h2>
           Assistant Brief
@@ -887,9 +904,9 @@ res.send(`<!doctype html>
       </div>
 
       <div class="card span3">
-        <h2>Visits (7 days)</h2>
-        <div class="kpi" id="visits7d">0</div>
-        <div class="hint" id="trendHint">Compared to your 7-day average.</div>
+        <h2>Visits (range)</h2>
+        <div class="kpi" id="visitsRange">0</div>
+        <div class="hint" id="rangeHint">Total visits in the selected time range.</div>
       </div>
 
       <div class="card span3">
@@ -899,15 +916,15 @@ res.send(`<!doctype html>
       </div>
 
       <div class="card span3">
-        <h2>Most popular page (7d)</h2>
+        <h2>Most popular page (range)</h2>
         <div class="kpi" style="font-size:16px" id="topPage">—</div>
         <div class="hint" id="topPageHint">Where most attention is going.</div>
       </div>
 
       <div class="card span6">
-        <h2>7-day traffic trend</h2>
+        <h2>Traffic trend (range)</h2>
         <div class="sparkWrap">
-          <svg viewBox="0 0 300 70" preserveAspectRatio="none">
+          <svg viewBox="0 0 300 86" preserveAspectRatio="none">
             <polyline id="spark" fill="none" stroke="currentColor" stroke-width="3" points=""></polyline>
           </svg>
           <div class="muted" id="sparkLabel">Loading…</div>
@@ -918,7 +935,7 @@ res.send(`<!doctype html>
         <h2>Quick insights</h2>
         <div class="row" style="margin-top:10px;">
           <div class="mini" style="flex:1;">
-            <div class="label">Device mix (7d)</div>
+            <div class="label">Device mix (range)</div>
             <div class="value" id="deviceMix">—</div>
             <div class="muted" id="deviceHint">Mobile vs Desktop visitors.</div>
           </div>
@@ -943,12 +960,15 @@ res.send(`<!doctype html>
         <h2>Report history <span class="pill" id="countPill">0</span></h2>
         <div id="history"></div>
       </div>
+
     </div>
   </div>
 
 <script>
-  const base = location.origin;
-  const token = new URLSearchParams(location.search).get("token");
+  // IMPORTANT: no backticks, no \${} inside this script (prevents server template issues)
+  var base = location.origin;
+  var token = new URLSearchParams(location.search).get("token");
+  var rangeSel = document.getElementById("rangeSel");
 
   function esc(s){
     return String(s || "").replace(/[&<>"']/g, function(m){
@@ -959,117 +979,143 @@ res.send(`<!doctype html>
   function prettyPage(path){
     if(!path) return "Unknown";
     if(path === "/") return "Homepage";
-    var p = (path.split("?")[0] || "").replace(/^\\/+/, "");
+    var p = String(path).split("?")[0];
+    p = p.replace(/^\\/+/, "");
     if(!p) return "Homepage";
     p = p.replace(/[-_]/g, " ");
-    p = p.replace(/\\b\\w/g, c => c.toUpperCase());
+    p = p.replace(/\\b\\w/g, function(c){ return c.toUpperCase(); });
     return p;
   }
 
   function timeAgo(iso){
     if(!iso) return "";
-    const t = new Date(iso).getTime();
-    const diff = Date.now() - t;
-    const mins = Math.floor(diff/60000);
+    var t = new Date(iso).getTime();
+    var diff = Date.now() - t;
+    var mins = Math.floor(diff/60000);
     if(mins < 1) return "just now";
     if(mins < 60) return mins + " min ago";
-    const hrs = Math.floor(mins/60);
+    var hrs = Math.floor(mins/60);
     if(hrs < 24) return hrs + " hr ago";
-    const days = Math.floor(hrs/24);
+    var days = Math.floor(hrs/24);
     return days + " day" + (days===1?"":"s") + " ago";
   }
 
-  function setMood(text){ document.getElementById("moodPill").textContent = text; }
+  function setMood(text){
+    document.getElementById("moodPill").textContent = text;
+  }
+
   function setStatus(text, isErr){
-    const el = document.getElementById("statusText");
+    var el = document.getElementById("statusText");
     el.textContent = text;
     el.className = isErr ? "err" : "";
   }
 
+  function rangeLabel(days){
+    if(days === 1) return "1 day";
+    if(days === 7) return "1 week";
+    if(days === 30) return "1 month";
+    if(days === 365) return "1 year";
+    if(days === 730) return "2 years";
+    if(days === 1825) return "5 years";
+    return days + " days";
+  }
+
   function buildAssistantBrief(m){
-    const today = m.visits_today || 0;
-    const last7 = m.visits_7d || 0;
-    const avg7 = last7 / 7;
-    const pct = avg7 > 0 ? Math.round(((today - avg7) / avg7) * 100) : null;
+    var days = m.days || 7;
+    var label = rangeLabel(days);
 
-    let trendLine = "Not enough history yet to call a strong trend.";
-    let mood = "Neutral";
+    var today = m.visits_today || 0;
+    var total = m.visits_range || 0;
+    var avg = days > 0 ? (total / days) : 0;
 
+    var trendLine = "Not enough history yet to call a strong trend.";
+    var mood = "Neutral";
+
+    // estimate vs average: today compared to average day in range
+    var pct = avg > 0 ? Math.round(((today - avg) / avg) * 100) : null;
     if(pct !== null){
-      if(pct >= 25){ trendLine = "Traffic is up about " + pct + "% vs your 7-day average."; mood = "📈 Up"; }
-      else if(pct <= -25){ trendLine = "Traffic is down about " + Math.abs(pct) + "% vs your 7-day average."; mood = "📉 Down"; }
-      else { trendLine = "Traffic is steady vs your 7-day average."; mood = "✅ Stable"; }
+      if(pct >= 25){ trendLine = "Today is up about " + pct + "% vs your average day (" + label + ")."; mood = "📈 Up"; }
+      else if(pct <= -25){ trendLine = "Today is down about " + Math.abs(pct) + "% vs your average day (" + label + ")."; mood = "📉 Down"; }
+      else { trendLine = "Traffic is steady vs your average day (" + label + ")."; mood = "✅ Stable"; }
     }
 
-    const topPage = m.top_page_7d && m.top_page_7d.page_type ? prettyPage(m.top_page_7d.page_type) : null;
-    const topViews = m.top_page_7d && m.top_page_7d.views ? m.top_page_7d.views : 0;
+    var tp = m.top_page ? prettyPage(m.top_page.page_type) : null;
+    var tv = m.top_page ? (m.top_page.views || 0) : 0;
 
-    const mobile = (m.device_mix_7d && m.device_mix_7d.mobile) ? m.device_mix_7d.mobile : 0;
-    const desktop = (m.device_mix_7d && m.device_mix_7d.desktop) ? m.device_mix_7d.desktop : 0;
-    const deviceMajor = (mobile > desktop) ? "mobile" : (desktop > mobile) ? "desktop" : "mixed";
+    var mobile = m.device_mix ? (m.device_mix.mobile || 0) : 0;
+    var desktop = m.device_mix ? (m.device_mix.desktop || 0) : 0;
+    var deviceMajor = (mobile > desktop) ? "mobile" : (desktop > mobile) ? "desktop" : "mixed";
 
-    const advice = [];
+    var advice = [];
 
-    if(today === 0 && last7 === 0){
-      advice.push("Open your site yourself (incognito) to confirm visits are being recorded.");
+    if(today === 0 && total === 0){
+      advice.push("Seed demo data (or open your site incognito) to generate real activity.");
       advice.push("Make sure the tracker snippet is in the <head> or near the top of <body>.");
-      advice.push("Next: track one high-value action (button click or form submit).");
+      advice.push("Next: track a high-value action (button click or form submit).");
       return { mood: "⚠️ No data yet", text:
-        "What happened: No visits have been recorded yet.\\n\\n" +
+        "What happened: No visits recorded yet (" + label + ").\\n\\n" +
         "Trend: " + trendLine + "\\n\\n" +
-        "What it means: Tracking is installed, but we have no traffic data to analyze yet.\\n\\n" +
+        "What it means: Tracking is ready, but we need traffic to generate insights.\\n\\n" +
         "What to do next:\\n- " + advice.join("\\n- ")
       };
     }
 
     if(deviceMajor === "mobile") advice.push("Most visitors are on mobile — make your main button big and near the top.");
-    if(deviceMajor === "desktop") advice.push("Most visitors are on desktop — add a clear CTA and proof near the top.");
-    if(topPage) advice.push("Your hottest page is " + topPage + " — add a clear next step (Book a call / Get a quote).");
+    if(deviceMajor === "desktop") advice.push("Most visitors are on desktop — add a clear CTA and proof section above the fold.");
+    if(tp) advice.push("Your hottest page is " + tp + " — add a clear next step there (Book a demo / Get a quote).");
     advice.push("Track a lead action next so we measure leads, not just visits.");
 
-    let happened = "Today you had " + today + " visits.";
-    if(topPage) happened += " Most attention is on " + topPage + " (" + topViews + " views in 7 days).";
+    var happened = "Today you had " + today + " visits. In the last " + label + ", you had " + total + " total visits.";
+    if(tp) happened += " Most attention is on " + tp + " (" + tv + " views).";
 
     return { mood: mood, text:
       "What happened: " + happened + "\\n\\n" +
       "Trend: " + trendLine + "\\n\\n" +
-      "What it means: Visitors show intent on specific pages. Let’s convert that interest into leads.\\n\\n" +
+      "What it means: Visitors are showing intent on specific pages — now we turn that into leads.\\n\\n" +
       "What to do next:\\n- " + advice.slice(0,3).join("\\n- ")
     };
   }
 
   function drawSpark(trend){
-    const values = (trend || []).map(x => x.visits || x.cnt || 0);
-    const max = Math.max(...values, 1);
-    const w = 300, h = 70, pad = 6;
+    // trend: [{day, visits}...]
+    var values = (trend || []).map(function(x){ return x.visits || 0; });
+    var max = 1;
+    for(var i=0;i<values.length;i++){ if(values[i] > max) max = values[i]; }
 
-    const pts = values.map((v,i) => {
-      const x = values.length === 1 ? w/2 : (i * (w/(values.length-1)));
-      const y = h - pad - (v / max) * (h - pad*2);
-      return x.toFixed(1) + "," + y.toFixed(1);
-    });
-
+    var w = 300, h = 86, pad = 8;
+    var pts = [];
+    for(var j=0;j<values.length;j++){
+      var x = (values.length === 1) ? w/2 : (j * (w/(values.length-1)));
+      var y = h - pad - (values[j] / max) * (h - pad*2);
+      pts.push(x.toFixed(1) + "," + y.toFixed(1));
+    }
     document.getElementById("spark").setAttribute("points", pts.join(" "));
     document.getElementById("sparkLabel").textContent = "Daily visits: " + values.join(" • ");
   }
 
   async function loadMetrics(){
-    const r = await fetch(base + "/metrics?token=" + encodeURIComponent(token), { cache: "no-store" });
-    const data = await r.json();
+    var days = parseInt(rangeSel.value, 10) || 7;
+
+    var url = base + "/metrics?token=" + encodeURIComponent(token) + "&days=" + encodeURIComponent(String(days));
+    var r = await fetch(url);
+    var data = await r.json();
+
     if(!data.ok){
       setMood("Error");
       document.getElementById("assistantBrief").textContent = data.error || "Failed to load metrics";
-      return;
+      return null;
     }
 
-    document.getElementById("visitsToday").textContent = data.visits_today ?? data.events_today ?? 0;
-    document.getElementById("visits7d").textContent = data.visits_7d ?? data.events_7d ?? 0;
+    document.getElementById("todayNote").textContent = rangeLabel(days);
+    document.getElementById("visitsToday").textContent = data.visits_today;
+    document.getElementById("visitsRange").textContent = data.visits_range;
+    document.getElementById("rangeHint").textContent = "Total visits in " + rangeLabel(days) + ".";
 
     if(data.last_event){
-      const evt = data.last_event.event_name === "page_view" ? "Viewed" : data.last_event.event_name;
-      const page = prettyPage(data.last_event.page_type);
-      const when = timeAgo(data.last_event.created_at);
-      const device = data.last_event.device || "unknown";
+      var evt = (data.last_event.event_name === "page_view") ? "Viewed" : data.last_event.event_name;
+      var page = prettyPage(data.last_event.page_type);
+      var when = timeAgo(data.last_event.created_at);
+      var device = data.last_event.device ? data.last_event.device : "unknown";
       document.getElementById("lastActivity").textContent = evt + " " + page + " • " + when;
       document.getElementById("lastActivityHint").textContent = "Device: " + device;
     } else {
@@ -1077,73 +1123,61 @@ res.send(`<!doctype html>
       document.getElementById("lastActivityHint").textContent = "Once your site gets visits, this will update.";
     }
 
-    if(data.top_page_7d){
-      const tp = prettyPage(data.top_page_7d.page_type);
+    if(data.top_page){
+      var tp = prettyPage(data.top_page.page_type);
       document.getElementById("topPage").textContent = tp;
-      document.getElementById("topPageHint").textContent = (data.top_page_7d.views || data.top_page_7d.cnt || 0) + " views in last 7 days";
-    } else if (data.top_page){
-      const tp = prettyPage(data.top_page.page);
-      document.getElementById("topPage").textContent = tp;
-      document.getElementById("topPageHint").textContent = (data.top_page.cnt || 0) + " views in last 7 days";
+      document.getElementById("topPageHint").textContent = data.top_page.views + " views in " + rangeLabel(days);
     } else {
       document.getElementById("topPage").textContent = "Not enough data";
       document.getElementById("topPageHint").textContent = "We’ll show the most visited page once visits come in.";
     }
 
-    const mix = data.device_mix_7d || {};
-    const mob = mix.mobile || 0;
-    const desk = mix.desktop || 0;
-    const total = mob + desk;
-    const mobPct = total ? Math.round((mob/total)*100) : 0;
-    const deskPct = total ? Math.round((desk/total)*100) : 0;
+    var mob = data.device_mix && data.device_mix.mobile ? data.device_mix.mobile : 0;
+    var desk = data.device_mix && data.device_mix.desktop ? data.device_mix.desktop : 0;
+    var total = mob + desk;
+    var mobPct = total ? Math.round((mob/total)*100) : 0;
+    var deskPct = total ? Math.round((desk/total)*100) : 0;
     document.getElementById("deviceMix").textContent = mobPct + "% mobile • " + deskPct + "% desktop";
 
     if(data.top_pages_today && data.top_pages_today.length){
-      document.getElementById("topToday").textContent =
-        data.top_pages_today.map(p => prettyPage(p.page_type) + " (" + p.views + ")").join(", ");
+      var list = data.top_pages_today.map(function(p){
+        return prettyPage(p.page_type) + " (" + p.views + ")";
+      }).join(", ");
+      document.getElementById("topToday").textContent = list;
     } else {
       document.getElementById("topToday").textContent = "No visits yet today";
     }
 
-    const brief = buildAssistantBrief({
-      visits_today: data.visits_today ?? data.events_today ?? 0,
-      visits_7d: data.visits_7d ?? data.events_7d ?? 0,
-      top_page_7d: data.top_page_7d || null,
-      device_mix_7d: data.device_mix_7d || {mobile:0,desktop:0},
-      last_event: data.last_event || null,
-      trend_7d: data.trend_7d || []
-    });
-
+    var brief = buildAssistantBrief(data);
     setMood(brief.mood);
     document.getElementById("assistantBrief").textContent = brief.text;
 
-    drawSpark(data.trend_7d || []);
-
+    drawSpark(data.trend || []);
+    return data;
   }
 
   async function loadReports(){
     setStatus("Loading…", false);
 
-    const latestMeta = document.getElementById("latestMeta");
-    const latestBox = document.getElementById("latestReport");
+    var latestMeta = document.getElementById("latestMeta");
+    var latestBox = document.getElementById("latestReport");
 
-    const r1 = await fetch(base + "/reports/latest?token=" + encodeURIComponent(token), { cache: "no-store" });
-    const d1 = await r1.json();
+    var r1 = await fetch(base + "/reports/latest?token=" + encodeURIComponent(token));
+    var d1 = await r1.json();
 
     if(!d1.ok){
       latestMeta.textContent = "";
       latestBox.textContent = d1.error || "No report found yet.";
     } else {
-      const dt = new Date(d1.report.report_date);
+      var dt = new Date(d1.report.report_date);
       latestMeta.textContent = dt.toDateString();
       latestBox.textContent = d1.report.report_text;
     }
 
-    const r2 = await fetch(base + "/reports?limit=20&token=" + encodeURIComponent(token), { cache: "no-store" });
-    const d2 = await r2.json();
-
-    const hist = document.getElementById("history");
-    const pill = document.getElementById("countPill");
+    var r2 = await fetch(base + "/reports?limit=20&token=" + encodeURIComponent(token));
+    var d2 = await r2.json();
+    var hist = document.getElementById("history");
+    var pill = document.getElementById("countPill");
     hist.innerHTML = "";
 
     if(!d2.ok){
@@ -1151,8 +1185,8 @@ res.send(`<!doctype html>
       hist.innerHTML = '<div class="historyItem"><div class="err">' + esc(d2.error || "No history") + '</div></div>';
     } else {
       pill.textContent = d2.reports.length;
-      hist.innerHTML = d2.reports.map(rep => {
-        const dd = new Date(rep.report_date);
+      hist.innerHTML = d2.reports.map(function(rep){
+        var dd = new Date(rep.report_date);
         return (
           '<div class="historyItem">' +
             '<div class="date">' + dd.toDateString() + '</div>' +
@@ -1170,87 +1204,20 @@ res.send(`<!doctype html>
     await loadReports();
   }
 
+  document.getElementById("refreshBtn").addEventListener("click", function(){
+    refreshAll();
+  });
+
+  rangeSel.addEventListener("change", function(){
+    refreshAll();
+  });
+
   refreshAll();
 </script>
 </body>
 </html>`);
-
-    // Your existing big dashboard HTML stays the same.
-    // IMPORTANT: This dashboard expects /metrics to return:
-    // visits_today, visits_7d, trend_7d[{day,visits}], last_event, top_page_7d{page_type,views}, device_mix_7d{mobile,desktop}, top_pages_today
-    res.send(`
-<!doctype html>
-<html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Constrava Dashboard</title>
-<body style="font-family:Arial;padding:20px;background:#0b0f19;color:#e5e7eb;">
-<h1>Constrava Dashboard ✅</h1>
-<p>Authorized for site: <b>${site_id}</b></p>
-<p>Open:</p>
-<ul>
-  <li><a style="color:#60a5fa" href="/metrics?token=${encodeURIComponent(token)}">/metrics?token=...</a></li>
-  <li><a style="color:#60a5fa" href="/reports/latest?token=${encodeURIComponent(token)}">/reports/latest?token=...</a></li>
-  <li><a style="color:#60a5fa" href="/reports?token=${encodeURIComponent(token)}">/reports?token=...</a></li>
-  <li><a style="color:#60a5fa" href="/analytics/7d?token=${encodeURIComponent(token)}">/analytics/7d?token=...</a></li>
-</ul>
-<p>(Paste your full fancy dashboard HTML here — this route is now stable.)</p>
-</body></html>
-    `);
   } catch (err) {
     res.status(500).send(err.message);
-  }
-});
-
-// DEMO DATA SEEDER (DEV ONLY)
-// POST /demo/seed?token=...  body: { days: 7, events_per_day: 40 }
-app.post("/demo/seed", async (req, res) => {
-  try {
-    if (process.env.ENABLE_DEMO_SEED !== "true") {
-      return res.status(403).json({ ok: false, error: "Seeder disabled. Set ENABLE_DEMO_SEED=true" });
-    }
-
-    const token = req.query.token || req.body?.token;
-    const site_id = await siteIdFromToken(token);
-    if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Provide ?token=..." });
-
-    const days = Math.max(1, Math.min(parseInt(req.body?.days || "7", 10), 30));
-    const eventsPerDay = Math.max(5, Math.min(parseInt(req.body?.events_per_day || "40", 10), 300));
-
-    const pages = ["/", "/pricing", "/services", "/about", "/contact", "/blog", "/faq", "/checkout"];
-
-    let inserted = 0;
-
-    for (let d = 0; d < days; d++) {
-      const dayStart = new Date();
-      dayStart.setHours(0, 0, 0, 0);
-      dayStart.setDate(dayStart.getDate() - d);
-
-      for (let i = 0; i < eventsPerDay; i++) {
-        const seconds = Math.floor(Math.random() * 86400);
-        const ts = new Date(dayStart.getTime() + seconds * 1000);
-
-        const r = Math.random();
-        const page =
-          r < 0.30 ? "/" :
-          r < 0.55 ? "/pricing" :
-          r < 0.70 ? "/services" :
-          r < 0.80 ? "/contact" :
-          pages[Math.floor(Math.random() * pages.length)];
-
-        const device = Math.random() < 0.62 ? "mobile" : "desktop";
-
-        await pool.query(
-          `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
-           VALUES ($1, 'page_view', $2, $3, $4)`,
-          [site_id, page, device, ts.toISOString()]
-        );
-
-        inserted++;
-      }
-    }
-
-    res.json({ ok: true, site_id, days, events_per_day: eventsPerDay, inserted });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
