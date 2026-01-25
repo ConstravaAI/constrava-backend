@@ -1293,6 +1293,31 @@ app.post("/demo/seed", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+app.get("/analytics/7d", async (req, res) => {
+  try {
+    const token = req.query.token;
+    const site_id = await siteIdFromToken(token);
+    if (!site_id) {
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    }
+
+    const r = await pool.query(`
+      SELECT
+        created_at::date AS day,
+        COUNT(*)::int AS events
+      FROM events_raw
+      WHERE site_id = $1
+        AND created_at >= NOW() - INTERVAL '7 days'
+      GROUP BY day
+      ORDER BY day
+    `, [site_id]);
+
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ ok: true, series: r.rows });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 /* ---------------------------
    Start server (keep LAST)
