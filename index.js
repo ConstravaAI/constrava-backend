@@ -691,17 +691,490 @@ app.post("/auth/login", async (req, res) => {
    GET /dashboard?token=...
 ----------------------------*/
 app.get("/dashboard", async (req, res) => {
-  try {
-    setNoStore(res);
+res.send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Constrava Dashboard</title>
+  <style>
+    :root{
+      --bg:#0b0f19;
+      --panel:#111827;
+      --panel2:#0f172a;
+      --text:#e5e7eb;
+      --muted:#9ca3af;
+      --border:rgba(255,255,255,.08);
+      --accent:#60a5fa;
+      --accent2:#34d399;
+      --danger:#fb7185;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background: radial-gradient(1200px 800px at 20% -10%, rgba(96,165,250,.25), transparent 60%),
+                  radial-gradient(900px 600px at 90% 0%, rgba(52,211,153,.18), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+    }
+    .wrap{max-width:1180px; margin:0 auto; padding:26px 18px 60px;}
+    .topbar{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:14px; padding:18px 18px;
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+    .brand{display:flex; align-items:center; gap:12px;}
+    .logo{
+      width:40px; height:40px; border-radius:12px;
+      background: linear-gradient(135deg, rgba(96,165,250,.9), rgba(52,211,153,.85));
+      box-shadow: 0 10px 25px rgba(96,165,250,.25);
+    }
+    h1{font-size:18px; margin:0;}
+    .sub{font-size:12px; color:var(--muted); margin-top:2px;}
+    .controls{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+    .pill{
+      font-size:12px; color: var(--muted);
+      border:1px solid var(--border);
+      padding:6px 10px;
+      border-radius:999px;
+      background: rgba(15,23,42,.6);
+    }
+    .btn{
+      padding:10px 14px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background: rgba(96,165,250,.12);
+      color: var(--text);
+      cursor:pointer;
+      font-weight:700;
+    }
+    .btn:hover{border-color: rgba(96,165,250,.5)}
+    .btn:active{transform: translateY(1px)}
+    .grid{
+      margin-top:18px;
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap:16px;
+    }
+    .span12{grid-column: 1 / -1;}
+    .span8{grid-column: span 8;}
+    .span6{grid-column: span 6;}
+    .span4{grid-column: span 4;}
+    .span3{grid-column: span 3;}
+    @media (max-width: 1000px){
+      .span8,.span6,.span4,.span3{grid-column: 1 / -1;}
+    }
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding:16px;
+    }
+    .card h2{
+      margin:0 0 10px 0;
+      font-size:13px;
+      color: var(--muted);
+      letter-spacing:.2px;
+      font-weight:800;
+      display:flex; align-items:center; justify-content:space-between;
+      gap:10px;
+    }
+    .status{
+      display:flex; align-items:center; gap:8px;
+      font-size:12px; color:var(--muted);
+    }
+    .dot{
+      width:8px; height:8px; border-radius:50%;
+      background: var(--accent2);
+      box-shadow: 0 0 0 6px rgba(52,211,153,.12);
+    }
+    .err{color: var(--danger); font-weight:700}
+    .muted{color:var(--muted); font-size:12px}
+    .kpi{
+      font-size:26px;
+      font-weight:900;
+      letter-spacing:.2px;
+      margin-top:8px;
+    }
+    .hint{margin-top:8px; font-size:12px; color:var(--muted); line-height:1.4;}
+    .assistantBox{
+      background: rgba(15,23,42,.55);
+      border:1px solid var(--border);
+      border-radius: 14px;
+      padding:14px;
+      line-height:1.55;
+      font-size:14px;
+      white-space:pre-wrap;
+    }
+    .row{display:flex; align-items:center; justify-content:space-between; gap:12px;}
+    .mini{
+      display:flex; flex-direction:column; gap:6px;
+      background: rgba(15,23,42,.55);
+      border:1px solid var(--border);
+      border-radius: 14px;
+      padding:12px;
+    }
+    .mini .label{font-size:12px; color:var(--muted); font-weight:800;}
+    .mini .value{font-size:14px; font-weight:900;}
+    .sparkWrap{
+      background: rgba(15,23,42,.55);
+      border:1px solid var(--border);
+      border-radius: 14px;
+      padding:12px;
+    }
+    svg{width:100%; height:70px; display:block;}
+    .latest{
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+      font-size: 13px;
+      line-height: 1.45;
+      background: rgba(15,23,42,.65);
+      border:1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      overflow:auto;
+      min-height: 220px;
+    }
+    .historyItem{
+      padding:12px;
+      border-radius: 14px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.55);
+      margin-top:10px;
+    }
+    .historyItem .date{font-weight:900; font-size:12px}
+    .historyItem .preview{margin-top:8px; font-size:13px; color: var(--text)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>Constrava Dashboard</h1>
+          <div class="sub">Your AI tech assistant — conclusions + next steps in plain English</div>
+        </div>
+      </div>
 
-    const token = req.query.token;
-    const site_id = await siteIdFromToken(token);
+      <div class="controls">
+        <span class="pill">Site: <b>${site_id}</b></span>
+        <button class="btn" onclick="refreshAll()">Refresh</button>
+      </div>
+    </div>
 
-    if (!site_id) {
-      return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+    <div class="grid">
+      <div class="card span12">
+        <h2>
+          Assistant Brief
+          <span class="pill" id="moodPill">Loading…</span>
+        </h2>
+        <div id="assistantBrief" class="assistantBox">Loading…</div>
+      </div>
+
+      <div class="card span3">
+        <h2>Visits today <span class="pill" id="todayNote">—</span></h2>
+        <div class="kpi" id="visitsToday">0</div>
+        <div class="hint" id="todayHint">How many people visited today.</div>
+      </div>
+
+      <div class="card span3">
+        <h2>Visits (7 days)</h2>
+        <div class="kpi" id="visits7d">0</div>
+        <div class="hint" id="trendHint">Compared to your 7-day average.</div>
+      </div>
+
+      <div class="card span3">
+        <h2>Latest activity</h2>
+        <div class="kpi" style="font-size:16px" id="lastActivity">—</div>
+        <div class="hint" id="lastActivityHint">Most recent interaction we recorded.</div>
+      </div>
+
+      <div class="card span3">
+        <h2>Most popular page (7d)</h2>
+        <div class="kpi" style="font-size:16px" id="topPage">—</div>
+        <div class="hint" id="topPageHint">Where most attention is going.</div>
+      </div>
+
+      <div class="card span6">
+        <h2>7-day traffic trend</h2>
+        <div class="sparkWrap">
+          <svg viewBox="0 0 300 70" preserveAspectRatio="none">
+            <polyline id="spark" fill="none" stroke="currentColor" stroke-width="3" points=""></polyline>
+          </svg>
+          <div class="muted" id="sparkLabel">Loading…</div>
+        </div>
+      </div>
+
+      <div class="card span6">
+        <h2>Quick insights</h2>
+        <div class="row" style="margin-top:10px;">
+          <div class="mini" style="flex:1;">
+            <div class="label">Device mix (7d)</div>
+            <div class="value" id="deviceMix">—</div>
+            <div class="muted" id="deviceHint">Mobile vs Desktop visitors.</div>
+          </div>
+          <div class="mini" style="flex:1;">
+            <div class="label">Top pages today</div>
+            <div class="value" id="topToday">—</div>
+            <div class="muted">The pages people are viewing today.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card span8">
+        <h2>
+          Latest report
+          <span class="status"><span class="dot"></span><span id="statusText">Ready</span></span>
+        </h2>
+        <div id="latestMeta" class="muted"></div>
+        <div id="latestReport" class="latest">Loading…</div>
+      </div>
+
+      <div class="card span4">
+        <h2>Report history <span class="pill" id="countPill">0</span></h2>
+        <div id="history"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const base = location.origin;
+  const token = new URLSearchParams(location.search).get("token");
+
+  function esc(s){
+    return String(s || "").replace(/[&<>"']/g, function(m){
+      return ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" })[m];
+    });
+  }
+
+  function prettyPage(path){
+    if(!path) return "Unknown";
+    if(path === "/") return "Homepage";
+    var p = (path.split("?")[0] || "").replace(/^\\/+/, "");
+    if(!p) return "Homepage";
+    p = p.replace(/[-_]/g, " ");
+    p = p.replace(/\\b\\w/g, c => c.toUpperCase());
+    return p;
+  }
+
+  function timeAgo(iso){
+    if(!iso) return "";
+    const t = new Date(iso).getTime();
+    const diff = Date.now() - t;
+    const mins = Math.floor(diff/60000);
+    if(mins < 1) return "just now";
+    if(mins < 60) return mins + " min ago";
+    const hrs = Math.floor(mins/60);
+    if(hrs < 24) return hrs + " hr ago";
+    const days = Math.floor(hrs/24);
+    return days + " day" + (days===1?"":"s") + " ago";
+  }
+
+  function setMood(text){ document.getElementById("moodPill").textContent = text; }
+  function setStatus(text, isErr){
+    const el = document.getElementById("statusText");
+    el.textContent = text;
+    el.className = isErr ? "err" : "";
+  }
+
+  function buildAssistantBrief(m){
+    const today = m.visits_today || 0;
+    const last7 = m.visits_7d || 0;
+    const avg7 = last7 / 7;
+    const pct = avg7 > 0 ? Math.round(((today - avg7) / avg7) * 100) : null;
+
+    let trendLine = "Not enough history yet to call a strong trend.";
+    let mood = "Neutral";
+
+    if(pct !== null){
+      if(pct >= 25){ trendLine = "Traffic is up about " + pct + "% vs your 7-day average."; mood = "📈 Up"; }
+      else if(pct <= -25){ trendLine = "Traffic is down about " + Math.abs(pct) + "% vs your 7-day average."; mood = "📉 Down"; }
+      else { trendLine = "Traffic is steady vs your 7-day average."; mood = "✅ Stable"; }
     }
 
-    res.setHeader("Content-Type", "text/html");
+    const topPage = m.top_page_7d && m.top_page_7d.page_type ? prettyPage(m.top_page_7d.page_type) : null;
+    const topViews = m.top_page_7d && m.top_page_7d.views ? m.top_page_7d.views : 0;
+
+    const mobile = (m.device_mix_7d && m.device_mix_7d.mobile) ? m.device_mix_7d.mobile : 0;
+    const desktop = (m.device_mix_7d && m.device_mix_7d.desktop) ? m.device_mix_7d.desktop : 0;
+    const deviceMajor = (mobile > desktop) ? "mobile" : (desktop > mobile) ? "desktop" : "mixed";
+
+    const advice = [];
+
+    if(today === 0 && last7 === 0){
+      advice.push("Open your site yourself (incognito) to confirm visits are being recorded.");
+      advice.push("Make sure the tracker snippet is in the <head> or near the top of <body>.");
+      advice.push("Next: track one high-value action (button click or form submit).");
+      return { mood: "⚠️ No data yet", text:
+        "What happened: No visits have been recorded yet.\\n\\n" +
+        "Trend: " + trendLine + "\\n\\n" +
+        "What it means: Tracking is installed, but we have no traffic data to analyze yet.\\n\\n" +
+        "What to do next:\\n- " + advice.join("\\n- ")
+      };
+    }
+
+    if(deviceMajor === "mobile") advice.push("Most visitors are on mobile — make your main button big and near the top.");
+    if(deviceMajor === "desktop") advice.push("Most visitors are on desktop — add a clear CTA and proof near the top.");
+    if(topPage) advice.push("Your hottest page is " + topPage + " — add a clear next step (Book a call / Get a quote).");
+    advice.push("Track a lead action next so we measure leads, not just visits.");
+
+    let happened = "Today you had " + today + " visits.";
+    if(topPage) happened += " Most attention is on " + topPage + " (" + topViews + " views in 7 days).";
+
+    return { mood: mood, text:
+      "What happened: " + happened + "\\n\\n" +
+      "Trend: " + trendLine + "\\n\\n" +
+      "What it means: Visitors show intent on specific pages. Let’s convert that interest into leads.\\n\\n" +
+      "What to do next:\\n- " + advice.slice(0,3).join("\\n- ")
+    };
+  }
+
+  function drawSpark(trend){
+    const values = (trend || []).map(x => x.visits || x.cnt || 0);
+    const max = Math.max(...values, 1);
+    const w = 300, h = 70, pad = 6;
+
+    const pts = values.map((v,i) => {
+      const x = values.length === 1 ? w/2 : (i * (w/(values.length-1)));
+      const y = h - pad - (v / max) * (h - pad*2);
+      return x.toFixed(1) + "," + y.toFixed(1);
+    });
+
+    document.getElementById("spark").setAttribute("points", pts.join(" "));
+    document.getElementById("sparkLabel").textContent = "Daily visits: " + values.join(" • ");
+  }
+
+  async function loadMetrics(){
+    const r = await fetch(base + "/metrics?token=" + encodeURIComponent(token), { cache: "no-store" });
+    const data = await r.json();
+    if(!data.ok){
+      setMood("Error");
+      document.getElementById("assistantBrief").textContent = data.error || "Failed to load metrics";
+      return;
+    }
+
+    document.getElementById("visitsToday").textContent = data.visits_today ?? data.events_today ?? 0;
+    document.getElementById("visits7d").textContent = data.visits_7d ?? data.events_7d ?? 0;
+
+    if(data.last_event){
+      const evt = data.last_event.event_name === "page_view" ? "Viewed" : data.last_event.event_name;
+      const page = prettyPage(data.last_event.page_type);
+      const when = timeAgo(data.last_event.created_at);
+      const device = data.last_event.device || "unknown";
+      document.getElementById("lastActivity").textContent = evt + " " + page + " • " + when;
+      document.getElementById("lastActivityHint").textContent = "Device: " + device;
+    } else {
+      document.getElementById("lastActivity").textContent = "No activity yet";
+      document.getElementById("lastActivityHint").textContent = "Once your site gets visits, this will update.";
+    }
+
+    if(data.top_page_7d){
+      const tp = prettyPage(data.top_page_7d.page_type);
+      document.getElementById("topPage").textContent = tp;
+      document.getElementById("topPageHint").textContent = (data.top_page_7d.views || data.top_page_7d.cnt || 0) + " views in last 7 days";
+    } else if (data.top_page){
+      const tp = prettyPage(data.top_page.page);
+      document.getElementById("topPage").textContent = tp;
+      document.getElementById("topPageHint").textContent = (data.top_page.cnt || 0) + " views in last 7 days";
+    } else {
+      document.getElementById("topPage").textContent = "Not enough data";
+      document.getElementById("topPageHint").textContent = "We’ll show the most visited page once visits come in.";
+    }
+
+    const mix = data.device_mix_7d || {};
+    const mob = mix.mobile || 0;
+    const desk = mix.desktop || 0;
+    const total = mob + desk;
+    const mobPct = total ? Math.round((mob/total)*100) : 0;
+    const deskPct = total ? Math.round((desk/total)*100) : 0;
+    document.getElementById("deviceMix").textContent = mobPct + "% mobile • " + deskPct + "% desktop";
+
+    if(data.top_pages_today && data.top_pages_today.length){
+      document.getElementById("topToday").textContent =
+        data.top_pages_today.map(p => prettyPage(p.page_type) + " (" + p.views + ")").join(", ");
+    } else {
+      document.getElementById("topToday").textContent = "No visits yet today";
+    }
+
+    const brief = buildAssistantBrief({
+      visits_today: data.visits_today ?? data.events_today ?? 0,
+      visits_7d: data.visits_7d ?? data.events_7d ?? 0,
+      top_page_7d: data.top_page_7d || null,
+      device_mix_7d: data.device_mix_7d || {mobile:0,desktop:0},
+      last_event: data.last_event || null,
+      trend_7d: data.trend_7d || []
+    });
+
+    setMood(brief.mood);
+    document.getElementById("assistantBrief").textContent = brief.text;
+
+    drawSpark(data.trend_7d || []);
+
+  }
+
+  async function loadReports(){
+    setStatus("Loading…", false);
+
+    const latestMeta = document.getElementById("latestMeta");
+    const latestBox = document.getElementById("latestReport");
+
+    const r1 = await fetch(base + "/reports/latest?token=" + encodeURIComponent(token), { cache: "no-store" });
+    const d1 = await r1.json();
+
+    if(!d1.ok){
+      latestMeta.textContent = "";
+      latestBox.textContent = d1.error || "No report found yet.";
+    } else {
+      const dt = new Date(d1.report.report_date);
+      latestMeta.textContent = dt.toDateString();
+      latestBox.textContent = d1.report.report_text;
+    }
+
+    const r2 = await fetch(base + "/reports?limit=20&token=" + encodeURIComponent(token), { cache: "no-store" });
+    const d2 = await r2.json();
+
+    const hist = document.getElementById("history");
+    const pill = document.getElementById("countPill");
+    hist.innerHTML = "";
+
+    if(!d2.ok){
+      pill.textContent = "0";
+      hist.innerHTML = '<div class="historyItem"><div class="err">' + esc(d2.error || "No history") + '</div></div>';
+    } else {
+      pill.textContent = d2.reports.length;
+      hist.innerHTML = d2.reports.map(rep => {
+        const dd = new Date(rep.report_date);
+        return (
+          '<div class="historyItem">' +
+            '<div class="date">' + dd.toDateString() + '</div>' +
+            '<div class="preview">' + esc(rep.preview || "") + '...</div>' +
+          '</div>'
+        );
+      }).join("");
+    }
+
+    setStatus("Ready", false);
+  }
+
+  async function refreshAll(){
+    await loadMetrics();
+    await loadReports();
+  }
+
+  refreshAll();
+</script>
+</body>
+</html>`);
+
     // Your existing big dashboard HTML stays the same.
     // IMPORTANT: This dashboard expects /metrics to return:
     // visits_today, visits_7d, trend_7d[{day,visits}], last_event, top_page_7d{page_type,views}, device_mix_7d{mobile,desktop}, top_pages_today
