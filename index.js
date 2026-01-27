@@ -1220,6 +1220,49 @@ app.get("/dashboard", async (req, res) => {
     res.status(500).send(err.message);
   }
 });
+// ----------------------------
+// Billing: update a site's plan (called by your .app site)
+// POST /billing/update-plan
+// Headers: x-webhook-secret: <BILLING_WEBHOOK_SECRET>
+// Body: { site_id: "...", plan: "starter" | "pro" | "full_ai" }
+// ----------------------------
+app.post("/billing/update-plan", async (req, res) => {
+  try {
+    const secret = req.headers["x-webhook-secret"];
+    if (!process.env.BILLING_WEBHOOK_SECRET) {
+      return res.status(500).json({ ok: false, error: "Missing BILLING_WEBHOOK_SECRET on server" });
+    }
+    if (!secret || secret !== process.env.BILLING_WEBHOOK_SECRET) {
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    }
+
+    const { site_id, plan } = req.body || {};
+    const allowed = new Set(["starter", "pro", "full_ai"]);
+
+    if (!site_id || !plan) {
+      return res.status(400).json({ ok: false, error: "site_id and plan required" });
+    }
+    if (!allowed.has(plan)) {
+      return res.status(400).json({ ok: false, error: "Invalid plan. Use starter, pro, or full_ai" });
+    }
+
+    const r = await pool.query(
+      `UPDATE sites
+       SET plan = $2
+       WHERE site_id = $1
+       RETURNING site_id, plan`,
+      [site_id, plan]
+    );
+
+    if (r.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: "site_id not found" });
+    }
+
+    res.json({ ok: true, updated: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 /* ---------------------------
    Start server (keep LAST)
