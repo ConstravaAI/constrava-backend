@@ -638,6 +638,264 @@ app.post("/email-latest", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+/* ---------------------------
+   Storefront (no Stripe yet)
+   - unpaid users land here
+   GET  /storefront?token=...
+   POST /storefront/choose  (form: token, plan)
+----------------------------*/
+app.get("/storefront", async (req, res) => {
+  try {
+    setNoStore(res);
+
+    const token = req.query.token;
+    const site = await getSiteByToken(token);
+
+    if (!site) {
+      return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+    }
+
+    // If they’re already paid, just send them to the dashboard
+    const plan = site.plan || "unpaid";
+    if (plan !== "unpaid") {
+      return res.redirect("/dashboard?token=" + encodeURIComponent(token));
+    }
+
+    const site_id = site.site_id;
+
+    res.setHeader("Content-Type", "text/html");
+    res.send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Constrava — Choose a Plan</title>
+  <style>
+    :root{
+      --bg:#0b0f19;
+      --text:#e5e7eb;
+      --muted:#9ca3af;
+      --border:rgba(255,255,255,.10);
+      --shadow: 0 12px 34px rgba(0,0,0,.35);
+      --radius:18px;
+      --accent:#60a5fa;
+      --accent2:#34d399;
+      --danger:#fb7185;
+      --panel: rgba(255,255,255,.05);
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background: radial-gradient(1100px 720px at 20% -10%, rgba(96,165,250,.25), transparent 60%),
+                  radial-gradient(900px 620px at 90% 0%, rgba(52,211,153,.18), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+    }
+    .wrap{max-width:1100px;margin:0 auto;padding:28px 18px 70px;}
+    .top{
+      display:flex;align-items:center;justify-content:space-between;gap:12px;
+      padding:18px 18px;
+      border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+    .brand{display:flex;align-items:center;gap:12px;}
+    .logo{
+      width:42px;height:42px;border-radius:14px;
+      background: linear-gradient(135deg, rgba(96,165,250,.9), rgba(52,211,153,.85));
+      box-shadow: 0 12px 26px rgba(96,165,250,.22);
+    }
+    h1{margin:0;font-size:18px;}
+    .sub{margin-top:3px;font-size:12px;color:var(--muted);}
+    .pill{
+      font-size:12px;color:var(--muted);
+      border:1px solid var(--border);
+      padding:7px 10px;border-radius:999px;
+      background: rgba(15,23,42,.55);
+      white-space:nowrap;
+    }
+    .hero{margin-top:18px;}
+    .heroTitle{font-size:28px;font-weight:950;letter-spacing:.2px;margin:0;}
+    .heroText{margin-top:10px;color:var(--muted);line-height:1.55;max-width:70ch;}
+    .grid{margin-top:18px;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
+    .card{
+      grid-column: span 4;
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      padding:16px;
+      position:relative;
+      overflow:hidden;
+    }
+    @media (max-width: 980px){ .card{grid-column: 1 / -1;} }
+    .tag{
+      position:absolute;top:14px;right:14px;
+      font-size:11px;font-weight:900;
+      padding:6px 10px;border-radius:999px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.55);
+      color: var(--muted);
+    }
+    .name{font-size:16px;font-weight:950;margin:0;}
+    .price{margin-top:10px;font-size:28px;font-weight:950;}
+    .small{font-size:12px;color:var(--muted);}
+    ul{margin:12px 0 0 0;padding:0 0 0 18px;color:var(--text);line-height:1.6;}
+    li{margin:6px 0;}
+    .btn{
+      width:100%;
+      margin-top:14px;
+      padding:12px 14px;
+      border-radius: 14px;
+      border:1px solid var(--border);
+      background: rgba(96,165,250,.14);
+      color: var(--text);
+      font-weight:950;
+      cursor:pointer;
+    }
+    .btn:hover{border-color: rgba(96,165,250,.55)}
+    .btn:active{transform: translateY(1px)}
+    .btnAlt{background: rgba(52,211,153,.14);}
+    .note{
+      margin-top:18px;
+      border:1px dashed rgba(255,255,255,.18);
+      border-radius: var(--radius);
+      padding:14px;
+      color: var(--muted);
+      background: rgba(15,23,42,.35);
+      line-height:1.55;
+      font-size:13px;
+    }
+    .footerRow{margin-top:18px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
+    a.link{color: var(--accent);text-decoration:none;font-weight:900;}
+    a.link:hover{text-decoration:underline;}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>Constrava Storefront</h1>
+          <div class="sub">Activate your dashboard for this site</div>
+        </div>
+      </div>
+      <div class="pill">Site: <b>${site_id}</b></div>
+    </div>
+
+    <div class="hero">
+      <h2 class="heroTitle">Choose a plan to activate your dashboard</h2>
+      <div class="heroText">
+        Payments aren’t enabled yet — this is the “full working infrastructure” step.
+        Picking a plan here will update your site’s access immediately, and send you back to the dashboard.
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="tag">Good start</div>
+        <h3 class="name">Starter</h3>
+        <div class="price">$— <span class="small">/ mo (later)</span></div>
+        <ul>
+          <li>Dashboard access</li>
+          <li>Visits + trend chart</li>
+          <li>Top pages + device mix</li>
+          <li>Demo seeding (optional)</li>
+        </ul>
+
+        <form method="POST" action="/storefront/choose">
+          <input type="hidden" name="token" value="${token}">
+          <input type="hidden" name="plan" value="starter">
+          <button class="btn" type="submit">Activate Starter</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="tag">Most popular</div>
+        <h3 class="name">Pro</h3>
+        <div class="price">$— <span class="small">/ mo (later)</span></div>
+        <ul>
+          <li>Everything in Starter</li>
+          <li>Email latest report (when enabled)</li>
+          <li>More “business-ready” reporting workflow</li>
+        </ul>
+
+        <form method="POST" action="/storefront/choose">
+          <input type="hidden" name="token" value="${token}">
+          <input type="hidden" name="plan" value="pro">
+          <button class="btn btnAlt" type="submit">Activate Pro</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="tag">AI</div>
+        <h3 class="name">Full AI</h3>
+        <div class="price">$— <span class="small">/ mo (later)</span></div>
+        <ul>
+          <li>Everything in Pro</li>
+          <li>AI generated report endpoint</li>
+          <li>Plain-English “next steps” output</li>
+        </ul>
+
+        <form method="POST" action="/storefront/choose">
+          <input type="hidden" name="token" value="${token}">
+          <input type="hidden" name="plan" value="full_ai">
+          <button class="btn" type="submit">Activate Full AI</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>Coming next:</b> We’ll replace these buttons with Stripe checkout.
+      Your .app (or this backend) can call a webhook after payment to set the plan.
+      For now, this storefront proves the full access-control system works end-to-end.
+    </div>
+
+    <div class="footerRow">
+      <a class="link" href="/dashboard?token=${encodeURIComponent(token)}">Back to dashboard</a>
+      <span class="pill">Current plan: <b>${plan}</b></span>
+    </div>
+  </div>
+</body>
+</html>`);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
+app.post("/storefront/choose", async (req, res) => {
+  try {
+    setNoStore(res);
+
+    const token = req.body.token;
+    const plan = String(req.body.plan || "").trim();
+
+    const allowed = new Set(["starter", "pro", "full_ai"]);
+    if (!allowed.has(plan)) {
+      return res.status(400).send("Invalid plan selection.");
+    }
+
+    const site = await getSiteByToken(token);
+    if (!site) {
+      return res.status(401).send("Unauthorized. Invalid token.");
+    }
+
+    // Update plan in DB
+    await pool.query(
+      `UPDATE sites SET plan=$2 WHERE site_id=$1`,
+      [site.site_id, plan]
+    );
+
+    // Send them to the dashboard after activation
+    return res.redirect("/dashboard?token=" + encodeURIComponent(token));
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
 
 /* ---------------------------
    Dashboard UI (token based, range selector)
