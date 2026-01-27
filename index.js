@@ -697,6 +697,9 @@ app.post("/demo/seed", async (req, res) => {
    Dashboard UI (token based, range selector)
    GET /dashboard?token=...
 ----------------------------*/
+const site = await getSiteByToken(token);
+const plan = site.plan;
+
 app.get("/dashboard", async (req, res) => {
   try {
     setNoStore(res);
