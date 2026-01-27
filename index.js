@@ -104,6 +104,34 @@ function requirePlan(site, allowedPlans) {
     error: `This feature requires plan: ${allowedPlans.join(" or ")}. Your plan: ${plan}.`
   };
 }
+function normalizeSiteId(raw) {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")        // spaces -> hyphen
+    .replace(/[^a-z0-9-]/g, ""); // only a-z 0-9 -
+}
+
+function validateSiteId(site_id) {
+  // 4–24 chars, starts with letter, only lowercase letters/numbers/hyphen
+  if (!site_id) return "site_id is required";
+  if (site_id.length < 4 || site_id.length > 24) return "site_id must be 4–24 characters";
+  if (!/^[a-z][a-z0-9-]*$/.test(site_id)) return "site_id must start with a letter and use only lowercase, numbers, and hyphens";
+  if (site_id.includes("--")) return "site_id cannot contain double hyphens";
+  if (site_id.endsWith("-")) return "site_id cannot end with a hyphen";
+  return null;
+}
+
+function validateCustomToken(token) {
+  // Strong rules if they set their own
+  if (!token) return "access token is required";
+  if (token.length < 20) return "access token must be at least 20 characters";
+  if (!/[a-z]/.test(token)) return "access token must include a lowercase letter";
+  if (!/[A-Z]/.test(token)) return "access token must include an uppercase letter";
+  if (!/[0-9]/.test(token)) return "access token must include a number";
+  if (!/[^A-Za-z0-9]/.test(token)) return "access token must include a symbol";
+  return null;
+}
 
 /* ---------------------------
    Boot: ensure tables exist
