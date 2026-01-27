@@ -427,11 +427,21 @@ app.get("/reports/latest", async (req, res) => {
    Optional: AI report generator (manual)
    POST /generate-report?token=...
 ----------------------------*/
+
 app.post("/generate-report", async (req, res) => {
   try {
     const token = req.query.token || req.body?.token;
     const site_id = await siteIdFromToken(token);
     if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+     const token = req.query.token || req.body?.token;
+const site = await getSiteByToken(token);
+if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+const gate = requirePlan(site, ["full_ai"]);
+if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+const site_id = site.site_id;
+
 
     const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
 
