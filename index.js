@@ -431,17 +431,14 @@ app.get("/reports/latest", async (req, res) => {
 app.post("/generate-report", async (req, res) => {
   try {
     const token = req.query.token || req.body?.token;
-    const site_id = await siteIdFromToken(token);
-    if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
-     const token = req.query.token || req.body?.token;
-const site = await getSiteByToken(token);
-if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
-const gate = requirePlan(site, ["full_ai"]);
-if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
-const site_id = site.site_id;
+    const gate = requirePlan(site, ["full_ai"]);
+    if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
 
+    const site_id = site.site_id;
 
     const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
 
@@ -468,12 +465,16 @@ const site_id = site.site_id;
       body: JSON.stringify({
         model: process.env.OPENAI_MODEL || "gpt-4o",
         messages: [
-          { role: "system", content: "You are a helpful business analytics assistant. Be plain-English, actionable, and concise." },
+          {
+            role: "system",
+            content: "You are a helpful business analytics assistant. Be plain-English, actionable, and concise."
+          },
           {
             role: "user",
             content:
-              "Here are metrics for the last 7 days (JSON): " + JSON.stringify(metrics) + "\n" +
-              "Write:\n1) What happened (plain English)\n2) Trend + what it means\n3) 3 next steps\n4) One metric to watch"
+              "Here are metrics for the last 7 days (JSON): " +
+              JSON.stringify(metrics) +
+              "\nWrite:\n1) What happened\n2) Trend + what it means\n3) 3 next steps\n4) One metric to watch"
           }
         ]
       })
@@ -481,12 +482,16 @@ const site_id = site.site_id;
 
     const aiData = await aiRes.json();
     const reportText = aiData?.choices?.[0]?.message?.content;
-    if (!reportText) return res.status(500).json({ ok: false, error: "AI response missing" });
+
+    if (!reportText) {
+      return res.status(500).json({ ok: false, error: "AI response missing" });
+    }
 
     const saved = await pool.query(
       `INSERT INTO daily_reports (site_id, report_date, report_text)
        VALUES ($1, CURRENT_DATE, $2)
-       ON CONFLICT (site_id, report_date) DO UPDATE SET report_text=EXCLUDED.report_text
+       ON CONFLICT (site_id, report_date)
+       DO UPDATE SET report_text = EXCLUDED.report_text
        RETURNING site_id, report_date, report_text, created_at`,
       [site_id, reportText]
     );
@@ -497,21 +502,23 @@ const site_id = site.site_id;
   }
 });
 
+
 /* ---------------------------
    Optional: Email latest report (manual)
    POST /email-latest { token, to_email }
 ----------------------------*/
-const site = await getSiteByToken(token);
-const gate = requirePlan(site, ["pro", "full_ai"]);
-if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
-
 app.post("/email-latest", async (req, res) => {
   try {
     const { token, to_email } = req.body || {};
     if (!to_email) return res.status(400).json({ ok: false, error: "to_email required" });
 
-    const site_id = await siteIdFromToken(token);
-    if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Invalid token" });
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Invalid token" });
+
+    const gate = requirePlan(site, ["pro", "full_ai"]);
+    if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+    const site_id = site.site_id;
 
     const r = await pool.query(
       `SELECT report_text, report_date
@@ -521,6 +528,7 @@ app.post("/email-latest", async (req, res) => {
        LIMIT 1`,
       [site_id]
     );
+
     if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
 
     const RESEND_API_KEY = requireEnv("RESEND_API_KEY");
@@ -548,171 +556,30 @@ app.post("/email-latest", async (req, res) => {
 });
 
 /* ---------------------------
-   Simple username/password login (NO bcrypt)
-   - Register requires SITE token (so random people can’t create accounts)
-   POST /auth/register { token, email, password }
-   POST /auth/login { email, password }
-----------------------------*/
-app.post("/auth/register", async (req, res) => {
-  try {
-    const { token, email, password } = req.body || {};
-    if (!token || !email || !password) {
-      return res.status(400).json({ ok: false, error: "token, email, password required" });
-    }
-
-    const site_id = await siteIdFromToken(token);
-    if (!site_id) return res.status(401).json({ ok: false, error: "Invalid site token" });
-
-    const { salt, hash } = hashPassword(password);
-
-    await pool.query(
-      `INSERT INTO users (site_id, email, password_salt, password_hash)
-       VALUES ($1,$2,$3,$4)`,
-      [site_id, email.toLowerCase(), salt, hash]
-    );
-
-    res.json({ ok: true, site_id });
-  } catch (err) {
-    if (String(err.message).toLowerCase().includes("duplicate")) {
-      return res.status(409).json({ ok: false, error: "Email already exists" });
-    }
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-app.post("/auth/login", async (req, res) => {
-  try {
-    const { email, password } = req.body || {};
-    if (!email || !password) return res.status(400).json({ ok: false, error: "email and password required" });
-
-    const r = await pool.query(
-      `SELECT u.site_id, u.email, u.password_salt, u.password_hash, s.dashboard_token
-       FROM users u
-       JOIN sites s ON s.site_id = u.site_id
-       WHERE u.email=$1
-       LIMIT 1`,
-      [email.toLowerCase()]
-    );
-
-    if (r.rows.length === 0) return res.status(401).json({ ok: false, error: "Invalid login" });
-
-    const u = r.rows[0];
-    const ok = verifyPassword(password, u.password_salt, u.password_hash);
-    if (!ok) return res.status(401).json({ ok: false, error: "Invalid login" });
-
-    const base = process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
-    res.json({
-      ok: true,
-      site_id: u.site_id,
-      dashboard_url: `${base}/dashboard?token=${u.dashboard_token}`
-    });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-/* ---------------------------
-   DEMO DATA SEEDER (DEV ONLY)
-   POST /demo/seed?token=...
-   body: { days: 7, events_per_day: 40 }
-   - also inserts 2 sample reports so /reports/latest shows something
-----------------------------*/
-app.post("/demo/seed", async (req, res) => {
-  try {
-    if (process.env.ENABLE_DEMO_SEED !== "true") {
-      return res.status(403).json({ ok: false, error: "Seeder disabled. Set ENABLE_DEMO_SEED=true" });
-    }
-
-    const token = req.query.token || req.body?.token;
-    const site_id = await siteIdFromToken(token);
-    if (!site_id) return res.status(401).json({ ok: false, error: "Unauthorized. Provide ?token=..." });
-
-    const days = Math.max(1, Math.min(parseInt(req.body?.days || "7", 10), 3650));
-    const eventsPerDay = Math.max(5, Math.min(parseInt(req.body?.events_per_day || "40", 10), 500));
-
-    const pages = ["/", "/pricing", "/services", "/about", "/contact", "/blog", "/faq", "/checkout"];
-    let inserted = 0;
-
-    for (let d = 0; d < days; d++) {
-      const dayStart = new Date();
-      dayStart.setHours(0, 0, 0, 0);
-      dayStart.setDate(dayStart.getDate() - d);
-
-      for (let i = 0; i < eventsPerDay; i++) {
-        const seconds = Math.floor(Math.random() * 86400);
-        const ts = new Date(dayStart.getTime() + seconds * 1000);
-
-        const r = Math.random();
-        const page =
-          r < 0.30 ? "/" :
-          r < 0.55 ? "/pricing" :
-          r < 0.70 ? "/services" :
-          r < 0.80 ? "/contact" :
-          pages[Math.floor(Math.random() * pages.length)];
-
-        const device = Math.random() < 0.62 ? "mobile" : "desktop";
-
-        await pool.query(
-          `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
-           VALUES ($1, 'page_view', $2, $3, $4)`,
-          [site_id, page, device, ts.toISOString()]
-        );
-        inserted++;
-      }
-    }
-
-    // sample reports (so demo doesn't look empty)
-    const sample1 =
-      "Summary:\nTraffic is concentrating on Pricing and Services, which suggests purchase intent.\n\n" +
-      "Trend:\nVisitors are exploring multiple pages, but your next step is to capture leads.\n\n" +
-      "Next steps:\n1) Add a clear primary CTA on Pricing (Book a demo / Get quote)\n2) Add a short proof section (logos/testimonials) above the fold\n3) Track a lead event (button click or form submit)\n\n" +
-      "Metric to watch:\nClicks to your main CTA";
-
-    const sample2 =
-      "Summary:\nYou’re getting steady visits and people are repeatedly checking Pricing.\n\n" +
-      "Trend:\nInterest is consistent — improving conversion copy should raise leads.\n\n" +
-      "Next steps:\n1) Put a single strongest offer at the top of Pricing\n2) Add a “what happens next” 3-step section\n3) Reduce friction: shorter forms + faster page load\n\n" +
-      "Metric to watch:\nPricing → Contact rate";
-
-    await pool.query(
-      `INSERT INTO daily_reports (site_id, report_date, report_text)
-       VALUES ($1, CURRENT_DATE - INTERVAL '1 day', $2)
-       ON CONFLICT (site_id, report_date) DO NOTHING`,
-      [site_id, sample1]
-    );
-    await pool.query(
-      `INSERT INTO daily_reports (site_id, report_date, report_text)
-       VALUES ($1, CURRENT_DATE, $2)
-       ON CONFLICT (site_id, report_date) DO NOTHING`,
-      [site_id, sample2]
-    );
-
-    res.json({ ok: true, site_id, days, events_per_day: eventsPerDay, inserted });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-/* ---------------------------
    Dashboard UI (token based, range selector)
    GET /dashboard?token=...
 ----------------------------*/
-const site = await getSiteByToken(token);
-const plan = site.plan;
-
 app.get("/dashboard", async (req, res) => {
   try {
     setNoStore(res);
 
     const token = req.query.token;
-    const site_id = await siteIdFromToken(token);
 
-    if (!site_id) {
-      return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
-    }
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+
+    const site_id = site.site_id;
+    const plan = site.plan;
 
     res.setHeader("Content-Type", "text/html");
     res.send(`<!doctype html>
+    ...YOUR ENTIRE OLD DASHBOARD HTML...
+    `);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
 <html lang="en">
 <head>
   <meta charset="utf-8" />
