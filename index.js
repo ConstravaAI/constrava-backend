@@ -187,7 +187,7 @@ app.post("/sites", async (req, res) => {
       try {
         await pool.query(
           `INSERT INTO sites (site_id, site_name, owner_email, dashboard_token, plan)
-           VALUES ($1,$2,$3,$4,'starter')`,
+           VALUES ($1,$2,$3,$4,'unpaid')`,
           [site_id, site_name, owner_email, token]
         );
         break;
