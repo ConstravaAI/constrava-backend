@@ -901,6 +901,38 @@ app.post("/billing/update-plan", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+app.get("/store", async (req, res) => {
+  setNoStore(res);
+
+  const token = req.query.token;
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).send("Unauthorized. Add ?token=...");
+
+  res.setHeader("Content-Type", "text/html");
+  res.send(`<!doctype html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Constrava Store</title>
+<style>
+  body{margin:0;font-family:system-ui;background:#0b0f19;color:#e5e7eb}
+  .wrap{max-width:900px;margin:0 auto;padding:40px 18px}
+  .card{border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:18px;background:rgba(255,255,255,.04)}
+  .btn{display:inline-block;margin-top:14px;padding:10px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.18);color:#e5e7eb;text-decoration:none}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Activate Constrava</h1>
+      <p>Site: <b>${site.site_id}</b></p>
+      <p>Your current plan is <b>${site.plan}</b>. Choose a plan to unlock the dashboard.</p>
+      <a class="btn" href="/store?token=${encodeURIComponent(token)}">Refresh</a>
+      <p style="opacity:.7;margin-top:14px">Payments coming soon — for now we’ll simulate upgrades.</p>
+    </div>
+  </div>
+</body>
+</html>`);
+});
 
 /* ---------------------------
    Start server
