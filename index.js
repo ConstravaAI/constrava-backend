@@ -954,6 +954,10 @@ app.get("/dashboard", async (req, res) => {
 
     const site_id = site.site_id;
     const plan = site.plan || "unpaid";
+     if (plan === "unpaid") {
+  return res.redirect(`/storefront?token=${encodeURIComponent(token)}`);
+}
+
 
     // 🚨 ADD THIS BLOCK RIGHT HERE
     if (plan === "unpaid") {
