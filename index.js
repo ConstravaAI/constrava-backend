@@ -25,6 +25,8 @@ const { Pool } = pkg;
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 
 const PORT = process.env.PORT || 10000;
 const DATABASE_URL = process.env.DATABASE_URL;
