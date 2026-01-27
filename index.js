@@ -1248,6 +1248,39 @@ app.get("/store", async (req, res) => {
 </body>
 </html>`);
 });
+app.post("/auth/site-login", async (req, res) => {
+  try {
+    const { site_id: rawSiteId, token } = req.body || {};
+    const site_id = normalizeSiteId(rawSiteId);
+
+    if (!site_id || !token) {
+      return res.status(400).json({ ok: false, error: "site_id and token required" });
+    }
+
+    const r = await pool.query(
+      `SELECT site_id, dashboard_token, plan
+       FROM sites
+       WHERE site_id=$1
+       LIMIT 1`,
+      [site_id]
+    );
+
+    if (r.rows.length === 0) return res.status(401).json({ ok: false, error: "Invalid login" });
+
+    const site = r.rows[0];
+    if (site.dashboard_token !== token) return res.status(401).json({ ok: false, error: "Invalid login" });
+
+    const base = process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
+    res.json({
+      ok: true,
+      site_id: site.site_id,
+      plan: site.plan,
+      dashboard_url: `${base}/dashboard?token=${encodeURIComponent(token)}`
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err.message || err) });
+  }
+});
 
 /* ---------------------------
    Start server
