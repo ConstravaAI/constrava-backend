@@ -644,7 +644,12 @@ app.post("/email-latest", async (req, res) => {
 app.get("/dashboard", async (req, res) => {
   try {
     setNoStore(res);
+     const site = await getSiteByToken(req.query.token);
+if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
 
+if (site.plan === "unpaid") {
+  return res.redirect(`/store?token=${encodeURIComponent(site.dashboard_token)}`);
+}
     const site = await getSiteByToken(req.query.token);
     if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
 
