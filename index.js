@@ -644,20 +644,28 @@ app.post("/email-latest", async (req, res) => {
 app.get("/dashboard", async (req, res) => {
   try {
     setNoStore(res);
-     
+
     const site = await getSiteByToken(req.query.token);
-    if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+    if (!site) {
+      return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+    }
 
     const site_id = site.site_id;
-    const plan = site.plan || "starter";
+    const plan = site.plan || "unpaid";
+
+    // 🚨 ADD THIS BLOCK RIGHT HERE
+    if (plan === "unpaid") {
+      return res.redirect(
+        "/storefront?site_id=" +
+          encodeURIComponent(site_id) +
+          "&token=" +
+          encodeURIComponent(req.query.token)
+      );
+    }
+    // 🚨 END BLOCK
 
     res.setHeader("Content-Type", "text/html");
-const site = await getSiteByToken(req.query.token);
-if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
 
-if (site.plan === "unpaid") {
-  return res.redirect(`/store?token=${encodeURIComponent(site.dashboard_token)}`);
-}
     // ✅ IMPORTANT: ALL HTML must live inside this one template string.
     // I’m keeping your full dashboard content intact below.
     res.send(`<!doctype html>
