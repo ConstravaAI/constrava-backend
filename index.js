@@ -1576,6 +1576,35 @@ app.get("/storefront", async (req, res) => {
     res.status(500).send(err.message);
   }
 });
+/* ---------------------------
+   DEMO: activate a plan from the storefront (NO secret)
+   POST /demo/activate-plan
+   Body: { token, plan }
+   NOTE: Keep this for demo only. Later remove when Stripe is live.
+----------------------------*/
+app.post("/demo/activate-plan", async (req, res) => {
+  try {
+    const { token, plan } = req.body || {};
+    const allowed = new Set(["starter", "pro", "full_ai"]);
+
+    if (!token) return res.status(400).json({ ok: false, error: "token required" });
+    if (!plan || !allowed.has(plan)) {
+      return res.status(400).json({ ok: false, error: "Invalid plan. Use starter, pro, or full_ai" });
+    }
+
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+    const r = await pool.query(
+      `UPDATE sites SET plan=$2 WHERE site_id=$1 RETURNING site_id, plan`,
+      [site.site_id, plan]
+    );
+
+    res.json({ ok: true, updated: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
 
 /* ---------------------------
    Start server
