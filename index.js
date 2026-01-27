@@ -947,28 +947,17 @@ app.get("/dashboard", async (req, res) => {
   try {
     setNoStore(res);
 
-    const site = await getSiteByToken(req.query.token);
-    if (!site) {
-      return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
-    }
+    const token = req.query.token;              // ✅ define token
+    const site = await getSiteByToken(token);   // ✅ use token safely
+    if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
 
     const site_id = site.site_id;
     const plan = site.plan || "unpaid";
-     if (plan === "unpaid") {
-  return res.redirect(`/storefront?token=${encodeURIComponent(token)}`);
-}
 
-
-    // 🚨 ADD THIS BLOCK RIGHT HERE
+    // ✅ If unpaid, send them to storefront
     if (plan === "unpaid") {
-      return res.redirect(
-        "/storefront?site_id=" +
-          encodeURIComponent(site_id) +
-          "&token=" +
-          encodeURIComponent(req.query.token)
-      );
+      return res.redirect(`/storefront?token=${encodeURIComponent(token)}`);
     }
-    // 🚨 END BLOCK
 
     res.setHeader("Content-Type", "text/html");
 
@@ -1175,11 +1164,25 @@ ${/* keep the full HTML exactly as you pasted it */""}
   </div>
 </body>
 </html>`);
+    res.send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Constrava Dashboard</title>
+</head>
+<body>
+  <h1>Constrava Dashboard</h1>
+  <p>Site: ${site_id}</p>
+  <p>Plan: ${plan}</p>
+
+  <!-- paste your full fancy dashboard HTML below this line -->
+</body>
+</html>`);
   } catch (err) {
     res.status(500).send(err.message);
   }
 });
-
 /* ---------------------------
    Billing webhook: update plan
 ----------------------------*/
