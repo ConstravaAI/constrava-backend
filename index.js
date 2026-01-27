@@ -501,6 +501,10 @@ const site_id = site.site_id;
    Optional: Email latest report (manual)
    POST /email-latest { token, to_email }
 ----------------------------*/
+const site = await getSiteByToken(token);
+const gate = requirePlan(site, ["pro", "full_ai"]);
+if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
 app.post("/email-latest", async (req, res) => {
   try {
     const { token, to_email } = req.body || {};
