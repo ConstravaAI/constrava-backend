@@ -1281,6 +1281,301 @@ app.post("/auth/site-login", async (req, res) => {
     res.status(500).json({ ok: false, error: String(err.message || err) });
   }
 });
+/* ---------------------------
+   Storefront (token-based)
+   GET /storefront?token=...
+   - shows plans
+   - "Activate" buttons call /billing/update-plan for now (manual/fake checkout)
+----------------------------*/
+app.get("/storefront", async (req, res) => {
+  try {
+    setNoStore(res);
+
+    const token = req.query.token;
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+
+    const site_id = site.site_id;
+    const plan = site.plan || "unpaid";
+
+    res.setHeader("Content-Type", "text/html");
+
+    res.send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Constrava — Storefront</title>
+  <style>
+    :root{
+      --bg:#0b0f19;
+      --panel:#111827;
+      --panel2:#0f172a;
+      --text:#e5e7eb;
+      --muted:#9ca3af;
+      --border:rgba(255,255,255,.08);
+      --accent:#60a5fa;
+      --accent2:#34d399;
+      --danger:#fb7185;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background: radial-gradient(1200px 800px at 20% -10%, rgba(96,165,250,.25), transparent 60%),
+                  radial-gradient(900px 600px at 90% 0%, rgba(52,211,153,.18), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+    }
+    .wrap{max-width:1180px; margin:0 auto; padding:26px 18px 60px;}
+    .topbar{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:14px; padding:18px 18px;
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+    .brand{display:flex; align-items:center; gap:12px;}
+    .logo{
+      width:40px; height:40px; border-radius:12px;
+      background: linear-gradient(135deg, rgba(96,165,250,.9), rgba(52,211,153,.85));
+      box-shadow: 0 10px 25px rgba(96,165,250,.25);
+    }
+    h1{font-size:18px; margin:0;}
+    .sub{font-size:12px; color:var(--muted); margin-top:2px;}
+    .pill{
+      font-size:12px; color: var(--muted);
+      border:1px solid var(--border);
+      padding:6px 10px;
+      border-radius:999px;
+      background: rgba(15,23,42,.6);
+      display:inline-flex; align-items:center; gap:6px;
+    }
+    .grid{
+      margin-top:18px;
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap:16px;
+    }
+    .span12{grid-column: 1 / -1;}
+    .span4{grid-column: span 4;}
+    @media (max-width: 1000px){
+      .span4{grid-column: 1 / -1;}
+      .topbar{flex-direction:column; align-items:flex-start;}
+    }
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding:16px;
+    }
+    .card h2{
+      margin:0 0 6px 0;
+      font-size:14px;
+      font-weight:950;
+      letter-spacing:.2px;
+      display:flex; justify-content:space-between; align-items:center; gap:10px;
+    }
+    .muted{color:var(--muted); font-size:12px; line-height:1.45;}
+    .price{font-size:30px; font-weight:1000; margin-top:12px;}
+    .list{margin:12px 0 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:10px;}
+    .list li{
+      padding:10px 10px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.55);
+      font-size:13px;
+      line-height:1.35;
+    }
+    .btn{
+      width:100%;
+      margin-top:14px;
+      padding:12px 14px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background: rgba(96,165,250,.14);
+      color: var(--text);
+      cursor:pointer;
+      font-weight:950;
+    }
+    .btn:hover{border-color: rgba(96,165,250,.5)}
+    .btn:active{transform: translateY(1px)}
+    .btnGreen{background: rgba(52,211,153,.14);}
+    .btnGreen:hover{border-color: rgba(52,211,153,.5)}
+    .btnDisabled{
+      opacity:.55;
+      cursor:not-allowed;
+    }
+    .note{
+      margin-top:16px;
+      padding:12px;
+      border-radius: 14px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.55);
+    }
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+    .tiny{font-size:12px; color:var(--muted)}
+    .ok{color: var(--accent2); font-weight:900}
+    .err{color: var(--danger); font-weight:900}
+    .linkBtn{
+      padding:10px 14px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.55);
+      color: var(--text);
+      cursor:pointer;
+      font-weight:900;
+      text-decoration:none;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+    }
+    .linkBtn:hover{border-color: rgba(255,255,255,.18)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>Constrava Storefront</h1>
+          <div class="sub">Pick a plan to activate your dashboard — you can switch anytime.</div>
+        </div>
+      </div>
+
+      <div class="row">
+        <span class="pill">Site: <b>${site_id}</b></span>
+        <span class="pill">Current plan: <b>${plan}</b></span>
+        <a class="linkBtn" href="/dashboard?token=${encodeURIComponent(token)}">Go to dashboard</a>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card span12">
+        <h2>
+          Activation
+          <span class="pill">Step 1/2</span>
+        </h2>
+        <div class="muted">
+          Right now this is a <b>demo storefront</b>. Clicking “Activate” will update your plan instantly (no Stripe yet).
+          Later we’ll swap the activation buttons to real Stripe checkout.
+        </div>
+
+        <div class="note" style="margin-top:12px;">
+          <div class="row">
+            <div class="tiny">Status:</div>
+            <div id="status" class="tiny">Idle</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card span4">
+        <h2>Starter <span class="pill">Essentials</span></h2>
+        <div class="muted">Basic tracking + quick insights.</div>
+        <div class="price">$29<span class="tiny">/mo</span></div>
+        <ul class="list">
+          <li>Visits today + trend chart</li>
+          <li>Top pages + device mix</li>
+          <li>Demo report history view</li>
+        </ul>
+        <button class="btn" id="btnStarter">Activate Starter</button>
+      </div>
+
+      <div class="card span4">
+        <h2>Pro <span class="pill">Reports</span></h2>
+        <div class="muted">Scheduled-style reporting + email sending.</div>
+        <div class="price">$79<span class="tiny">/mo</span></div>
+        <ul class="list">
+          <li>Everything in Starter</li>
+          <li>Email latest report (manual trigger)</li>
+          <li>Longer report history</li>
+        </ul>
+        <button class="btn btnGreen" id="btnPro">Activate Pro</button>
+      </div>
+
+      <div class="card span4">
+        <h2>Full AI <span class="pill">GPT</span></h2>
+        <div class="muted">Generate AI summaries + next steps.</div>
+        <div class="price">$199<span class="tiny">/mo</span></div>
+        <ul class="list">
+          <li>Everything in Pro</li>
+          <li>Generate AI report (manual trigger)</li>
+          <li>Best for “assistant” experience</li>
+        </ul>
+        <button class="btn btnGreen" id="btnAI">Activate Full AI</button>
+      </div>
+
+      <div class="card span12">
+        <h2>What happens after activation?</h2>
+        <div class="muted">
+          Your plan is stored on the backend per <b>site_id</b>. When you switch plans later, nothing breaks —
+          it’s just a plan update in the database.
+        </div>
+
+        <div class="note">
+          <div class="muted">
+            If your dashboard is still empty, seed demo data:<br/>
+            <span class="pill">POST /demo/seed?token=YOUR_TOKEN</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  var token = new URLSearchParams(location.search).get("token");
+  var statusEl = document.getElementById("status");
+
+  function setStatus(t, isErr){
+    statusEl.textContent = t;
+    statusEl.className = "tiny " + (isErr ? "err" : "ok");
+  }
+
+  async function activate(plan){
+    try{
+      statusEl.className = "tiny";
+      statusEl.textContent = "Activating " + plan + "…";
+
+      // IMPORTANT: this route requires x-webhook-secret right now.
+      // For demo UX, we’ll add a "demo activation route" next (no secret),
+      // then later replace it with Stripe webhooks.
+      const r = await fetch("/demo/activate-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: token, plan: plan })
+      });
+
+      const data = await r.json();
+      if(!data.ok){
+        setStatus(data.error || "Activation failed", true);
+        return;
+      }
+
+      setStatus("Activated: " + data.updated.plan + " ✅ Redirecting…", false);
+      setTimeout(function(){
+        location.href = "/dashboard?token=" + encodeURIComponent(token);
+      }, 700);
+    }catch(e){
+      setStatus("Activation error: " + (e && e.message ? e.message : "unknown"), true);
+    }
+  }
+
+  document.getElementById("btnStarter").addEventListener("click", function(){ activate("starter"); });
+  document.getElementById("btnPro").addEventListener("click", function(){ activate("pro"); });
+  document.getElementById("btnAI").addEventListener("click", function(){ activate("full_ai"); });
+</script>
+</body>
+</html>`);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
 
 /* ---------------------------
    Start server
