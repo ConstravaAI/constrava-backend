@@ -650,15 +650,14 @@ app.get("/dashboard", async (req, res) => {
 
     const site_id = site.site_id;
     const plan = site.plan || "starter";
-     const site = await getSiteByToken(req.query.token);
+
+    res.setHeader("Content-Type", "text/html");
+const site = await getSiteByToken(req.query.token);
 if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
 
 if (site.plan === "unpaid") {
   return res.redirect(`/store?token=${encodeURIComponent(site.dashboard_token)}`);
 }
-
-    res.setHeader("Content-Type", "text/html");
-
     // ✅ IMPORTANT: ALL HTML must live inside this one template string.
     // I’m keeping your full dashboard content intact below.
     res.send(`<!doctype html>
