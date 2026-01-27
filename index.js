@@ -113,7 +113,7 @@ async function ensureTables() {
       site_name TEXT NOT NULL,
       owner_email TEXT NOT NULL,
       dashboard_token TEXT UNIQUE NOT NULL,
-      plan TEXT NOT NULL DEFAULT 'starter',
+      plan TEXT NOT NULL DEFAULT 'unpaid',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
