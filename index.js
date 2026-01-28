@@ -1170,21 +1170,6 @@ ${/* keep the full HTML exactly as you pasted it */""}
   </div>
 </body>
 </html>`);
-    res.send(`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Constrava Dashboard</title>
-</head>
-<body>
-  <h1>Constrava Dashboard</h1>
-  <p>Site: ${site_id}</p>
-  <p>Plan: ${plan}</p>
-
-  <!-- paste your full fancy dashboard HTML below this line -->
-</body>
-</html>`);
   } catch (err) {
     res.status(500).send(err.message);
   }
