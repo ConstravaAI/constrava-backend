@@ -915,28 +915,6 @@ app.get("/storefront", async (req, res) => {
   }
 });
 
-app.post("/storefront/choose", async (req, res) => {
-  try {
-    setNoStore(res);
-
-    const token = req.body.token;
-    const plan = String(req.body.plan || "").trim();
-
-    const allowed = new Set(["starter", "pro", "full_ai"]);
-    if (!allowed.has(plan)) {
-      return res.status(400).send("Invalid plan selection.");
-    }
-
-    const site = await getSiteByToken(token);
-    if (!site) {
-      return res.status(401).send("Unauthorized. Invalid token.");
-    }
-
-    // Update plan in DB
-    await pool.query(
-      `UPDATE sites SET plan=$2 WHERE site_id=$1`,
-      [site.site_id, plan]
-    );
 
     // Send them to the dashboard after activation
     return res.redirect("/dashboard?token=" + encodeURIComponent(token));
