@@ -1,4 +1,4 @@
-// index.js (ESM) — Constrava MVP backend (safe dashboard template + time-range selector)
+// index.js (ESM) — Constrava MVP backend (clean + fixed)
 // ✅ Neon Postgres (pg)
 // ✅ /sites creates site_id + dashboard_token
 // ✅ /tracker.js + /events collector
@@ -7,13 +7,10 @@
 // ✅ Demo data: /demo/seed (token-secured, ENABLE_DEMO_SEED=true)
 // ✅ Optional AI reports: /generate-report (requires OPENAI_API_KEY)
 // ✅ Optional email: /email-latest (requires RESEND_API_KEY + FROM_EMAIL)
-// ✅ Optional login: /auth/register + /auth/login (uses crypto.scrypt)
-
-
-/* ---------------------------
-   Helpers
-----------------------------*/
-// index.js (ESM) — Constrava MVP backend (safe dashboard template + time-range selector)
+// ✅ Site login: /auth/site-login (site_id + token)
+// ✅ Storefront: /storefront (demo activation)
+// ✅ Demo activation: /demo/activate-plan (NO secret)
+// ✅ Billing webhook: /billing/update-plan (requires BILLING_WEBHOOK_SECRET)
 
 import express from "express";
 import cors from "cors";
@@ -26,7 +23,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
 
 const PORT = process.env.PORT || 10000;
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -43,10 +39,6 @@ function setNoStore(res) {
   res.setHeader("Expires", "0");
 }
 
-function makeSiteId() {
-  return "site_" + crypto.randomBytes(6).toString("hex");
-}
-
 function publicBaseUrl(req) {
   return (
     process.env.PUBLIC_BASE_URL ||
@@ -61,31 +53,43 @@ function requireEnv(name) {
   return v;
 }
 
-// password hashing (no bcrypt)
-function hashPassword(password) {
-  const salt = crypto.randomBytes(16);
-  const hash = crypto.scryptSync(password, salt, 64);
-  return { salt: salt.toString("hex"), hash: hash.toString("hex") };
-}
-function verifyPassword(password, saltHex, hashHex) {
-  const salt = Buffer.from(saltHex, "hex");
-  const hash = Buffer.from(hashHex, "hex");
-  const test = crypto.scryptSync(password, salt, 64);
-  return crypto.timingSafeEqual(hash, test);
-}
-
-// Clamp + map day options (your dropdown options)
+// Clamp + map day options (dashboard dropdown options)
 function normalizeDays(input) {
   const n = parseInt(String(input || "7"), 10);
   const allowed = new Set([1, 7, 30, 365, 730, 1825]);
   return allowed.has(n) ? n : 7;
 }
 
-app.get("/debug/site", async (req, res) => {
-  const token = req.query.token;
-  const site = await getSiteByToken(token);
-  res.json({ ok: true, site });
-});
+function normalizeSiteId(raw) {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
+}
+
+function validateSiteId(site_id) {
+  // 4–24 chars, starts with letter, only lowercase letters/numbers/hyphen
+  if (!site_id) return "site_id is required";
+  if (site_id.length < 4 || site_id.length > 24) return "site_id must be 4–24 characters";
+  if (!/^[a-z][a-z0-9-]*$/.test(site_id)) {
+    return "site_id must start with a letter and use only lowercase, numbers, and hyphens";
+  }
+  if (site_id.includes("--")) return "site_id cannot contain double hyphens";
+  if (site_id.endsWith("-")) return "site_id cannot end with a hyphen";
+  return null;
+}
+
+function validateCustomToken(token) {
+  // Strong rules if they set their own token
+  if (!token) return "access token is required";
+  if (token.length < 20) return "access token must be at least 20 characters";
+  if (!/[a-z]/.test(token)) return "access token must include a lowercase letter";
+  if (!/[A-Z]/.test(token)) return "access token must include an uppercase letter";
+  if (!/[0-9]/.test(token)) return "access token must include a number";
+  if (!/[^A-Za-z0-9]/.test(token)) return "access token must include a symbol";
+  return null;
+}
 
 // token -> site record (includes plan)
 async function getSiteByToken(token) {
@@ -102,41 +106,13 @@ async function getSiteByToken(token) {
 
 // plan gate
 function requirePlan(site, allowedPlans) {
-  const plan = site?.plan || "starter";
+  const plan = site?.plan || "unpaid";
   if (allowedPlans.includes(plan)) return { ok: true };
   return {
     ok: false,
     status: 403,
     error: `This feature requires plan: ${allowedPlans.join(" or ")}. Your plan: ${plan}.`
   };
-}
-function normalizeSiteId(raw) {
-  return String(raw || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "-")        // spaces -> hyphen
-    .replace(/[^a-z0-9-]/g, ""); // only a-z 0-9 -
-}
-
-function validateSiteId(site_id) {
-  // 4–24 chars, starts with letter, only lowercase letters/numbers/hyphen
-  if (!site_id) return "site_id is required";
-  if (site_id.length < 4 || site_id.length > 24) return "site_id must be 4–24 characters";
-  if (!/^[a-z][a-z0-9-]*$/.test(site_id)) return "site_id must start with a letter and use only lowercase, numbers, and hyphens";
-  if (site_id.includes("--")) return "site_id cannot contain double hyphens";
-  if (site_id.endsWith("-")) return "site_id cannot end with a hyphen";
-  return null;
-}
-
-function validateCustomToken(token) {
-  // Strong rules if they set their own
-  if (!token) return "access token is required";
-  if (token.length < 20) return "access token must be at least 20 characters";
-  if (!/[a-z]/.test(token)) return "access token must include a lowercase letter";
-  if (!/[A-Z]/.test(token)) return "access token must include an uppercase letter";
-  if (!/[0-9]/.test(token)) return "access token must include a number";
-  if (!/[^A-Za-z0-9]/.test(token)) return "access token must include a symbol";
-  return null;
 }
 
 /* ---------------------------
@@ -150,17 +126,6 @@ async function ensureTables() {
       owner_email TEXT NOT NULL,
       dashboard_token TEXT UNIQUE NOT NULL,
       plan TEXT NOT NULL DEFAULT 'unpaid',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id BIGSERIAL PRIMARY KEY,
-      site_id TEXT NOT NULL REFERENCES sites(site_id) ON DELETE CASCADE,
-      email TEXT NOT NULL UNIQUE,
-      password_salt TEXT NOT NULL,
-      password_hash TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
@@ -205,9 +170,15 @@ app.get("/db-test", async (req, res) => {
   }
 });
 
+app.get("/debug/site", async (req, res) => {
+  const token = req.query.token;
+  const site = await getSiteByToken(token);
+  res.json({ ok: true, site });
+});
+
 /* ---------------------------
    Onboarding: create a site
-   POST /sites { site_name, owner_email }
+   POST /sites { site_id, site_name, owner_email, custom_token? }
 ----------------------------*/
 app.post("/sites", async (req, res) => {
   try {
@@ -224,15 +195,14 @@ app.post("/sites", async (req, res) => {
     const siteIdErr = validateSiteId(site_id);
     if (siteIdErr) return res.status(400).json({ ok: false, error: siteIdErr });
 
-    // Token (password): generated by default, but allow custom if strong
-    let token = crypto.randomUUID(); // default strong
+    // Token: generate by default; allow custom if strong
+    let token = crypto.randomUUID();
     if (custom_token) {
       const tokErr = validateCustomToken(custom_token);
       if (tokErr) return res.status(400).json({ ok: false, error: tokErr });
       token = custom_token;
     }
 
-    // Insert (will fail if site_id already taken OR token collides)
     await pool.query(
       `INSERT INTO sites (site_id, site_name, owner_email, dashboard_token, plan)
        VALUES ($1,$2,$3,$4,'unpaid')`,
@@ -245,13 +215,12 @@ app.post("/sites", async (req, res) => {
       ok: true,
       site_id,
       install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
-      client_dashboard_url: `${base}/dashboard?token=${token}`,
-      access_token: token // for now (MVP). Later: show once then hide.
+      client_dashboard_url: `${base}/dashboard?token=${encodeURIComponent(token)}`,
+      access_token: token
     });
   } catch (err) {
     const msg = String(err.message || "");
 
-    // Handle common “already taken” case nicely
     if (msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
       return res.status(409).json({ ok: false, error: "That site_id is already taken. Choose another." });
     }
@@ -259,7 +228,6 @@ app.post("/sites", async (req, res) => {
     res.status(500).json({ ok: false, error: msg });
   }
 });
-
 
 /* ---------------------------
    Tracker script
@@ -535,7 +503,6 @@ app.post("/demo/seed", async (req, res) => {
       }
     }
 
-    // sample reports so demo looks alive
     const sample1 =
       "Summary:\nTraffic is concentrating on Pricing and Services, which suggests purchase intent.\n\n" +
       "Trend:\nVisitors are exploring multiple pages, but your next step is to capture leads.\n\n" +
@@ -686,544 +653,11 @@ app.post("/email-latest", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
-/* ---------------------------
-   Storefront (no Stripe yet)
-   - unpaid users land here
-   GET  /storefront?token=...
-   POST /storefront/choose  (form: token, plan)
-----------------------------*/
-app.get("/storefront", async (req, res) => {
-  try {
-    setNoStore(res);
-
-    const token = req.query.token;
-    const site = await getSiteByToken(token);
-
-    if (!site) {
-      return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
-    }
-
-    // If they’re already paid, just send them to the dashboard
-    const plan = site.plan || "unpaid";
-    if (plan !== "unpaid") {
-      return res.redirect("/dashboard?token=" + encodeURIComponent(token));
-    }
-
-    const site_id = site.site_id;
-
-    res.setHeader("Content-Type", "text/html");
-    res.send(`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Constrava — Choose a Plan</title>
-  <style>
-    :root{
-      --bg:#0b0f19;
-      --text:#e5e7eb;
-      --muted:#9ca3af;
-      --border:rgba(255,255,255,.10);
-      --shadow: 0 12px 34px rgba(0,0,0,.35);
-      --radius:18px;
-      --accent:#60a5fa;
-      --accent2:#34d399;
-      --danger:#fb7185;
-      --panel: rgba(255,255,255,.05);
-    }
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      background: radial-gradient(1100px 720px at 20% -10%, rgba(96,165,250,.25), transparent 60%),
-                  radial-gradient(900px 620px at 90% 0%, rgba(52,211,153,.18), transparent 55%),
-                  var(--bg);
-      color:var(--text);
-    }
-    .wrap{max-width:1100px;margin:0 auto;padding:28px 18px 70px;}
-    .top{
-      display:flex;align-items:center;justify-content:space-between;gap:12px;
-      padding:18px 18px;
-      border:1px solid var(--border);
-      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(10px);
-    }
-    .brand{display:flex;align-items:center;gap:12px;}
-    .logo{
-      width:42px;height:42px;border-radius:14px;
-      background: linear-gradient(135deg, rgba(96,165,250,.9), rgba(52,211,153,.85));
-      box-shadow: 0 12px 26px rgba(96,165,250,.22);
-    }
-    h1{margin:0;font-size:18px;}
-    .sub{margin-top:3px;font-size:12px;color:var(--muted);}
-    .pill{
-      font-size:12px;color:var(--muted);
-      border:1px solid var(--border);
-      padding:7px 10px;border-radius:999px;
-      background: rgba(15,23,42,.55);
-      white-space:nowrap;
-    }
-    .hero{margin-top:18px;}
-    .heroTitle{font-size:28px;font-weight:950;letter-spacing:.2px;margin:0;}
-    .heroText{margin-top:10px;color:var(--muted);line-height:1.55;max-width:70ch;}
-    .grid{margin-top:18px;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
-    .card{
-      grid-column: span 4;
-      border:1px solid var(--border);
-      border-radius: var(--radius);
-      background: var(--panel);
-      box-shadow: var(--shadow);
-      padding:16px;
-      position:relative;
-      overflow:hidden;
-    }
-    @media (max-width: 980px){ .card{grid-column: 1 / -1;} }
-    .tag{
-      position:absolute;top:14px;right:14px;
-      font-size:11px;font-weight:900;
-      padding:6px 10px;border-radius:999px;
-      border:1px solid var(--border);
-      background: rgba(15,23,42,.55);
-      color: var(--muted);
-    }
-    .name{font-size:16px;font-weight:950;margin:0;}
-    .price{margin-top:10px;font-size:28px;font-weight:950;}
-    .small{font-size:12px;color:var(--muted);}
-    ul{margin:12px 0 0 0;padding:0 0 0 18px;color:var(--text);line-height:1.6;}
-    li{margin:6px 0;}
-    .btn{
-      width:100%;
-      margin-top:14px;
-      padding:12px 14px;
-      border-radius: 14px;
-      border:1px solid var(--border);
-      background: rgba(96,165,250,.14);
-      color: var(--text);
-      font-weight:950;
-      cursor:pointer;
-    }
-    .btn:hover{border-color: rgba(96,165,250,.55)}
-    .btn:active{transform: translateY(1px)}
-    .btnAlt{background: rgba(52,211,153,.14);}
-    .note{
-      margin-top:18px;
-      border:1px dashed rgba(255,255,255,.18);
-      border-radius: var(--radius);
-      padding:14px;
-      color: var(--muted);
-      background: rgba(15,23,42,.35);
-      line-height:1.55;
-      font-size:13px;
-    }
-    .footerRow{margin-top:18px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
-    a.link{color: var(--accent);text-decoration:none;font-weight:900;}
-    a.link:hover{text-decoration:underline;}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="top">
-      <div class="brand">
-        <div class="logo"></div>
-        <div>
-          <h1>Constrava Storefront</h1>
-          <div class="sub">Activate your dashboard for this site</div>
-        </div>
-      </div>
-      <div class="pill">Site: <b>${site_id}</b></div>
-    </div>
-
-    <div class="hero">
-      <h2 class="heroTitle">Choose a plan to activate your dashboard</h2>
-      <div class="heroText">
-        Payments aren’t enabled yet — this is the “full working infrastructure” step.
-        Picking a plan here will update your site’s access immediately, and send you back to the dashboard.
-      </div>
-    </div>
-
-    <div class="grid">
-      <div class="card">
-        <div class="tag">Good start</div>
-        <h3 class="name">Starter</h3>
-        <div class="price">$— <span class="small">/ mo (later)</span></div>
-        <ul>
-          <li>Dashboard access</li>
-          <li>Visits + trend chart</li>
-          <li>Top pages + device mix</li>
-          <li>Demo seeding (optional)</li>
-        </ul>
-
-        <form method="POST" action="/storefront/choose">
-          <input type="hidden" name="token" value="${token}">
-          <input type="hidden" name="plan" value="starter">
-          <button class="btn" type="submit">Activate Starter</button>
-        </form>
-      </div>
-
-      <div class="card">
-        <div class="tag">Most popular</div>
-        <h3 class="name">Pro</h3>
-        <div class="price">$— <span class="small">/ mo (later)</span></div>
-        <ul>
-          <li>Everything in Starter</li>
-          <li>Email latest report (when enabled)</li>
-          <li>More “business-ready” reporting workflow</li>
-        </ul>
-
-        <form method="POST" action="/storefront/choose">
-          <input type="hidden" name="token" value="${token}">
-          <input type="hidden" name="plan" value="pro">
-          <button class="btn btnAlt" type="submit">Activate Pro</button>
-        </form>
-      </div>
-
-      <div class="card">
-        <div class="tag">AI</div>
-        <h3 class="name">Full AI</h3>
-        <div class="price">$— <span class="small">/ mo (later)</span></div>
-        <ul>
-          <li>Everything in Pro</li>
-          <li>AI generated report endpoint</li>
-          <li>Plain-English “next steps” output</li>
-        </ul>
-
-        <form method="POST" action="/storefront/choose">
-          <input type="hidden" name="token" value="${token}">
-          <input type="hidden" name="plan" value="full_ai">
-          <button class="btn" type="submit">Activate Full AI</button>
-        </form>
-      </div>
-    </div>
-
-    <div class="note">
-      <b>Coming next:</b> We’ll replace these buttons with Stripe checkout.
-      Your .app (or this backend) can call a webhook after payment to set the plan.
-      For now, this storefront proves the full access-control system works end-to-end.
-    </div>
-
-    <div class="footerRow">
-      <a class="link" href="/dashboard?token=${encodeURIComponent(token)}">Back to dashboard</a>
-      <span class="pill">Current plan: <b>${plan}</b></span>
-    </div>
-  </div>
-</body>
-</html>`);
-  } catch (err) {
-    res.status(500).send(err.message);
-  }
-});
-
-
-    // Send them to the dashboard after activation
-    return res.redirect("/dashboard?token=" + encodeURIComponent(token));
-  } catch (err) {
-    res.status(500).send(err.message);
-  }
-});
 
 /* ---------------------------
-   Dashboard UI (token based, range selector)
-   GET /dashboard?token=...
+   Site login (site_id + token)
+   POST /auth/site-login { site_id, token }
 ----------------------------*/
-app.get("/dashboard", async (req, res) => {
-  try {
-    setNoStore(res);
-
-    const token = req.query.token;              // ✅ define token
-    const site = await getSiteByToken(token);   // ✅ use token safely
-    if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
-
-    const site_id = site.site_id;
-    const plan = site.plan || "unpaid";
-
-    // ✅ If unpaid, send them to storefront
-    if (plan === "unpaid") {
-      return res.redirect(`/storefront?token=${encodeURIComponent(token)}`);
-    }
-
-    res.setHeader("Content-Type", "text/html");
-
-    // ✅ IMPORTANT: ALL HTML must live inside this one template string.
-    // I’m keeping your full dashboard content intact below.
-    res.send(`<!doctype html>
-${/* keep the full HTML exactly as you pasted it */""}
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Constrava Dashboard</title>
-  <style>
-    /* (your full CSS unchanged) */
-    :root{
-      --bg:#0b0f19;
-      --panel:#111827;
-      --panel2:#0f172a;
-      --text:#e5e7eb;
-      --muted:#9ca3af;
-      --border:rgba(255,255,255,.08);
-      --accent:#60a5fa;
-      --accent2:#34d399;
-      --danger:#fb7185;
-      --shadow: 0 10px 30px rgba(0,0,0,.35);
-      --radius:16px;
-    }
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      background: radial-gradient(1200px 800px at 20% -10%, rgba(96,165,250,.25), transparent 60%),
-                  radial-gradient(900px 600px at 90% 0%, rgba(52,211,153,.18), transparent 55%),
-                  var(--bg);
-      color:var(--text);
-    }
-    .wrap{max-width:1180px; margin:0 auto; padding:26px 18px 60px;}
-    .topbar{
-      display:flex; align-items:center; justify-content:space-between;
-      gap:14px; padding:18px 18px;
-      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-      border:1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(10px);
-    }
-    .brand{display:flex; align-items:center; gap:12px;}
-    .logo{
-      width:40px; height:40px; border-radius:12px;
-      background: linear-gradient(135deg, rgba(96,165,250,.9), rgba(52,211,153,.85));
-      box-shadow: 0 10px 25px rgba(96,165,250,.25);
-    }
-    h1{font-size:18px; margin:0;}
-    .sub{font-size:12px; color:var(--muted); margin-top:2px;}
-    .controls{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
-    .pill{
-      font-size:12px; color: var(--muted);
-      border:1px solid var(--border);
-      padding:6px 10px;
-      border-radius:999px;
-      background: rgba(15,23,42,.6);
-    }
-    .btn{
-      padding:10px 14px;
-      border-radius:12px;
-      border:1px solid var(--border);
-      background: rgba(96,165,250,.12);
-      color: var(--text);
-      cursor:pointer;
-      font-weight:800;
-    }
-    .btn:hover{border-color: rgba(96,165,250,.5)}
-    .btn:active{transform: translateY(1px)}
-    select{
-      border-radius:12px;
-      border:1px solid var(--border);
-      background: rgba(15,23,42,.6);
-      color: var(--text);
-      padding:10px 12px;
-      font-weight:800;
-      outline:none;
-    }
-    select:hover{border-color: rgba(255,255,255,.18)}
-    .grid{
-      margin-top:18px;
-      display:grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap:16px;
-    }
-    .span12{grid-column: 1 / -1;}
-    .span8{grid-column: span 8;}
-    .span6{grid-column: span 6;}
-    .span4{grid-column: span 4;}
-    .span3{grid-column: span 3;}
-    @media (max-width: 1000px){
-      .span8,.span6,.span4,.span3{grid-column: 1 / -1;}
-    }
-    .card{
-      background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
-      border:1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding:16px;
-    }
-    .card h2{
-      margin:0 0 10px 0;
-      font-size:13px;
-      color: var(--muted);
-      letter-spacing:.2px;
-      font-weight:900;
-      display:flex; align-items:center; justify-content:space-between;
-      gap:10px;
-    }
-    .status{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted);}
-    .dot{
-      width:8px; height:8px; border-radius:50%;
-      background: var(--accent2);
-      box-shadow: 0 0 0 6px rgba(52,211,153,.12);
-    }
-    .err{color: var(--danger); font-weight:900}
-    .muted{color:var(--muted); font-size:12px}
-    .kpi{font-size:26px; font-weight:950; letter-spacing:.2px; margin-top:8px;}
-    .hint{margin-top:8px; font-size:12px; color:var(--muted); line-height:1.4;}
-    .assistantBox{
-      background: rgba(15,23,42,.55);
-      border:1px solid var(--border);
-      border-radius: 14px;
-      padding:14px;
-      line-height:1.55;
-      font-size:14px;
-      white-space:pre-wrap;
-    }
-    .row{display:flex; align-items:center; justify-content:space-between; gap:12px;}
-    .mini{
-      display:flex; flex-direction:column; gap:6px;
-      background: rgba(15,23,42,.55);
-      border:1px solid var(--border);
-      border-radius: 14px;
-      padding:12px;
-    }
-    .mini .label{font-size:12px; color:var(--muted); font-weight:900;}
-    .mini .value{font-size:14px; font-weight:950;}
-    .sparkWrap{
-      background: rgba(15,23,42,.55);
-      border:1px solid var(--border);
-      border-radius: 14px;
-      padding:12px;
-    }
-    svg{width:100%; height:86px; display:block;}
-    .latest{
-      white-space: pre-wrap;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
-      font-size: 13px;
-      line-height: 1.45;
-      background: rgba(15,23,42,.65);
-      border:1px solid var(--border);
-      border-radius: 12px;
-      padding: 12px;
-      overflow:auto;
-      min-height: 220px;
-    }
-    .historyItem{
-      padding:12px;
-      border-radius: 14px;
-      border:1px solid var(--border);
-      background: rgba(15,23,42,.55);
-      margin-top:10px;
-    }
-    .historyItem .date{font-weight:950; font-size:12px}
-    .historyItem .preview{margin-top:8px; font-size:13px; color: var(--text)}
-  </style>
-</head>
-
-<body>
-  <div class="wrap">
-    <div class="topbar">
-      <div class="brand">
-        <div class="logo"></div>
-        <div>
-          <h1>Constrava Dashboard</h1>
-          <div class="sub">Your plan: <b>${plan}</b> — conclusions + next steps in plain English</div>
-        </div>
-      </div>
-
-      <div class="controls">
-        <span class="pill">Site: <b>${site_id}</b></span>
-
-        <select id="rangeSel" title="Time range">
-          <option value="1">1 day</option>
-          <option value="7" selected>1 week</option>
-          <option value="30">1 month</option>
-          <option value="365">1 year</option>
-          <option value="730">2 years</option>
-          <option value="1825">5 years</option>
-        </select>
-
-        <button class="btn" id="refreshBtn">Refresh</button>
-      </div>
-    </div>
-
-    <!-- keep the rest of your dashboard markup + JS exactly as-is -->
-    <!-- (I’m not rewriting it here again because it’s huge and you already have it) -->
-
-  </div>
-</body>
-</html>`);
-  } catch (err) {
-    res.status(500).send(err.message);
-  }
-});
-/* ---------------------------
-   Billing webhook: update plan
-----------------------------*/
-app.post("/billing/update-plan", async (req, res) => {
-  try {
-    const secret = req.headers["x-webhook-secret"];
-    if (!process.env.BILLING_WEBHOOK_SECRET) {
-      return res.status(500).json({ ok: false, error: "Missing BILLING_WEBHOOK_SECRET on server" });
-    }
-    if (!secret || secret !== process.env.BILLING_WEBHOOK_SECRET) {
-      return res.status(401).json({ ok: false, error: "Unauthorized" });
-    }
-
-    const { site_id, plan } = req.body || {};
-    const allowed = new Set(["starter", "pro", "full_ai"]);
-
-    if (!site_id || !plan) {
-      return res.status(400).json({ ok: false, error: "site_id and plan required" });
-    }
-    if (!allowed.has(plan)) {
-      return res.status(400).json({ ok: false, error: "Invalid plan. Use starter, pro, or full_ai" });
-    }
-
-    const r = await pool.query(
-      `UPDATE sites
-       SET plan = $2
-       WHERE site_id = $1
-       RETURNING site_id, plan`,
-      [site_id, plan]
-    );
-
-    if (r.rows.length === 0) {
-      return res.status(404).json({ ok: false, error: "site_id not found" });
-    }
-
-    res.json({ ok: true, updated: r.rows[0] });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-app.get("/store", async (req, res) => {
-  setNoStore(res);
-
-  const token = req.query.token;
-  const site = await getSiteByToken(token);
-  if (!site) return res.status(401).send("Unauthorized. Add ?token=...");
-
-  res.setHeader("Content-Type", "text/html");
-  res.send(`<!doctype html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Constrava Store</title>
-<style>
-  body{margin:0;font-family:system-ui;background:#0b0f19;color:#e5e7eb}
-  .wrap{max-width:900px;margin:0 auto;padding:40px 18px}
-  .card{border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:18px;background:rgba(255,255,255,.04)}
-  .btn{display:inline-block;margin-top:14px;padding:10px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.18);color:#e5e7eb;text-decoration:none}
-</style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Activate Constrava</h1>
-      <p>Site: <b>${site.site_id}</b></p>
-      <p>Your current plan is <b>${site.plan}</b>. Choose a plan to unlock the dashboard.</p>
-      <a class="btn" href="/store?token=${encodeURIComponent(token)}">Refresh</a>
-      <p style="opacity:.7;margin-top:14px">Payments coming soon — for now we’ll simulate upgrades.</p>
-    </div>
-  </div>
-</body>
-</html>`);
-});
 app.post("/auth/site-login", async (req, res) => {
   try {
     const { site_id: rawSiteId, token } = req.body || {};
@@ -1251,17 +685,17 @@ app.post("/auth/site-login", async (req, res) => {
       ok: true,
       site_id: site.site_id,
       plan: site.plan,
-      dashboard_url: `${base}/dashboard?token=${encodeURIComponent(token)}`
+      dashboard_url: `${base}/dashboard?token=${encodeURIComponent(token)}`,
+      storefront_url: `${base}/storefront?token=${encodeURIComponent(token)}`
     });
   } catch (err) {
     res.status(500).json({ ok: false, error: String(err.message || err) });
   }
 });
+
 /* ---------------------------
-   Storefront (token-based)
+   Storefront (token-based demo)
    GET /storefront?token=...
-   - shows plans
-   - "Activate" buttons call /billing/update-plan for now (manual/fake checkout)
 ----------------------------*/
 app.get("/storefront", async (req, res) => {
   try {
@@ -1274,6 +708,11 @@ app.get("/storefront", async (req, res) => {
     const site_id = site.site_id;
     const plan = site.plan || "unpaid";
 
+    // If already activated, go dashboard
+    if (plan !== "unpaid") {
+      return res.redirect("/dashboard?token=" + encodeURIComponent(token));
+    }
+
     res.setHeader("Content-Type", "text/html");
 
     res.send(`<!doctype html>
@@ -1284,17 +723,9 @@ app.get("/storefront", async (req, res) => {
   <title>Constrava — Storefront</title>
   <style>
     :root{
-      --bg:#0b0f19;
-      --panel:#111827;
-      --panel2:#0f172a;
-      --text:#e5e7eb;
-      --muted:#9ca3af;
-      --border:rgba(255,255,255,.08);
-      --accent:#60a5fa;
-      --accent2:#34d399;
-      --danger:#fb7185;
-      --shadow: 0 10px 30px rgba(0,0,0,.35);
-      --radius:16px;
+      --bg:#0b0f19; --text:#e5e7eb; --muted:#9ca3af;
+      --border:rgba(255,255,255,.08); --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius:16px; --accent:#60a5fa; --accent2:#34d399; --danger:#fb7185;
     }
     *{box-sizing:border-box}
     body{
@@ -1305,113 +736,56 @@ app.get("/storefront", async (req, res) => {
                   var(--bg);
       color:var(--text);
     }
-    .wrap{max-width:1180px; margin:0 auto; padding:26px 18px 60px;}
+    .wrap{max-width:1180px;margin:0 auto;padding:26px 18px 60px;}
     .topbar{
-      display:flex; align-items:center; justify-content:space-between;
-      gap:14px; padding:18px 18px;
-      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-      border:1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
+      display:flex;align-items:center;justify-content:space-between;gap:14px;
+      padding:18px 18px;background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      border:1px solid var(--border);border-radius: var(--radius);box-shadow: var(--shadow);
       backdrop-filter: blur(10px);
     }
-    .brand{display:flex; align-items:center; gap:12px;}
+    .brand{display:flex;align-items:center;gap:12px;}
     .logo{
-      width:40px; height:40px; border-radius:12px;
+      width:40px;height:40px;border-radius:12px;
       background: linear-gradient(135deg, rgba(96,165,250,.9), rgba(52,211,153,.85));
       box-shadow: 0 10px 25px rgba(96,165,250,.25);
     }
-    h1{font-size:18px; margin:0;}
-    .sub{font-size:12px; color:var(--muted); margin-top:2px;}
+    h1{font-size:18px;margin:0;}
+    .sub{font-size:12px;color:var(--muted);margin-top:2px;}
     .pill{
-      font-size:12px; color: var(--muted);
-      border:1px solid var(--border);
-      padding:6px 10px;
-      border-radius:999px;
-      background: rgba(15,23,42,.6);
-      display:inline-flex; align-items:center; gap:6px;
+      font-size:12px;color: var(--muted);border:1px solid var(--border);padding:6px 10px;border-radius:999px;
+      background: rgba(15,23,42,.6);display:inline-flex;align-items:center;gap:6px;
     }
-    .grid{
-      margin-top:18px;
-      display:grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap:16px;
-    }
-    .span12{grid-column: 1 / -1;}
-    .span4{grid-column: span 4;}
+    .grid{margin-top:18px;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
+    .span12{grid-column:1/-1;}
+    .span4{grid-column:span 4;}
     @media (max-width: 1000px){
-      .span4{grid-column: 1 / -1;}
-      .topbar{flex-direction:column; align-items:flex-start;}
+      .span4{grid-column:1/-1;}
+      .topbar{flex-direction:column;align-items:flex-start;}
     }
     .card{
       background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
-      border:1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding:16px;
+      border:1px solid var(--border);border-radius: var(--radius);box-shadow: var(--shadow);padding:16px;
     }
     .card h2{
-      margin:0 0 6px 0;
-      font-size:14px;
-      font-weight:950;
-      letter-spacing:.2px;
-      display:flex; justify-content:space-between; align-items:center; gap:10px;
+      margin:0 0 6px 0;font-size:14px;font-weight:950;letter-spacing:.2px;
+      display:flex;justify-content:space-between;align-items:center;gap:10px;
     }
-    .muted{color:var(--muted); font-size:12px; line-height:1.45;}
-    .price{font-size:30px; font-weight:1000; margin-top:12px;}
-    .list{margin:12px 0 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:10px;}
-    .list li{
-      padding:10px 10px;
-      border-radius:12px;
-      border:1px solid var(--border);
-      background: rgba(15,23,42,.55);
-      font-size:13px;
-      line-height:1.35;
-    }
+    .muted{color:var(--muted);font-size:12px;line-height:1.45;}
+    .price{font-size:30px;font-weight:1000;margin-top:12px;}
+    .list{margin:12px 0 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;}
+    .list li{padding:10px 10px;border-radius:12px;border:1px solid var(--border);background: rgba(15,23,42,.55);font-size:13px;line-height:1.35;}
     .btn{
-      width:100%;
-      margin-top:14px;
-      padding:12px 14px;
-      border-radius:12px;
-      border:1px solid var(--border);
-      background: rgba(96,165,250,.14);
-      color: var(--text);
-      cursor:pointer;
-      font-weight:950;
+      width:100%;margin-top:14px;padding:12px 14px;border-radius:12px;border:1px solid var(--border);
+      background: rgba(96,165,250,.14);color: var(--text);cursor:pointer;font-weight:950;
     }
     .btn:hover{border-color: rgba(96,165,250,.5)}
-    .btn:active{transform: translateY(1px)}
     .btnGreen{background: rgba(52,211,153,.14);}
     .btnGreen:hover{border-color: rgba(52,211,153,.5)}
-    .btnDisabled{
-      opacity:.55;
-      cursor:not-allowed;
-    }
-    .note{
-      margin-top:16px;
-      padding:12px;
-      border-radius: 14px;
-      border:1px solid var(--border);
-      background: rgba(15,23,42,.55);
-    }
-    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
-    .tiny{font-size:12px; color:var(--muted)}
-    .ok{color: var(--accent2); font-weight:900}
-    .err{color: var(--danger); font-weight:900}
-    .linkBtn{
-      padding:10px 14px;
-      border-radius:12px;
-      border:1px solid var(--border);
-      background: rgba(15,23,42,.55);
-      color: var(--text);
-      cursor:pointer;
-      font-weight:900;
-      text-decoration:none;
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-    }
-    .linkBtn:hover{border-color: rgba(255,255,255,.18)}
+    .note{margin-top:16px;padding:12px;border-radius:14px;border:1px solid var(--border);background: rgba(15,23,42,.55);}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+    .tiny{font-size:12px;color:var(--muted)}
+    .ok{color: var(--accent2);font-weight:900}
+    .err{color: var(--danger);font-weight:900}
   </style>
 </head>
 <body>
@@ -1428,21 +802,16 @@ app.get("/storefront", async (req, res) => {
       <div class="row">
         <span class="pill">Site: <b>${site_id}</b></span>
         <span class="pill">Current plan: <b>${plan}</b></span>
-        <a class="linkBtn" href="/dashboard?token=${encodeURIComponent(token)}">Go to dashboard</a>
       </div>
     </div>
 
     <div class="grid">
       <div class="card span12">
-        <h2>
-          Activation
-          <span class="pill">Step 1/2</span>
-        </h2>
+        <h2>Activation <span class="pill">Demo mode</span></h2>
         <div class="muted">
-          Right now this is a <b>demo storefront</b>. Clicking “Activate” will update your plan instantly (no Stripe yet).
-          Later we’ll swap the activation buttons to real Stripe checkout.
+          Clicking “Activate” will update your plan instantly (no Stripe yet).
+          Later we’ll swap the activation call to Stripe webhooks.
         </div>
-
         <div class="note" style="margin-top:12px;">
           <div class="row">
             <div class="tiny">Status:</div>
@@ -1465,7 +834,7 @@ app.get("/storefront", async (req, res) => {
 
       <div class="card span4">
         <h2>Pro <span class="pill">Reports</span></h2>
-        <div class="muted">Scheduled-style reporting + email sending.</div>
+        <div class="muted">Reporting + email sending.</div>
         <div class="price">$79<span class="tiny">/mo</span></div>
         <ul class="list">
           <li>Everything in Starter</li>
@@ -1486,21 +855,6 @@ app.get("/storefront", async (req, res) => {
         </ul>
         <button class="btn btnGreen" id="btnAI">Activate Full AI</button>
       </div>
-
-      <div class="card span12">
-        <h2>What happens after activation?</h2>
-        <div class="muted">
-          Your plan is stored on the backend per <b>site_id</b>. When you switch plans later, nothing breaks —
-          it’s just a plan update in the database.
-        </div>
-
-        <div class="note">
-          <div class="muted">
-            If your dashboard is still empty, seed demo data:<br/>
-            <span class="pill">POST /demo/seed?token=YOUR_TOKEN</span>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -1518,9 +872,6 @@ app.get("/storefront", async (req, res) => {
       statusEl.className = "tiny";
       statusEl.textContent = "Activating " + plan + "…";
 
-      // IMPORTANT: this route requires x-webhook-secret right now.
-      // For demo UX, we’ll add a "demo activation route" next (no secret),
-      // then later replace it with Stripe webhooks.
       const r = await fetch("/demo/activate-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1552,11 +903,11 @@ app.get("/storefront", async (req, res) => {
     res.status(500).send(err.message);
   }
 });
+
 /* ---------------------------
    DEMO: activate a plan from the storefront (NO secret)
    POST /demo/activate-plan
    Body: { token, plan }
-   NOTE: Keep this for demo only. Later remove when Stripe is live.
 ----------------------------*/
 app.post("/demo/activate-plan", async (req, res) => {
   try {
@@ -1575,6 +926,168 @@ app.post("/demo/activate-plan", async (req, res) => {
       `UPDATE sites SET plan=$2 WHERE site_id=$1 RETURNING site_id, plan`,
       [site.site_id, plan]
     );
+
+    res.json({ ok: true, updated: r.rows[0] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+/* ---------------------------
+   Dashboard UI (token-based)
+   GET /dashboard?token=...
+----------------------------*/
+app.get("/dashboard", async (req, res) => {
+  try {
+    setNoStore(res);
+
+    const token = req.query.token;
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+
+    const site_id = site.site_id;
+    const plan = site.plan || "unpaid";
+
+    // If unpaid, send them to storefront
+    if (plan === "unpaid") {
+      return res.redirect(`/storefront?token=${encodeURIComponent(token)}`);
+    }
+
+    res.setHeader("Content-Type", "text/html");
+
+    // Minimal dashboard UI (works now). You can paste your fancy UI later.
+    res.send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Constrava Dashboard</title>
+  <style>
+    body{margin:0;font-family:system-ui;background:#0b0f19;color:#e5e7eb}
+    .wrap{max-width:1100px;margin:0 auto;padding:24px 16px}
+    .top{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;
+      border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:16px;background:rgba(255,255,255,.04)}
+    .pill{border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:6px 10px;color:#9ca3af;font-size:12px}
+    .btn{padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(96,165,250,.14);color:#e5e7eb;cursor:pointer;font-weight:800}
+    .grid{margin-top:14px;display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
+    .card{grid-column:span 6;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:16px;background:rgba(255,255,255,.04)}
+    @media (max-width:900px){.card{grid-column:1/-1}}
+    .kpi{font-size:34px;font-weight:950;margin-top:10px}
+    .muted{color:#9ca3af;font-size:13px;line-height:1.45}
+    select{padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(15,23,42,.6);color:#e5e7eb;font-weight:900}
+    pre{white-space:pre-wrap;background:rgba(15,23,42,.6);padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.08);overflow:auto}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <div style="font-weight:950;">Constrava Dashboard</div>
+        <div class="muted">Plan: <b>${plan}</b> • Site: <b>${site_id}</b></div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <span class="pill">token-auth</span>
+        <select id="rangeSel">
+          <option value="1">1 day</option>
+          <option value="7" selected>1 week</option>
+          <option value="30">1 month</option>
+          <option value="365">1 year</option>
+          <option value="730">2 years</option>
+          <option value="1825">5 years</option>
+        </select>
+        <button class="btn" id="refreshBtn">Refresh</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="muted">Visits today</div>
+        <div class="kpi" id="visitsToday">—</div>
+        <div class="muted" id="rangeLabel"></div>
+      </div>
+
+      <div class="card">
+        <div class="muted">Top page (range)</div>
+        <div class="kpi" style="font-size:22px" id="topPage">—</div>
+        <div class="muted" id="deviceMix">—</div>
+      </div>
+
+      <div class="card" style="grid-column:1/-1">
+        <div class="muted">Debug (metrics payload)</div>
+        <pre id="payload">Loading…</pre>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const token = new URLSearchParams(location.search).get("token");
+  const sel = document.getElementById("rangeSel");
+  const refreshBtn = document.getElementById("refreshBtn");
+
+  async function load(){
+    const days = sel.value;
+    const r = await fetch("/metrics?token=" + encodeURIComponent(token) + "&days=" + encodeURIComponent(days));
+    const data = await r.json();
+
+    document.getElementById("payload").textContent = JSON.stringify(data, null, 2);
+
+    if(!data.ok) return;
+
+    document.getElementById("visitsToday").textContent = data.visits_today ?? 0;
+    document.getElementById("rangeLabel").textContent = "Visits in last " + data.days + " days: " + (data.visits_range ?? 0);
+
+    const top = data.top_page && data.top_page.page_type ? (data.top_page.page_type + " (" + data.top_page.views + ")") : "—";
+    document.getElementById("topPage").textContent = top;
+
+    const dm = data.device_mix || {mobile:0, desktop:0};
+    document.getElementById("deviceMix").textContent = "Device mix: mobile " + (dm.mobile||0) + " • desktop " + (dm.desktop||0);
+  }
+
+  refreshBtn.addEventListener("click", load);
+  sel.addEventListener("change", load);
+  load();
+</script>
+</body>
+</html>`);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
+});
+
+/* ---------------------------
+   Billing webhook: update plan (Stripe later)
+   POST /billing/update-plan
+   Headers: x-webhook-secret: BILLING_WEBHOOK_SECRET
+   Body: { site_id, plan }
+----------------------------*/
+app.post("/billing/update-plan", async (req, res) => {
+  try {
+    const secret = req.headers["x-webhook-secret"];
+    if (!process.env.BILLING_WEBHOOK_SECRET) {
+      return res.status(500).json({ ok: false, error: "Missing BILLING_WEBHOOK_SECRET on server" });
+    }
+    if (!secret || secret !== process.env.BILLING_WEBHOOK_SECRET) {
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    }
+
+    const { site_id, plan } = req.body || {};
+    const allowed = new Set(["starter", "pro", "full_ai"]);
+
+    if (!site_id || !plan) {
+      return res.status(400).json({ ok: false, error: "site_id and plan required" });
+    }
+    if (!allowed.has(plan)) {
+      return res.status(400).json({ ok: false, error: "Invalid plan. Use starter, pro, or full_ai" });
+    }
+
+    const r = await pool.query(
+      `UPDATE sites SET plan = $2 WHERE site_id = $1 RETURNING site_id, plan`,
+      [site_id, plan]
+    );
+
+    if (r.rows.length === 0) {
+      return res.status(404).json({ ok: false, error: "site_id not found" });
+    }
 
     res.json({ ok: true, updated: r.rows[0] });
   } catch (err) {
