@@ -81,6 +81,12 @@ function normalizeDays(input) {
   return allowed.has(n) ? n : 7;
 }
 
+app.get("/debug/site", async (req, res) => {
+  const token = req.query.token;
+  const site = await getSiteByToken(token);
+  res.json({ ok: true, site });
+});
+
 // token -> site record (includes plan)
 async function getSiteByToken(token) {
   if (!token) return null;
