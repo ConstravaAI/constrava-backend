@@ -1573,6 +1573,337 @@ if (process.env.ENABLE_SCHEDULER === "true") {
     runDailyForAllSites().catch(() => {});
   }, 6 * 60 * 60 * 1000);
 }
+/* ---------------------------
+   PUBLIC Storefront (NO token)
+   GET /store
+   - Anyone can visit
+   - Creates a site by calling POST /sites
+----------------------------*/
+app.get("/store", (req, res) => {
+  try {
+    setNoStore(res);
+    res.setHeader("Content-Type", "text/html");
+
+    const base = publicBaseUrl(req);
+
+    res.send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Constrava — Store</title>
+  <style>
+    :root{
+      --bg:#0b0f19;
+      --panel: rgba(255,255,255,.06);
+      --panel2: rgba(15,23,42,.60);
+      --text:#e5e7eb;
+      --muted:#9ca3af;
+      --border:rgba(255,255,255,.12);
+      --accent:#60a5fa;
+      --accent2:#34d399;
+      --danger:#fb7185;
+      --shadow: 0 14px 40px rgba(0,0,0,.35);
+      --radius:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background:
+        radial-gradient(1100px 720px at 20% -10%, rgba(96,165,250,.25), transparent 60%),
+        radial-gradient(900px 620px at 90% 0%, rgba(52,211,153,.18), transparent 55%),
+        var(--bg);
+      color:var(--text);
+    }
+    .wrap{max-width:1100px;margin:0 auto;padding:28px 18px 70px;}
+    .top{
+      display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+      padding:18px 18px;
+      border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+    .brand{display:flex;align-items:center;gap:12px;}
+    .logo{
+      width:44px;height:44px;border-radius:14px;
+      background: linear-gradient(135deg, rgba(96,165,250,.95), rgba(52,211,153,.88));
+      box-shadow: 0 12px 26px rgba(96,165,250,.22);
+    }
+    h1{margin:0;font-size:18px;}
+    .sub{margin-top:3px;font-size:12px;color:var(--muted);}
+    .pill{
+      font-size:12px;color:var(--muted);
+      border:1px solid var(--border);
+      padding:7px 10px;border-radius:999px;
+      background: rgba(15,23,42,.55);
+      white-space:nowrap;
+    }
+    .hero{margin-top:18px;display:grid;grid-template-columns: 1.2fr .8fr;gap:16px;}
+    @media (max-width: 980px){ .hero{grid-template-columns:1fr;} }
+    .card{
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      padding:16px;
+    }
+    .heroTitle{font-size:30px;font-weight:1000;letter-spacing:.2px;margin:0;}
+    .heroText{margin-top:10px;color:var(--muted);line-height:1.55;max-width:70ch;}
+    .grid{margin-top:16px;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
+    .span8{grid-column: span 8;}
+    .span4{grid-column: span 4;}
+    .span12{grid-column: 1 / -1;}
+    @media (max-width: 980px){ .span8,.span4{grid-column: 1 / -1;} }
+    label{display:block;font-size:12px;color:var(--muted);font-weight:900;margin:10px 0 6px;}
+    input{
+      width:100%;
+      border-radius:14px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.60);
+      color: var(--text);
+      padding:12px 12px;
+      outline:none;
+      font-weight:800;
+    }
+    input:focus{border-color: rgba(96,165,250,.55)}
+    .row{display:flex;gap:12px;flex-wrap:wrap;}
+    .row > div{flex:1; min-width: 240px;}
+    .btn{
+      width:100%;
+      margin-top:14px;
+      padding:12px 14px;
+      border-radius: 14px;
+      border:1px solid var(--border);
+      background: rgba(96,165,250,.16);
+      color: var(--text);
+      font-weight:1000;
+      cursor:pointer;
+    }
+    .btn:hover{border-color: rgba(96,165,250,.65)}
+    .btn:active{transform: translateY(1px)}
+    .muted{color:var(--muted);font-size:12px;line-height:1.55;}
+    .plan{
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(15,23,42,.35);
+      padding:14px;
+    }
+    .plan h3{margin:0;font-size:14px;font-weight:1000;}
+    .price{margin-top:8px;font-size:26px;font-weight:1000;}
+    ul{margin:10px 0 0 0;padding:0 0 0 18px;line-height:1.6;}
+    .note{
+      margin-top:12px;
+      border:1px dashed rgba(255,255,255,.18);
+      border-radius: var(--radius);
+      padding:12px;
+      background: rgba(15,23,42,.30);
+      color: var(--muted);
+      font-size:12px;
+      line-height:1.55;
+    }
+    .out{
+      margin-top:12px;
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(15,23,42,.55);
+      padding:14px;
+      display:none;
+    }
+    pre{
+      margin:10px 0 0 0;
+      white-space:pre-wrap;
+      word-break:break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+      font-size:12px;
+      color: var(--text);
+    }
+    .ok{color: var(--accent2); font-weight:1000}
+    .err{color: var(--danger); font-weight:1000}
+    a.link{color: var(--accent); text-decoration:none; font-weight:1000}
+    a.link:hover{text-decoration:underline}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>Constrava</h1>
+          <div class="sub">Tracking + plain-English insights for small business sites</div>
+        </div>
+      </div>
+      <div class="pill">Backend: <b>${base}</b></div>
+    </div>
+
+    <div class="hero">
+      <div class="card">
+        <h2 class="heroTitle">Create your site in 60 seconds</h2>
+        <div class="heroText">
+          This page is public. Anyone can create a site and instantly get:
+          <b>dashboard link</b>, <b>access token</b>, and <b>tracking snippet</b>.
+        </div>
+
+        <div class="note">
+          <b>Security note:</b> Your access token is basically your password. If you choose your own token,
+          make it strong and don’t share it.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="plan">
+          <h3>Starter</h3>
+          <div class="price">$29 <span class="muted">/mo</span></div>
+          <ul>
+            <li>Dashboard + visits</li>
+            <li>Trends + top pages</li>
+            <li>Device mix</li>
+          </ul>
+        </div>
+        <div class="plan" style="margin-top:12px;">
+          <h3>Pro</h3>
+          <div class="price">$79 <span class="muted">/mo</span></div>
+          <ul>
+            <li>Email latest report</li>
+            <li>More reporting workflow</li>
+          </ul>
+        </div>
+        <div class="plan" style="margin-top:12px;">
+          <h3>Full AI</h3>
+          <div class="price">$199 <span class="muted">/mo</span></div>
+          <ul>
+            <li>AI “next steps” reports</li>
+            <li>Best assistant experience</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card span8">
+        <h2 style="margin:0;font-size:16px;font-weight:1000;">Create a site</h2>
+        <div class="muted" style="margin-top:6px;">
+          Choose your own <b>site_id</b> (your “username”). Optionally set your own token, or leave it blank to auto-generate.
+        </div>
+
+        <form id="createForm">
+          <div class="row">
+            <div>
+              <label for="site_id">site_id (username)</label>
+              <input id="site_id" name="site_id" placeholder="example: my-business" required />
+              <div class="muted">Lowercase letters, numbers, hyphens. 4–24 chars.</div>
+            </div>
+            <div>
+              <label for="site_name">site_name</label>
+              <input id="site_name" name="site_name" placeholder="My Business" required />
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label for="owner_email">owner_email</label>
+              <input id="owner_email" name="owner_email" placeholder="you@domain.com" required />
+            </div>
+            <div>
+              <label for="custom_token">custom token (optional)</label>
+              <input id="custom_token" name="custom_token" placeholder="Leave blank to auto-generate" />
+              <div class="muted">If you set one, it must be strong (20+ chars, mixed types).</div>
+            </div>
+          </div>
+
+          <button class="btn" type="submit">Create site →</button>
+
+          <div id="msg" class="muted" style="margin-top:10px;"></div>
+
+          <div id="out" class="out">
+            <div id="outStatus" class="ok">Created ✅</div>
+            <div class="muted" style="margin-top:6px;">Save these:</div>
+            <pre id="outPre"></pre>
+          </div>
+        </form>
+      </div>
+
+      <div class="card span4">
+        <h2 style="margin:0;font-size:16px;font-weight:1000;">Next steps after you create</h2>
+        <div class="muted" style="margin-top:10px;line-height:1.6;">
+          1) Copy the <b>tracking snippet</b> into your website.<br/>
+          2) Visit the <b>dashboard link</b>.<br/>
+          3) If your plan is <b>unpaid</b>, you’ll be redirected to activate.
+        </div>
+
+        <div class="note" style="margin-top:12px;">
+          <b>Tip:</b> If you want demo data, call:<br/>
+          <span class="pill">POST /demo/seed?token=YOUR_TOKEN</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const base = ${JSON.stringify(base)};
+  const form = document.getElementById("createForm");
+  const msg = document.getElementById("msg");
+  const out = document.getElementById("out");
+  const outPre = document.getElementById("outPre");
+  const outStatus = document.getElementById("outStatus");
+
+  function setMsg(text, isErr){
+    msg.innerHTML = isErr ? "<span class='err'>" + text + "</span>" : "<span class='ok'>" + text + "</span>";
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    out.style.display = "none";
+    setMsg("Creating site...", false);
+
+    const payload = {
+      site_id: document.getElementById("site_id").value,
+      site_name: document.getElementById("site_name").value,
+      owner_email: document.getElementById("owner_email").value,
+      custom_token: document.getElementById("custom_token").value || undefined
+    };
+
+    try{
+      const r = await fetch(base + "/sites", {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await r.json().catch(() => ({}));
+      if(!r.ok || !data.ok){
+        setMsg(data.error || ("Create failed (" + r.status + ")"), true);
+        return;
+      }
+
+      setMsg("Created ✅ Scroll down for your links.", false);
+
+      const dashboard = data.client_dashboard_url || (base + "/dashboard?token=" + encodeURIComponent(data.access_token));
+      const storefront = base + "/storefront?token=" + encodeURIComponent(data.access_token);
+
+      outStatus.textContent = "Created ✅ Save this info:";
+      outPre.textContent =
+        "site_id: " + data.site_id + "\\n" +
+        "access_token: " + data.access_token + "\\n" +
+        "dashboard_url: " + dashboard + "\\n" +
+        "activation_storefront_url: " + storefront + "\\n\\n" +
+        "install_snippet:\\n" + data.install_snippet;
+
+      out.style.display = "block";
+    }catch(err){
+      setMsg("Network error: " + (err && err.message ? err.message : "unknown"), true);
+    }
+  });
+</script>
+</body>
+</html>`);
+  } catch (err) {
+    res.status(500).send(String(err.message || err));
+  }
+});
 
 /* ---------------------------
    Errors
