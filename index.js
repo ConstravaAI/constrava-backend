@@ -2011,7 +2011,7 @@ app.get("/store", (req, res) => {
 
     const base = publicBaseUrl(req);
 
-    res.send(\`<!doctype html>
+    res.send(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
