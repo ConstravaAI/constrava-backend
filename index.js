@@ -9,6 +9,14 @@
 // ✅ dashboard graphs (SVG) + reports UI + AI generate button
 // ✅ optional in-process daily scheduler (NOT real cron) + manual job trigger
 //
+// ✅ DEMO/CLIENT “FUN” FEATURES ADDED (the “everything” pack)
+// ✅ Live traffic endpoint: GET /live?token=...&since=ISO
+// ✅ Demo event firing: POST /demo/fire-event { token, event_name, page_type, device }
+// ✅ Shareable demo links: POST /demo/link { token } -> { url } and GET /d/:code redirects to dashboard
+// ✅ Action plan AI endpoint (full_ai only): POST /generate-action-plan?token=...
+// ✅ Enhanced metrics: conversions + top pages (10) + share % + conversion rate
+// ✅ Demo seeder can also seed leads/purchases/cta_click (optional rates)
+//
 // ENV REQUIRED:
 // - DATABASE_URL
 //
@@ -128,6 +136,12 @@ function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
+function clamp01(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
+
 /* ---------------------------
    DB helpers
 ----------------------------*/
@@ -177,7 +191,12 @@ function setCookie(res, name, value, opts = {}) {
     maxAgeSeconds = 60 * 60 * 24 * 14 // 14 days
   } = opts;
 
-  const parts = [`${name}=${encodeURIComponent(value)}`, `Path=${path}`, `SameSite=${sameSite}`, `Max-Age=${maxAgeSeconds}`];
+  const parts = [
+    `${name}=${encodeURIComponent(value)}`,
+    `Path=${path}`,
+    `SameSite=${sameSite}`,
+    `Max-Age=${maxAgeSeconds}`
+  ];
   if (httpOnly) parts.push("HttpOnly");
   if (secure) parts.push("Secure");
   res.setHeader("Set-Cookie", parts.join("; "));
@@ -207,15 +226,6 @@ async function getSession(req) {
   if (!Number.isFinite(expires) || expires < Date.now()) return null;
 
   return row;
-}
-
-async function requireSession(req, res) {
-  const sess = await getSession(req);
-  if (!sess) {
-    res.status(401).json({ ok: false, error: "Not logged in" });
-    return null;
-  }
-  return sess;
 }
 
 /* ---------------------------
@@ -275,6 +285,15 @@ async function ensureTables() {
     );
   `);
 
+  // ✅ shareable demo links
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS demo_links (
+      code TEXT PRIMARY KEY,
+      token TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
   console.log("✅ Tables ready");
 }
 ensureTables().catch((e) => console.error("ensureTables failed:", e.message));
@@ -284,170 +303,193 @@ ensureTables().catch((e) => console.error("ensureTables failed:", e.message));
 ----------------------------*/
 app.get("/", (req, res) => res.send("Backend is running ✅"));
 
-app.get("/db-test", asyncHandler(async (req, res) => {
-  const r = await pool.query("SELECT NOW() as now");
-  res.json({ ok: true, now: r.rows[0].now });
-}));
+app.get(
+  "/db-test",
+  asyncHandler(async (req, res) => {
+    const r = await pool.query("SELECT NOW() as now");
+    res.json({ ok: true, now: r.rows[0].now });
+  })
+);
 
-app.get("/debug/site", asyncHandler(async (req, res) => {
-  const token = req.query.token;
-  const site = await getSiteByToken(token);
-  res.json({ ok: true, site });
-}));
+app.get(
+  "/debug/site",
+  asyncHandler(async (req, res) => {
+    const token = req.query.token;
+    const site = await getSiteByToken(token);
+    res.json({ ok: true, site });
+  })
+);
 
 /* ---------------------------
    Auth (real user accounts)
-   - Users are tied to a site_id
-   - Login sets an HttpOnly cookie session
 ----------------------------*/
-app.post("/auth/register", asyncHandler(async (req, res) => {
-  const { site_id: rawSiteId, email, password, token } = req.body || {};
-  const site_id = normalizeSiteId(rawSiteId);
+app.post(
+  "/auth/register",
+  asyncHandler(async (req, res) => {
+    const { site_id: rawSiteId, email, password, token } = req.body || {};
+    const site_id = normalizeSiteId(rawSiteId);
 
-  if (!site_id || !email || !password || !token) {
-    return res.status(400).json({ ok: false, error: "site_id, email, password, and token are required" });
-  }
+    if (!site_id || !email || !password || !token) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "site_id, email, password, and token are required" });
+    }
 
-  // Must prove they own the site via access token
-  const site = await getSiteById(site_id);
-  if (!site) return res.status(404).json({ ok: false, error: "site_id not found" });
-  if (site.dashboard_token !== token) return res.status(401).json({ ok: false, error: "Invalid site token" });
+    // Must prove they own the site via access token
+    const site = await getSiteById(site_id);
+    if (!site) return res.status(404).json({ ok: false, error: "site_id not found" });
+    if (site.dashboard_token !== token)
+      return res.status(401).json({ ok: false, error: "Invalid site token" });
 
-  const e = safeEmail(email);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return res.status(400).json({ ok: false, error: "Invalid email" });
-  if (String(password).length < 8) return res.status(400).json({ ok: false, error: "Password must be at least 8 characters" });
+    const e = safeEmail(email);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))
+      return res.status(400).json({ ok: false, error: "Invalid email" });
+    if (String(password).length < 8)
+      return res.status(400).json({ ok: false, error: "Password must be at least 8 characters" });
 
-  const { salt, hash } = hashPassword(password);
+    const { salt, hash } = hashPassword(password);
 
-  try {
-    const r = await pool.query(
-      `INSERT INTO users (site_id, email, password_salt, password_hash)
+    try {
+      const r = await pool.query(
+        `INSERT INTO users (site_id, email, password_salt, password_hash)
        VALUES ($1,$2,$3,$4)
        RETURNING id, email, site_id`,
-      [site_id, e, salt, hash]
-    );
-    res.json({ ok: true, user: r.rows[0] });
-  } catch (err) {
-    const msg = String(err.message || "");
-    if (msg.toLowerCase().includes("unique")) {
-      return res.status(409).json({ ok: false, error: "Email already registered" });
+        [site_id, e, salt, hash]
+      );
+      res.json({ ok: true, user: r.rows[0] });
+    } catch (err) {
+      const msg = String(err.message || "");
+      if (msg.toLowerCase().includes("unique")) {
+        return res.status(409).json({ ok: false, error: "Email already registered" });
+      }
+      res.status(500).json({ ok: false, error: msg });
     }
-    res.status(500).json({ ok: false, error: msg });
-  }
-}));
+  })
+);
 
-app.post("/auth/login", asyncHandler(async (req, res) => {
-  const { email, password } = req.body || {};
-  const e = safeEmail(email);
+app.post(
+  "/auth/login",
+  asyncHandler(async (req, res) => {
+    const { email, password } = req.body || {};
+    const e = safeEmail(email);
 
-  if (!e || !password) return res.status(400).json({ ok: false, error: "email and password required" });
+    if (!e || !password) return res.status(400).json({ ok: false, error: "email and password required" });
 
-  const r = await pool.query(
-    `SELECT id, site_id, email, password_salt, password_hash
+    const r = await pool.query(
+      `SELECT id, site_id, email, password_salt, password_hash
      FROM users
      WHERE email=$1
      LIMIT 1`,
-    [e]
-  );
-  if (r.rows.length === 0) return res.status(401).json({ ok: false, error: "Invalid login" });
+      [e]
+    );
+    if (r.rows.length === 0) return res.status(401).json({ ok: false, error: "Invalid login" });
 
-  const u = r.rows[0];
-  if (!verifyPassword(password, u.password_salt, u.password_hash)) {
-    return res.status(401).json({ ok: false, error: "Invalid login" });
-  }
+    const u = r.rows[0];
+    if (!verifyPassword(password, u.password_salt, u.password_hash)) {
+      return res.status(401).json({ ok: false, error: "Invalid login" });
+    }
 
-  const session_id = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days
+    const session_id = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days
 
-  await pool.query(
-    `INSERT INTO sessions (session_id, user_id, expires_at) VALUES ($1,$2,$3)`,
-    [session_id, u.id, expiresAt.toISOString()]
-  );
+    await pool.query(`INSERT INTO sessions (session_id, user_id, expires_at) VALUES ($1,$2,$3)`, [
+      session_id,
+      u.id,
+      expiresAt.toISOString()
+    ]);
 
-  setCookie(res, "constrava_session", session_id, {
-    httpOnly: true,
-    sameSite: "Lax",
-    secure: String(process.env.COOKIE_SECURE || "false") === "true"
-  });
+    setCookie(res, "constrava_session", session_id, {
+      httpOnly: true,
+      sameSite: "Lax",
+      secure: String(process.env.COOKIE_SECURE || "false") === "true"
+    });
 
-  const site = await getSiteById(u.site_id);
-  const base = process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
+    const site = await getSiteById(u.site_id);
 
-  res.json({
-    ok: true,
-    user: { email: u.email, site_id: u.site_id },
-    site: { site_id: site?.site_id, plan: site?.plan || "unpaid" },
-    // Note: dashboard still uses token links. Once you go “real SaaS”, you can pivot dashboard auth to cookie-only.
-    hint: "You are logged in (cookie). Dashboard still requires ?token=... for now."
-  });
-}));
+    res.json({
+      ok: true,
+      user: { email: u.email, site_id: u.site_id },
+      site: { site_id: site?.site_id, plan: site?.plan || "unpaid" },
+      hint: "You are logged in (cookie). Dashboard still requires ?token=... for now."
+    });
+  })
+);
 
-app.post("/auth/logout", asyncHandler(async (req, res) => {
-  const sid = getCookie(req, "constrava_session");
-  if (sid) {
-    await pool.query(`DELETE FROM sessions WHERE session_id=$1`, [sid]);
-  }
-  clearCookie(res, "constrava_session");
-  res.json({ ok: true });
-}));
+app.post(
+  "/auth/logout",
+  asyncHandler(async (req, res) => {
+    const sid = getCookie(req, "constrava_session");
+    if (sid) {
+      await pool.query(`DELETE FROM sessions WHERE session_id=$1`, [sid]);
+    }
+    clearCookie(res, "constrava_session");
+    res.json({ ok: true });
+  })
+);
 
-app.get("/me", asyncHandler(async (req, res) => {
-  const sess = await getSession(req);
-  if (!sess) return res.json({ ok: true, logged_in: false });
-  res.json({
-    ok: true,
-    logged_in: true,
-    user: { email: sess.email, site_id: sess.site_id },
-    expires_at: sess.expires_at
-  });
-}));
+app.get(
+  "/me",
+  asyncHandler(async (req, res) => {
+    const sess = await getSession(req);
+    if (!sess) return res.json({ ok: true, logged_in: false });
+    res.json({
+      ok: true,
+      logged_in: true,
+      user: { email: sess.email, site_id: sess.site_id },
+      expires_at: sess.expires_at
+    });
+  })
+);
 
 /* ---------------------------
    Onboarding: create a site
    POST /sites { site_id, site_name, owner_email, custom_token? }
 ----------------------------*/
-app.post("/sites", asyncHandler(async (req, res) => {
-  const { site_id: rawSiteId, site_name, owner_email, custom_token } = req.body || {};
+app.post(
+  "/sites",
+  asyncHandler(async (req, res) => {
+    const { site_id: rawSiteId, site_name, owner_email, custom_token } = req.body || {};
 
-  if (!rawSiteId || !site_name || !owner_email) {
-    return res.status(400).json({ ok: false, error: "site_id, site_name, and owner_email are required" });
-  }
-
-  const site_id = normalizeSiteId(rawSiteId);
-  const siteIdErr = validateSiteId(site_id);
-  if (siteIdErr) return res.status(400).json({ ok: false, error: siteIdErr });
-
-  let token = crypto.randomUUID();
-  if (custom_token) {
-    const tokErr = validateCustomToken(custom_token);
-    if (tokErr) return res.status(400).json({ ok: false, error: tokErr });
-    token = custom_token;
-  }
-
-  try {
-    await pool.query(
-      `INSERT INTO sites (site_id, site_name, owner_email, dashboard_token, plan)
-       VALUES ($1,$2,$3,$4,'unpaid')`,
-      [site_id, String(site_name).trim(), safeEmail(owner_email), token]
-    );
-  } catch (err) {
-    const msg = String(err.message || "");
-    if (msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
-      return res.status(409).json({ ok: false, error: "That site_id is already taken. Choose another." });
+    if (!rawSiteId || !site_name || !owner_email) {
+      return res.status(400).json({ ok: false, error: "site_id, site_name, and owner_email are required" });
     }
-    throw err;
-  }
 
-  const base = publicBaseUrl(req);
+    const site_id = normalizeSiteId(rawSiteId);
+    const siteIdErr = validateSiteId(site_id);
+    if (siteIdErr) return res.status(400).json({ ok: false, error: siteIdErr });
 
-  res.json({
-    ok: true,
-    site_id,
-    access_token: token,
-    install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
-    client_dashboard_url: `${base}/dashboard?token=${encodeURIComponent(token)}`
-  });
-}));
+    let token = crypto.randomUUID();
+    if (custom_token) {
+      const tokErr = validateCustomToken(custom_token);
+      if (tokErr) return res.status(400).json({ ok: false, error: tokErr });
+      token = custom_token;
+    }
+
+    try {
+      await pool.query(
+        `INSERT INTO sites (site_id, site_name, owner_email, dashboard_token, plan)
+       VALUES ($1,$2,$3,$4,'unpaid')`,
+        [site_id, String(site_name).trim(), safeEmail(owner_email), token]
+      );
+    } catch (err) {
+      const msg = String(err.message || "");
+      if (msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
+        return res.status(409).json({ ok: false, error: "That site_id is already taken. Choose another." });
+      }
+      throw err;
+    }
+
+    const base = publicBaseUrl(req);
+
+    res.json({
+      ok: true,
+      site_id,
+      access_token: token,
+      install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
+      client_dashboard_url: `${base}/dashboard?token=${encodeURIComponent(token)}`
+    });
+  })
+);
 
 /* ---------------------------
    Tracker script
@@ -455,8 +497,7 @@ app.post("/sites", asyncHandler(async (req, res) => {
 ----------------------------*/
 app.get("/tracker.js", (req, res) => {
   res.setHeader("Content-Type", "application/javascript");
-  const endpoint =
-    (process.env.PUBLIC_EVENTS_URL || "https://constrava-backend.onrender.com") + "/events";
+  const endpoint = (process.env.PUBLIC_EVENTS_URL || "https://constrava-backend.onrender.com") + "/events";
 
   // very small, safe snippet: page_view only
   res.send(`
@@ -487,52 +528,182 @@ app.get("/tracker.js", (req, res) => {
    Receive events
    POST /events
 ----------------------------*/
-app.post("/events", asyncHandler(async (req, res) => {
-  const { site_id, event_name, page_type, device } = req.body || {};
-  if (!site_id || !event_name) {
-    return res.status(400).json({ ok: false, error: "site_id and event_name required" });
-  }
+app.post(
+  "/events",
+  asyncHandler(async (req, res) => {
+    const { site_id, event_name, page_type, device } = req.body || {};
+    if (!site_id || !event_name) {
+      return res.status(400).json({ ok: false, error: "site_id and event_name required" });
+    }
 
-  const site = await pool.query("SELECT 1 FROM sites WHERE site_id=$1", [site_id]);
-  if (site.rows.length === 0) return res.status(403).json({ ok: false, error: "Invalid site_id" });
+    const site = await pool.query("SELECT 1 FROM sites WHERE site_id=$1", [site_id]);
+    if (site.rows.length === 0) return res.status(403).json({ ok: false, error: "Invalid site_id" });
 
-  await pool.query(
-    `INSERT INTO events_raw (site_id, event_name, page_type, device)
+    await pool.query(
+      `INSERT INTO events_raw (site_id, event_name, page_type, device)
      VALUES ($1,$2,$3,$4)`,
-    [site_id, String(event_name), page_type || null, device || null]
-  );
+      [site_id, String(event_name), page_type || null, device || null]
+    );
 
-  res.json({ ok: true });
-}));
+    res.json({ ok: true });
+  })
+);
+
+/* ---------------------------
+   DEMO: fire events (page_view / lead / purchase / cta_click)
+   POST /demo/fire-event { token, event_name, page_type?, device? }
+----------------------------*/
+app.post(
+  "/demo/fire-event",
+  asyncHandler(async (req, res) => {
+    const { token, event_name, page_type, device } = req.body || {};
+    if (!token) return res.status(400).json({ ok: false, error: "token required" });
+    if (!event_name) return res.status(400).json({ ok: false, error: "event_name required" });
+
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+    const allowed = new Set(["page_view", "lead", "purchase", "cta_click"]);
+    if (!allowed.has(event_name)) {
+      return res.status(400).json({ ok: false, error: "Invalid event_name. Use page_view, lead, purchase, cta_click" });
+    }
+
+    await pool.query(
+      `INSERT INTO events_raw (site_id, event_name, page_type, device)
+       VALUES ($1,$2,$3,$4)`,
+      [site.site_id, event_name, page_type || "/", device || "desktop"]
+    );
+
+    res.json({ ok: true });
+  })
+);
+
+/* ---------------------------
+   LIVE: new page_views since timestamp
+   GET /live?token=...&since=ISO
+----------------------------*/
+app.get(
+  "/live",
+  asyncHandler(async (req, res) => {
+    setNoStore(res);
+
+    const token = req.query.token;
+    const since = req.query.since; // ISO
+    if (!token) return res.status(400).json({ ok: false, error: "token required" });
+
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+    const sinceDate = since ? new Date(String(since)) : null;
+    if (since && isNaN(sinceDate.getTime())) {
+      return res.status(400).json({ ok: false, error: "Invalid since timestamp" });
+    }
+
+    const params = [site.site_id];
+    let whereSince = "";
+    if (sinceDate) {
+      params.push(sinceDate.toISOString());
+      whereSince = ` AND created_at > $2`;
+    }
+
+    const newViewsRes = await pool.query(
+      `
+      SELECT COUNT(*)::int AS new_page_views
+      FROM events_raw
+      WHERE site_id=$1
+        AND event_name='page_view'
+        ${whereSince}
+      `,
+      params
+    );
+
+    const lastEventRes = await pool.query(
+      `
+      SELECT event_name, page_type, device, created_at
+      FROM events_raw
+      WHERE site_id=$1
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [site.site_id]
+    );
+
+    res.json({
+      ok: true,
+      site_id: site.site_id,
+      since: sinceDate ? sinceDate.toISOString() : null,
+      new_page_views: newViewsRes.rows[0]?.new_page_views || 0,
+      last_event: lastEventRes.rows[0] || null,
+      now: new Date().toISOString()
+    });
+  })
+);
+
+/* ---------------------------
+   DEMO: shareable link
+   POST /demo/link { token } -> { url }
+   GET /d/:code -> redirect to /dashboard?token=...
+----------------------------*/
+app.post(
+  "/demo/link",
+  asyncHandler(async (req, res) => {
+    const { token } = req.body || {};
+    if (!token) return res.status(400).json({ ok: false, error: "token required" });
+
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+    const code = crypto.randomBytes(4).toString("hex"); // short
+    await pool.query(`INSERT INTO demo_links (code, token) VALUES ($1,$2)`, [code, token]);
+
+    const base = process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
+    res.json({ ok: true, code, url: `${base}/d/${code}` });
+  })
+);
+
+app.get(
+  "/d/:code",
+  asyncHandler(async (req, res) => {
+    setNoStore(res);
+    const code = String(req.params.code || "").trim();
+    const r = await pool.query(`SELECT token FROM demo_links WHERE code=$1 LIMIT 1`, [code]);
+    if (r.rows.length === 0) return res.status(404).send("Demo link not found");
+    const token = r.rows[0].token;
+    return res.redirect("/dashboard?token=" + encodeURIComponent(token));
+  })
+);
 
 /* ---------------------------
    Metrics (token-secured)
    GET /metrics?token=...&days=7
+   ✅ includes conversions + top pages (10) + share % + conversion rate
 ----------------------------*/
-app.get("/metrics", asyncHandler(async (req, res) => {
-  setNoStore(res);
+app.get(
+  "/metrics",
+  asyncHandler(async (req, res) => {
+    setNoStore(res);
 
-  const token = req.query.token;
-  const site = await getSiteByToken(token);
-  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+    const token = req.query.token;
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
-  const site_id = site.site_id;
-  const days = normalizeDays(req.query.days);
-  const startDate = `${days - 1} days`;
+    const site_id = site.site_id;
+    const days = normalizeDays(req.query.days);
+    const startDate = `${days - 1} days`;
 
-  const todayRes = await pool.query(
-    `
+    const todayRes = await pool.query(
+      `
     SELECT COUNT(*)::int AS visits_today
     FROM events_raw
     WHERE site_id = $1
       AND event_name = 'page_view'
       AND created_at::date = CURRENT_DATE
     `,
-    [site_id]
-  );
+      [site_id]
+    );
 
-  const trendRes = await pool.query(
-    `
+    const trendRes = await pool.query(
+      `
     SELECT d::date AS day, COALESCE(COUNT(e.*),0)::int AS visits
     FROM generate_series(CURRENT_DATE - $2::interval, CURRENT_DATE, INTERVAL '1 day') d
     LEFT JOIN events_raw e
@@ -542,13 +713,13 @@ app.get("/metrics", asyncHandler(async (req, res) => {
     GROUP BY d
     ORDER BY d
     `,
-    [site_id, startDate]
-  );
+      [site_id, startDate]
+    );
 
-  const visits_range = trendRes.rows.reduce((sum, r) => sum + (r.visits || 0), 0);
+    const visits_range = trendRes.rows.reduce((sum, r) => sum + (r.visits || 0), 0);
 
-  const topPagesRes = await pool.query(
-    `
+    const topPagesRes = await pool.query(
+      `
     SELECT page_type, COUNT(*)::int AS views
     FROM events_raw
     WHERE site_id = $1
@@ -559,11 +730,26 @@ app.get("/metrics", asyncHandler(async (req, res) => {
     ORDER BY views DESC
     LIMIT 5
     `,
-    [site_id, days]
-  );
+      [site_id, days]
+    );
 
-  const deviceRes = await pool.query(
-    `
+    const topPagesRangeRes = await pool.query(
+      `
+    SELECT page_type, COUNT(*)::int AS views
+    FROM events_raw
+    WHERE site_id = $1
+      AND event_name = 'page_view'
+      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+      AND page_type IS NOT NULL
+    GROUP BY page_type
+    ORDER BY views DESC
+    LIMIT 10
+    `,
+      [site_id, days]
+    );
+
+    const deviceRes = await pool.query(
+      `
     SELECT
       SUM(CASE WHEN device = 'mobile' THEN 1 ELSE 0 END)::int AS mobile,
       SUM(CASE WHEN device = 'desktop' THEN 1 ELSE 0 END)::int AS desktop
@@ -572,167 +758,264 @@ app.get("/metrics", asyncHandler(async (req, res) => {
       AND event_name = 'page_view'
       AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
     `,
-    [site_id, days]
-  );
+      [site_id, days]
+    );
 
-  const lastEventRes = await pool.query(
-    `
+    const goalsRangeRes = await pool.query(
+      `
+    SELECT
+      SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
+      SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases,
+      SUM(CASE WHEN event_name='cta_click' THEN 1 ELSE 0 END)::int AS cta_clicks
+    FROM events_raw
+    WHERE site_id=$1
+      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+    `,
+      [site_id, days]
+    );
+
+    const lastEventRes = await pool.query(
+      `
     SELECT event_name, page_type, device, created_at
     FROM events_raw
     WHERE site_id = $1
     ORDER BY created_at DESC
     LIMIT 1
     `,
-    [site_id]
-  );
+      [site_id]
+    );
 
-  res.json({
-    ok: true,
-    site_id,
-    plan: site.plan || "unpaid",
-    days,
-    visits_today: todayRes.rows[0]?.visits_today || 0,
-    visits_range,
-    trend: trendRes.rows.map((r) => ({ day: String(r.day), visits: r.visits })),
-    top_pages: topPagesRes.rows || [],
-    device_mix: deviceRes.rows[0] || { mobile: 0, desktop: 0 },
-    last_event: lastEventRes.rows[0] || null
-  });
-}));
+    const leads = goalsRangeRes.rows[0]?.leads || 0;
+    const purchases = goalsRangeRes.rows[0]?.purchases || 0;
+    const cta_clicks = goalsRangeRes.rows[0]?.cta_clicks || 0;
+
+    const conversion_rate = visits_range ? Number((leads / visits_range).toFixed(4)) : 0;
+    const purchase_rate = visits_range ? Number((purchases / visits_range).toFixed(4)) : 0;
+
+    const totalRangeViews = topPagesRangeRes.rows.reduce((s, r) => s + (r.views || 0), 0);
+    const top_pages_range = topPagesRangeRes.rows.map((r) => ({
+      page_type: r.page_type,
+      views: r.views,
+      share: totalRangeViews ? Math.round((r.views / totalRangeViews) * 100) : 0
+    }));
+
+    res.json({
+      ok: true,
+      site_id,
+      plan: site.plan || "unpaid",
+      days,
+      visits_today: todayRes.rows[0]?.visits_today || 0,
+      visits_range,
+      trend: trendRes.rows.map((r) => ({ day: String(r.day), visits: r.visits })),
+
+      // original
+      top_pages: topPagesRes.rows || [],
+      device_mix: deviceRes.rows[0] || { mobile: 0, desktop: 0 },
+      last_event: lastEventRes.rows[0] || null,
+
+      // new goodies
+      leads,
+      purchases,
+      cta_clicks,
+      conversion_rate, // leads / visits_range
+      purchase_rate, // purchases / visits_range
+      top_pages_range
+    });
+  })
+);
 
 /* ---------------------------
    Reports: list + latest
 ----------------------------*/
-app.get("/reports", asyncHandler(async (req, res) => {
-  setNoStore(res);
+app.get(
+  "/reports",
+  asyncHandler(async (req, res) => {
+    setNoStore(res);
 
-  const site = await getSiteByToken(req.query.token);
-  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+    const site = await getSiteByToken(req.query.token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
-  const limit = Math.min(parseInt(req.query.limit || "30", 10), 100);
+    const limit = Math.min(parseInt(req.query.limit || "30", 10), 100);
 
-  const r = await pool.query(
-    `SELECT site_id, report_date, created_at, LEFT(report_text, 260) AS preview
+    const r = await pool.query(
+      `SELECT site_id, report_date, created_at, LEFT(report_text, 260) AS preview
      FROM daily_reports
      WHERE site_id=$1
      ORDER BY report_date DESC, created_at DESC
      LIMIT $2`,
-    [site.site_id, limit]
-  );
+      [site.site_id, limit]
+    );
 
-  res.json({ ok: true, reports: r.rows });
-}));
+    res.json({ ok: true, reports: r.rows });
+  })
+);
 
-app.get("/reports/latest", asyncHandler(async (req, res) => {
-  setNoStore(res);
+app.get(
+  "/reports/latest",
+  asyncHandler(async (req, res) => {
+    setNoStore(res);
 
-  const site = await getSiteByToken(req.query.token);
-  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+    const site = await getSiteByToken(req.query.token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
-  const r = await pool.query(
-    `SELECT site_id, report_date, report_text, created_at
+    const r = await pool.query(
+      `SELECT site_id, report_date, report_text, created_at
      FROM daily_reports
      WHERE site_id=$1
      ORDER BY report_date DESC, created_at DESC
      LIMIT 1`,
-    [site.site_id]
-  );
+      [site.site_id]
+    );
 
-  if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
-  res.json({ ok: true, report: r.rows[0] });
-}));
+    if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
+    res.json({ ok: true, report: r.rows[0] });
+  })
+);
 
 /* ---------------------------
    Demo data seeder
    POST /demo/seed?token=...
+   Body options:
+   - days (default 7)
+   - events_per_day (default 40, max 500)
+   - lead_rate (0..1) default 0.02
+   - purchase_rate (0..1) default 0.004
+   - cta_rate (0..1) default 0.06
 ----------------------------*/
-app.post("/demo/seed", asyncHandler(async (req, res) => {
-  if (process.env.ENABLE_DEMO_SEED !== "true") {
-    return res.status(403).json({ ok: false, error: "Seeder disabled. Set ENABLE_DEMO_SEED=true" });
-  }
-
-  const site = await getSiteByToken(req.query.token || req.body?.token);
-  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Provide ?token=..." });
-
-  const site_id = site.site_id;
-  const days = Math.max(1, Math.min(parseInt(req.body?.days || "7", 10), 3650));
-  const eventsPerDay = Math.max(5, Math.min(parseInt(req.body?.events_per_day || "40", 10), 500));
-
-  const pages = ["/", "/pricing", "/services", "/about", "/contact", "/blog", "/faq", "/checkout"];
-  let inserted = 0;
-
-  for (let d = 0; d < days; d++) {
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    dayStart.setDate(dayStart.getDate() - d);
-
-    for (let i = 0; i < eventsPerDay; i++) {
-      const seconds = Math.floor(Math.random() * 86400);
-      const ts = new Date(dayStart.getTime() + seconds * 1000);
-
-      const r = Math.random();
-      const page =
-        r < 0.30 ? "/" :
-        r < 0.55 ? "/pricing" :
-        r < 0.70 ? "/services" :
-        r < 0.80 ? "/contact" :
-        pages[Math.floor(Math.random() * pages.length)];
-
-      const device = Math.random() < 0.62 ? "mobile" : "desktop";
-
-      await pool.query(
-        `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
-         VALUES ($1, 'page_view', $2, $3, $4)`,
-        [site_id, page, device, ts.toISOString()]
-      );
-      inserted++;
+app.post(
+  "/demo/seed",
+  asyncHandler(async (req, res) => {
+    if (process.env.ENABLE_DEMO_SEED !== "true") {
+      return res.status(403).json({ ok: false, error: "Seeder disabled. Set ENABLE_DEMO_SEED=true" });
     }
-  }
 
-  // seed 2 reports
-  const sample1 =
-    "Summary:\nTraffic is concentrating on Pricing and Services.\n\n" +
-    "Trend:\nVisitors are exploring multiple pages.\n\n" +
-    "Next steps:\n1) Add a clear primary CTA on Pricing\n2) Add proof (logos/testimonials)\n3) Track a lead event\n\n" +
-    "Metric to watch:\nPricing → Contact rate";
+    const site = await getSiteByToken(req.query.token || req.body?.token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Provide ?token=..." });
 
-  const sample2 =
-    "Summary:\nYou’re getting steady visits and people are checking Pricing.\n\n" +
-    "Trend:\nInterest is consistent — conversion work likely helps.\n\n" +
-    "Next steps:\n1) Strongest offer at top of Pricing\n2) Add a 3-step “what happens next”\n3) Shorten forms + speed up pages\n\n" +
-    "Metric to watch:\nCTA clicks";
+    const site_id = site.site_id;
+    const days = Math.max(1, Math.min(parseInt(req.body?.days || "7", 10), 3650));
+    const eventsPerDay = Math.max(5, Math.min(parseInt(req.body?.events_per_day || "40", 10), 500));
 
-  await pool.query(
-    `INSERT INTO daily_reports (site_id, report_date, report_text)
+    const leadRate = clamp01(req.body?.lead_rate ?? 0.02);
+    const purchaseRate = clamp01(req.body?.purchase_rate ?? 0.004);
+    const ctaRate = clamp01(req.body?.cta_rate ?? 0.06);
+
+    const pages = ["/", "/pricing", "/services", "/about", "/contact", "/blog", "/faq", "/checkout"];
+    let inserted = 0;
+
+    for (let d = 0; d < days; d++) {
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      dayStart.setDate(dayStart.getDate() - d);
+
+      for (let i = 0; i < eventsPerDay; i++) {
+        const seconds = Math.floor(Math.random() * 86400);
+        const ts = new Date(dayStart.getTime() + seconds * 1000);
+
+        const r = Math.random();
+        const page =
+          r < 0.30
+            ? "/"
+            : r < 0.55
+              ? "/pricing"
+              : r < 0.70
+                ? "/services"
+                : r < 0.80
+                  ? "/contact"
+                  : pages[Math.floor(Math.random() * pages.length)];
+
+        const device = Math.random() < 0.62 ? "mobile" : "desktop";
+
+        await pool.query(
+          `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
+         VALUES ($1, 'page_view', $2, $3, $4)`,
+          [site_id, page, device, ts.toISOString()]
+        );
+        inserted++;
+
+        // optional extra events
+        const roll = Math.random();
+        if (roll < purchaseRate) {
+          await pool.query(
+            `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
+             VALUES ($1, 'purchase', $2, $3, $4)`,
+            [site_id, "/checkout", device, ts.toISOString()]
+          );
+          inserted++;
+        } else if (roll < purchaseRate + leadRate) {
+          await pool.query(
+            `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
+             VALUES ($1, 'lead', $2, $3, $4)`,
+            [site_id, "/contact", device, ts.toISOString()]
+          );
+          inserted++;
+        } else if (roll < purchaseRate + leadRate + ctaRate) {
+          await pool.query(
+            `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
+             VALUES ($1, 'cta_click', $2, $3, $4)`,
+            [site_id, page, device, ts.toISOString()]
+          );
+          inserted++;
+        }
+      }
+    }
+
+    // seed 2 reports
+    const sample1 =
+      "Summary:\nTraffic is concentrating on Pricing and Services.\n\n" +
+      "Trend:\nVisitors are exploring multiple pages.\n\n" +
+      "Next steps:\n1) Add a clear primary CTA on Pricing\n2) Add proof (logos/testimonials)\n3) Track a lead event\n\n" +
+      "Metric to watch:\nPricing → Contact rate";
+
+    const sample2 =
+      "Summary:\nYou’re getting steady visits and people are checking Pricing.\n\n" +
+      "Trend:\nInterest is consistent — conversion work likely helps.\n\n" +
+      "Next steps:\n1) Strongest offer at top of Pricing\n2) Add a 3-step “what happens next”\n3) Shorten forms + speed up pages\n\n" +
+      "Metric to watch:\nCTA clicks";
+
+    await pool.query(
+      `INSERT INTO daily_reports (site_id, report_date, report_text)
      VALUES ($1, CURRENT_DATE - INTERVAL '1 day', $2)
      ON CONFLICT (site_id, report_date) DO NOTHING`,
-    [site_id, sample1]
-  );
-  await pool.query(
-    `INSERT INTO daily_reports (site_id, report_date, report_text)
+      [site_id, sample1]
+    );
+    await pool.query(
+      `INSERT INTO daily_reports (site_id, report_date, report_text)
      VALUES ($1, CURRENT_DATE, $2)
      ON CONFLICT (site_id, report_date) DO NOTHING`,
-    [site_id, sample2]
-  );
+      [site_id, sample2]
+    );
 
-  res.json({ ok: true, site_id, days, events_per_day: eventsPerDay, inserted });
-}));
+    res.json({
+      ok: true,
+      site_id,
+      days,
+      events_per_day: eventsPerDay,
+      lead_rate: leadRate,
+      purchase_rate: purchaseRate,
+      cta_rate: ctaRate,
+      inserted
+    });
+  })
+);
 
 /* ---------------------------
    AI report generator (FULL AI only)
    POST /generate-report?token=...
 ----------------------------*/
-app.post("/generate-report", asyncHandler(async (req, res) => {
-  const site = await getSiteByToken(req.query.token || req.body?.token);
-  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+app.post(
+  "/generate-report",
+  asyncHandler(async (req, res) => {
+    const site = await getSiteByToken(req.query.token || req.body?.token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
-  const gate = planGate(site, ["full_ai"]);
-  if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+    const gate = planGate(site, ["full_ai"]);
+    if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
 
-  const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
+    const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
 
-  const metricsRes = await pool.query(
-    `
+    const metricsRes = await pool.query(
+      `
     SELECT
       $1::text as site_id,
       COUNT(*)::int AS total_events,
@@ -740,109 +1023,225 @@ app.post("/generate-report", asyncHandler(async (req, res) => {
     FROM events_raw
     WHERE site_id=$1 AND created_at >= NOW() - INTERVAL '7 days'
     `,
-    [site.site_id]
-  );
-  const metrics = metricsRes.rows[0];
+      [site.site_id]
+    );
+    const metrics = metricsRes.rows[0];
 
-  const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4o",
-      messages: [
-        { role: "system", content: "You are a helpful business analytics assistant. Be plain-English, actionable, and concise." },
-        {
-          role: "user",
-          content:
-            "Here are metrics for the last 7 days (JSON): " +
-            JSON.stringify(metrics) +
-            "\nWrite:\n1) What happened\n2) Trend + what it means\n3) 3 next steps\n4) One metric to watch"
-        }
-      ]
-    })
-  });
+    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL || "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful business analytics assistant. Be plain-English, actionable, and concise."
+          },
+          {
+            role: "user",
+            content:
+              "Here are metrics for the last 7 days (JSON): " +
+              JSON.stringify(metrics) +
+              "\nWrite:\n1) What happened\n2) Trend + what it means\n3) 3 next steps\n4) One metric to watch"
+          }
+        ]
+      })
+    });
 
-  const aiData = await aiRes.json();
-  const reportText = aiData?.choices?.[0]?.message?.content;
-  if (!reportText) return res.status(500).json({ ok: false, error: "AI response missing" });
+    const aiData = await aiRes.json();
+    const reportText = aiData?.choices?.[0]?.message?.content;
+    if (!reportText) return res.status(500).json({ ok: false, error: "AI response missing" });
 
-  const saved = await pool.query(
-    `INSERT INTO daily_reports (site_id, report_date, report_text)
+    const saved = await pool.query(
+      `INSERT INTO daily_reports (site_id, report_date, report_text)
      VALUES ($1, CURRENT_DATE, $2)
      ON CONFLICT (site_id, report_date)
      DO UPDATE SET report_text = EXCLUDED.report_text
      RETURNING site_id, report_date, report_text, created_at`,
-    [site.site_id, reportText]
-  );
+      [site.site_id, reportText]
+    );
 
-  res.json({ ok: true, report: saved.rows[0] });
-}));
+    res.json({ ok: true, report: saved.rows[0] });
+  })
+);
+
+/* ---------------------------
+   AI action plan (FULL AI only)
+   POST /generate-action-plan?token=...
+   - richer “wow” output and saves as today's report
+----------------------------*/
+app.post(
+  "/generate-action-plan",
+  asyncHandler(async (req, res) => {
+    setNoStore(res);
+
+    const token = req.query.token || req.body?.token;
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+    const gate = planGate(site, ["full_ai"]);
+    if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+    const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
+    const days = 30;
+
+    const trendRes = await pool.query(
+      `
+      SELECT created_at::date AS day, COUNT(*)::int AS visits
+      FROM events_raw
+      WHERE site_id=$1
+        AND event_name='page_view'
+        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+      GROUP BY 1
+      ORDER BY 1
+      `,
+      [site.site_id, days]
+    );
+
+    const topPagesRes = await pool.query(
+      `
+      SELECT page_type, COUNT(*)::int AS views
+      FROM events_raw
+      WHERE site_id=$1
+        AND event_name='page_view'
+        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+        AND page_type IS NOT NULL
+      GROUP BY 1
+      ORDER BY views DESC
+      LIMIT 10
+      `,
+      [site.site_id, days]
+    );
+
+    const goalsRes = await pool.query(
+      `
+      SELECT
+        SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
+        SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases,
+        SUM(CASE WHEN event_name='cta_click' THEN 1 ELSE 0 END)::int AS cta_clicks
+      FROM events_raw
+      WHERE site_id=$1
+        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+      `,
+      [site.site_id, days]
+    );
+
+    const payload = {
+      site_id: site.site_id,
+      window_days: days,
+      trend: trendRes.rows,
+      top_pages: topPagesRes.rows,
+      goals: goalsRes.rows[0] || { leads: 0, purchases: 0, cta_clicks: 0 }
+    };
+
+    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL || "gpt-4o",
+        messages: [
+          { role: "system", content: "You are an analytics + conversion expert. Be plain-English, specific, and actionable." },
+          {
+            role: "user",
+            content:
+              "Analyze this site data JSON and write a short action plan.\n\n" +
+              JSON.stringify(payload) +
+              "\n\nFormat:\n1) What's happening (3 bullets)\n2) Biggest opportunity\n3) 5-step action plan\n4) One KPI to watch\n5) A one-sentence executive summary"
+          }
+        ]
+      })
+    });
+
+    const aiData = await aiRes.json();
+    const text = aiData?.choices?.[0]?.message?.content;
+    if (!text) return res.status(500).json({ ok: false, error: "AI response missing" });
+
+    const saved = await pool.query(
+      `INSERT INTO daily_reports (site_id, report_date, report_text)
+       VALUES ($1, CURRENT_DATE, $2)
+       ON CONFLICT (site_id, report_date)
+       DO UPDATE SET report_text = EXCLUDED.report_text
+       RETURNING site_id, report_date, report_text, created_at`,
+      [site.site_id, text]
+    );
+
+    res.json({ ok: true, report: saved.rows[0] });
+  })
+);
 
 /* ---------------------------
    Email latest report (PRO + FULL AI)
    POST /email-latest { token, to_email }
 ----------------------------*/
-app.post("/email-latest", asyncHandler(async (req, res) => {
-  const { token, to_email } = req.body || {};
-  if (!to_email) return res.status(400).json({ ok: false, error: "to_email required" });
+app.post(
+  "/email-latest",
+  asyncHandler(async (req, res) => {
+    const { token, to_email } = req.body || {};
+    if (!to_email) return res.status(400).json({ ok: false, error: "to_email required" });
 
-  const site = await getSiteByToken(token);
-  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Invalid token" });
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Invalid token" });
 
-  const gate = planGate(site, ["pro", "full_ai"]);
-  if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+    const gate = planGate(site, ["pro", "full_ai"]);
+    if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
 
-  const r = await pool.query(
-    `SELECT report_text, report_date
+    const r = await pool.query(
+      `SELECT report_text, report_date
      FROM daily_reports
      WHERE site_id=$1
      ORDER BY report_date DESC, created_at DESC
      LIMIT 1`,
-    [site.site_id]
-  );
-  if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
+      [site.site_id]
+    );
+    if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
 
-  const RESEND_API_KEY = requireEnv("RESEND_API_KEY");
-  const from = requireEnv("FROM_EMAIL");
+    const RESEND_API_KEY = requireEnv("RESEND_API_KEY");
+    const from = requireEnv("FROM_EMAIL");
 
-  const emailRes = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${RESEND_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      from,
-      to: [String(to_email).trim()],
-      subject: `Constrava Daily Report (${site.site_id})`,
-      html: `<pre style="white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;">${r.rows[0].report_text}</pre>`
-    })
-  });
+    const emailRes = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        from,
+        to: [String(to_email).trim()],
+        subject: `Constrava Daily Report (${site.site_id})`,
+        html: `<pre style="white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;">${r.rows[0].report_text}</pre>`
+      })
+    });
 
-  const emailData = await emailRes.json();
-  res.json({ ok: true, resend: emailData });
-}));
+    const emailData = await emailRes.json();
+    res.json({ ok: true, resend: emailData });
+  })
+);
 
 /* ---------------------------
    Storefront (no Stripe yet)
    GET  /storefront?token=...
 ----------------------------*/
-app.get("/storefront", asyncHandler(async (req, res) => {
-  setNoStore(res);
+app.get(
+  "/storefront",
+  asyncHandler(async (req, res) => {
+    setNoStore(res);
 
-  const token = req.query.token;
-  const site = await getSiteByToken(token);
-  if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+    const token = req.query.token;
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
 
-  const site_id = site.site_id;
-  const plan = site.plan || "unpaid";
+    const site_id = site.site_id;
+    const plan = site.plan || "unpaid";
 
-  res.setHeader("Content-Type", "text/html");
+    res.setHeader("Content-Type", "text/html");
 
-  res.send(`<!doctype html>
+    res.send(`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -945,11 +1344,11 @@ app.get("/storefront", asyncHandler(async (req, res) => {
     <div class="card">
       <h3 class="name">Full AI</h3>
       <div class="price">$199 <span class="muted">/mo</span></div>
-      <div class="muted">AI summaries + next steps.</div>
+      <div class="muted">AI summaries + next steps + action plans.</div>
       <ul>
         <li>Everything in Pro</li>
-        <li>Generate AI report (button)</li>
-        <li>Best “assistant” experience</li>
+        <li>Generate AI report</li>
+        <li>Generate AI action plan</li>
       </ul>
       <button class="btn btnGreen" onclick="activate('full_ai')">Activate Full AI</button>
     </div>
@@ -988,33 +1387,37 @@ app.get("/storefront", asyncHandler(async (req, res) => {
 </script>
 </body>
 </html>`);
-}));
+  })
+);
 
 /* ---------------------------
    DEMO: activate a plan (NO secret)
    POST /demo/activate-plan  { token, plan }
 ----------------------------*/
-app.post("/demo/activate-plan", asyncHandler(async (req, res) => {
-  if (process.env.ENABLE_DEMO_ACTIVATE === "false") {
-    return res.status(403).json({ ok: false, error: "Demo activation disabled" });
-  }
+app.post(
+  "/demo/activate-plan",
+  asyncHandler(async (req, res) => {
+    if (process.env.ENABLE_DEMO_ACTIVATE === "false") {
+      return res.status(403).json({ ok: false, error: "Demo activation disabled" });
+    }
 
-  const { token, plan } = req.body || {};
-  const allowed = new Set(["starter", "pro", "full_ai"]);
+    const { token, plan } = req.body || {};
+    const allowed = new Set(["starter", "pro", "full_ai"]);
 
-  if (!token) return res.status(400).json({ ok: false, error: "token required" });
-  if (!plan || !allowed.has(plan)) return res.status(400).json({ ok: false, error: "Invalid plan" });
+    if (!token) return res.status(400).json({ ok: false, error: "token required" });
+    if (!plan || !allowed.has(plan)) return res.status(400).json({ ok: false, error: "Invalid plan" });
 
-  const site = await getSiteByToken(token);
-  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
-  const r = await pool.query(
-    `UPDATE sites SET plan=$2 WHERE site_id=$1 RETURNING site_id, plan`,
-    [site.site_id, plan]
-  );
+    const r = await pool.query(`UPDATE sites SET plan=$2 WHERE site_id=$1 RETURNING site_id, plan`, [
+      site.site_id,
+      plan
+    ]);
 
-  res.json({ ok: true, updated: r.rows[0] });
-}));
+    res.json({ ok: true, updated: r.rows[0] });
+  })
+);
 
 /* ---------------------------
    Dashboard UI
@@ -1022,24 +1425,27 @@ app.post("/demo/activate-plan", asyncHandler(async (req, res) => {
    - unpaid users redirect to /storefront
    - charts rendered with SVG
    - AI report button if full_ai
+   ✅ Demo panel + live traffic + share link + action plan
 ----------------------------*/
-app.get("/dashboard", asyncHandler(async (req, res) => {
-  setNoStore(res);
+app.get(
+  "/dashboard",
+  asyncHandler(async (req, res) => {
+    setNoStore(res);
 
-  const token = req.query.token;
-  const site = await getSiteByToken(token);
-  if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+    const token = req.query.token;
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
 
-  const site_id = site.site_id;
-  const plan = site.plan || "unpaid";
+    const site_id = site.site_id;
+    const plan = site.plan || "unpaid";
 
-  if (plan === "unpaid") {
-    return res.redirect(`/storefront?token=${encodeURIComponent(token)}`);
-  }
+    if (plan === "unpaid") {
+      return res.redirect(`/storefront?token=${encodeURIComponent(token)}`);
+    }
 
-  res.setHeader("Content-Type", "text/html");
+    res.setHeader("Content-Type", "text/html");
 
-  res.send(`<!doctype html>
+    res.send(`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
@@ -1147,12 +1553,14 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
   }
   .kpi{font-size:28px; font-weight:1000; letter-spacing:.2px; margin-top:8px;}
   .muted{color:var(--muted); font-size:12px; line-height:1.45;}
-  .row{display:flex; gap:12px; align-items:center; justify-content:space-between;}
+  .row{display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap;}
   .mini{
     background: rgba(15,23,42,.55);
     border:1px solid var(--border);
     border-radius: 14px;
     padding:12px;
+    flex:1;
+    min-width: 160px;
   }
   .mini .label{font-size:12px; color:var(--muted); font-weight:900;}
   .mini .value{font-size:14px; font-weight:1000; margin-top:4px;}
@@ -1225,11 +1633,34 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
 
       <button class="btn" id="refreshBtn">Refresh</button>
       <a class="linkBtn" href="/storefront?token=${encodeURIComponent(token)}">Plans</a>
+
       <button class="btn btnGreen" id="aiBtn" style="display:none;">Generate AI report</button>
+      <button class="btn btnGreen" id="aiPlanBtn" style="display:none;">AI action plan</button>
     </div>
   </div>
 
+  <!-- ✅ Demo panel -->
   <div class="grid">
+    <div class="card span12">
+      <h2>Demo Controls <span class="pill">Play with it</span></h2>
+
+      <div class="row" style="gap:10px;">
+        <button class="btn" id="btnSimView">Simulate Page View</button>
+        <button class="btn" id="btnSimLead">Simulate Lead</button>
+        <button class="btn" id="btnSimPurchase">Simulate Purchase</button>
+        <button class="btn" id="btnSimCta">Simulate CTA Click</button>
+
+        <button class="btn" id="btnShare">Copy Share Link</button>
+
+        <label class="pill" style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="liveToggle" />
+          Live traffic
+        </label>
+      </div>
+
+      <div class="muted" id="demoStatus" style="margin-top:10px;">Tip: turn on Live traffic and click Simulate Lead.</div>
+    </div>
+
     <div class="card span4">
       <h2>Visits today</h2>
       <div class="kpi" id="kpiToday">—</div>
@@ -1243,18 +1674,22 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
     </div>
 
     <div class="card span4">
-      <h2>Device mix</h2>
+      <h2>Conversions</h2>
       <div class="row">
-        <div class="mini" style="flex:1">
-          <div class="label">Mobile</div>
-          <div class="value" id="mobilePct">—</div>
+        <div class="mini">
+          <div class="label">Leads</div>
+          <div class="value" id="leadsKpi">—</div>
         </div>
-        <div class="mini" style="flex:1">
-          <div class="label">Desktop</div>
-          <div class="value" id="desktopPct">—</div>
+        <div class="mini">
+          <div class="label">Purchases</div>
+          <div class="value" id="purchasesKpi">—</div>
+        </div>
+        <div class="mini">
+          <div class="label">Lead rate</div>
+          <div class="value" id="leadRateKpi">—</div>
         </div>
       </div>
-      <div class="muted" style="margin-top:10px">Based on user-agent classification.</div>
+      <div class="muted" style="margin-top:10px;">Uses demo “lead/purchase” events.</div>
     </div>
 
     <div class="card span8">
@@ -1296,24 +1731,28 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
   const rangeSel = document.getElementById("rangeSel");
   const refreshBtn = document.getElementById("refreshBtn");
   const aiBtn = document.getElementById("aiBtn");
+  const aiPlanBtn = document.getElementById("aiPlanBtn");
+
+  const demoStatus = document.getElementById("demoStatus");
+  function setDemoStatus(t){ if(demoStatus) demoStatus.textContent = t; }
 
   function el(id){ return document.getElementById(id); }
   function pct(n){ return (Math.round(n*100)/100).toFixed(0) + "%"; }
+  function rate(n){ return (Math.round(n*10000)/100).toFixed(2) + "%"; } // 0.1234 -> 12.34%
 
   if (PLAN === "full_ai") {
     aiBtn.style.display = "inline-block";
+    aiPlanBtn.style.display = "inline-block";
   }
 
   function svgClear(svg){ while(svg.firstChild) svg.removeChild(svg.firstChild); }
 
   function drawSpark(svg, series){
-    // series: [{day, visits}]
     svgClear(svg);
     const W=600,H=140,p=12;
     const max = Math.max(1, ...series.map(s => Number(s.visits||0)));
     const min = 0;
 
-    // grid line
     const g = document.createElementNS("http://www.w3.org/2000/svg","path");
     g.setAttribute("d", \`M \${p} \${H-p} L \${W-p} \${H-p}\`);
     g.setAttribute("stroke","rgba(255,255,255,.10)");
@@ -1337,7 +1776,6 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
     path.setAttribute("stroke-linejoin","round");
     svg.appendChild(path);
 
-    // dots
     series.forEach((s,i)=>{
       const x = p + i*step;
       const y = (H-p) - ((Number(s.visits||0) - min) / (max-min || 1)) * (H-2*p);
@@ -1352,7 +1790,6 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
   }
 
   function drawBars(svg, items){
-    // items: [{page_type, views}]
     svgClear(svg);
     const W=600,H=170,p=14;
     const max = Math.max(1, ...items.map(i => Number(i.views||0)));
@@ -1386,7 +1823,6 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
   }
 
   async function loadReports(){
-    // latest
     try{
       const r = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
       const j = await r.json();
@@ -1397,7 +1833,6 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
       el("latestReport").textContent = "Error loading report";
     }
 
-    // history
     try{
       const r2 = await fetch("/reports?token=" + encodeURIComponent(TOKEN) + "&limit=10");
       const j2 = await r2.json();
@@ -1416,10 +1851,12 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
 
   async function refresh(){
     const days = rangeSel.value;
+
     el("kpiToday").textContent = "—";
     el("kpiRange").textContent = "—";
-    el("mobilePct").textContent = "—";
-    el("desktopPct").textContent = "—";
+    el("leadsKpi").textContent = "—";
+    el("purchasesKpi").textContent = "—";
+    el("leadRateKpi").textContent = "—";
     el("trendHint").textContent = "Loading…";
 
     const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
@@ -1433,11 +1870,9 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
     el("kpiToday").textContent = j.visits_today;
     el("kpiRange").textContent = j.visits_range;
 
-    const mobile = Number(j.device_mix && j.device_mix.mobile || 0);
-    const desk = Number(j.device_mix && j.device_mix.desktop || 0);
-    const tot = Math.max(1, mobile + desk);
-    el("mobilePct").textContent = pct(mobile/tot);
-    el("desktopPct").textContent = pct(desk/tot);
+    el("leadsKpi").textContent = j.leads ?? 0;
+    el("purchasesKpi").textContent = j.purchases ?? 0;
+    el("leadRateKpi").textContent = rate(j.conversion_rate || 0);
 
     const trend = j.trend || [];
     drawSpark(el("spark"), trend);
@@ -1474,31 +1909,120 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
     }
   });
 
+  aiPlanBtn.addEventListener("click", async () => {
+    aiPlanBtn.disabled = true;
+    aiPlanBtn.textContent = "Planning…";
+    try{
+      const r = await fetch("/generate-action-plan?token=" + encodeURIComponent(TOKEN), { method: "POST" });
+      const j = await r.json();
+      if(!j.ok){
+        alert(j.error || "AI action plan failed");
+      } else {
+        await loadReports();
+      }
+    }catch(e){
+      alert("AI error");
+    } finally {
+      aiPlanBtn.disabled = false;
+      aiPlanBtn.textContent = "AI action plan";
+    }
+  });
+
+  // Demo buttons
+  async function fire(eventName){
+    setDemoStatus("Sending " + eventName + "…");
+    const r = await fetch("/demo/fire-event", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ token: TOKEN, event_name: eventName, page_type: location.pathname, device: "desktop" })
+    });
+    const d = await r.json();
+    if(!d.ok){ setDemoStatus("Error: " + (d.error || "unknown")); return; }
+    setDemoStatus("✅ Fired " + eventName + ". Refreshing…");
+    setTimeout(() => { refresh(); }, 450);
+  }
+
+  document.getElementById("btnSimView")?.addEventListener("click", () => fire("page_view"));
+  document.getElementById("btnSimLead")?.addEventListener("click", () => fire("lead"));
+  document.getElementById("btnSimPurchase")?.addEventListener("click", () => fire("purchase"));
+  document.getElementById("btnSimCta")?.addEventListener("click", () => fire("cta_click"));
+
+  document.getElementById("btnShare")?.addEventListener("click", async () => {
+    setDemoStatus("Creating share link…");
+    const r = await fetch("/demo/link", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ token: TOKEN })
+    });
+    const d = await r.json();
+    if(!d.ok){ setDemoStatus("Error: " + (d.error || "unknown")); return; }
+    try{
+      await navigator.clipboard.writeText(d.url);
+      setDemoStatus("✅ Copied: " + d.url);
+    }catch(e){
+      setDemoStatus("Share link: " + d.url);
+    }
+  });
+
+  // Live traffic toggle
+  let liveTimer = null;
+  let liveSince = new Date().toISOString();
+
+  async function liveTick(){
+    try{
+      const r = await fetch("/live?token=" + encodeURIComponent(TOKEN) + "&since=" + encodeURIComponent(liveSince));
+      const d = await r.json();
+      if(d.ok){
+        liveSince = d.now || new Date().toISOString();
+        if(d.new_page_views > 0){
+          setDemoStatus("📈 Live: +" + d.new_page_views + " new views. Refreshing…");
+          setTimeout(()=> refresh(), 450);
+        } else {
+          setDemoStatus("Live traffic: listening…");
+        }
+      }
+    }catch(e){
+      setDemoStatus("Live traffic: error");
+    }
+  }
+
+  document.getElementById("liveToggle")?.addEventListener("change", (e) => {
+    if(e.target.checked){
+      setDemoStatus("Live traffic: ON");
+      liveSince = new Date().toISOString();
+      liveTimer = setInterval(liveTick, 2500);
+    } else {
+      setDemoStatus("Live traffic: OFF");
+      if(liveTimer) clearInterval(liveTimer);
+      liveTimer = null;
+    }
+  });
+
   refresh();
 </script>
 </body>
 </html>`);
-}));
+  })
+);
 
 /* ---------------------------
    “Daily job” utilities
-   - Optional in-process scheduler (NOT a real cron)
-   - Manual trigger endpoint
 ----------------------------*/
 async function generateNonAiDailyReport(site_id) {
-  // lightweight “business summary” without AI
   const metricsRes = await pool.query(
     `
     SELECT
       COUNT(*)::int AS total_events,
-      SUM(CASE WHEN event_name='page_view' THEN 1 ELSE 0 END)::int AS page_views
+      SUM(CASE WHEN event_name='page_view' THEN 1 ELSE 0 END)::int AS page_views,
+      SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
+      SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases
     FROM events_raw
     WHERE site_id=$1 AND created_at >= NOW() - INTERVAL '1 day'
     `,
     [site_id]
   );
 
-  const m = metricsRes.rows[0] || { total_events: 0, page_views: 0 };
+  const m = metricsRes.rows[0] || { total_events: 0, page_views: 0, leads: 0, purchases: 0 };
 
   const topRes = await pool.query(
     `
@@ -1515,6 +2039,7 @@ async function generateNonAiDailyReport(site_id) {
   const lines = [];
   lines.push("Summary:");
   lines.push(`In the last 24 hours you recorded ${m.page_views || 0} page views.`);
+  lines.push(`Leads: ${m.leads || 0} • Purchases: ${m.purchases || 0}`);
   lines.push("");
   lines.push("Top pages (7d):");
   if (!topRes.rows.length) lines.push("- (no data yet)");
@@ -1526,13 +2051,12 @@ async function generateNonAiDailyReport(site_id) {
   lines.push("3) Track a conversion event next");
   lines.push("");
   lines.push("Metric to watch:");
-  lines.push("Pricing → Contact rate");
+  lines.push("Lead rate (leads / visits)");
 
   return lines.join("\n");
 }
 
 async function runDailyForAllSites() {
-  // create/update today's report for pro/full_ai sites
   const sites = await pool.query(`SELECT site_id, plan FROM sites`);
   let made = 0;
 
@@ -1556,28 +2080,28 @@ async function runDailyForAllSites() {
 }
 
 // Manual trigger (admin-ish). You can protect this later with a secret.
-app.post("/jobs/run-daily", asyncHandler(async (req, res) => {
-  const result = await runDailyForAllSites();
-  res.json(result);
-}));
+app.post(
+  "/jobs/run-daily",
+  asyncHandler(async (req, res) => {
+    const result = await runDailyForAllSites();
+    res.json(result);
+  })
+);
 
 // Optional scheduler (in-process; not reliable like real cron)
 if (process.env.ENABLE_SCHEDULER === "true") {
   console.log("⏱️ In-process scheduler enabled (not a real cron).");
 
-  // Run once on boot (soft)
   runDailyForAllSites().catch(() => {});
 
-  // Then every 6 hours (soft)
   setInterval(() => {
     runDailyForAllSites().catch(() => {});
   }, 6 * 60 * 60 * 1000);
 }
+
 /* ---------------------------
    PUBLIC Storefront (NO token)
    GET /store
-   - Anyone can visit
-   - Creates a site by calling POST /sites
 ----------------------------*/
 app.get("/store", (req, res) => {
   try {
@@ -1655,7 +2179,6 @@ app.get("/store", (req, res) => {
     .grid{margin-top:16px;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
     .span8{grid-column: span 8;}
     .span4{grid-column: span 4;}
-    .span12{grid-column: 1 / -1;}
     @media (max-width: 980px){ .span8,.span4{grid-column: 1 / -1;} }
     label{display:block;font-size:12px;color:var(--muted);font-weight:900;margin:10px 0 6px;}
     input{
@@ -1683,7 +2206,6 @@ app.get("/store", (req, res) => {
       cursor:pointer;
     }
     .btn:hover{border-color: rgba(96,165,250,.65)}
-    .btn:active{transform: translateY(1px)}
     .muted{color:var(--muted);font-size:12px;line-height:1.55;}
     .plan{
       border:1px solid var(--border);
@@ -1722,8 +2244,6 @@ app.get("/store", (req, res) => {
     }
     .ok{color: var(--accent2); font-weight:1000}
     .err{color: var(--danger); font-weight:1000}
-    a.link{color: var(--accent); text-decoration:none; font-weight:1000}
-    a.link:hover{text-decoration:underline}
   </style>
 </head>
 <body>
@@ -1760,7 +2280,7 @@ app.get("/store", (req, res) => {
           <ul>
             <li>Dashboard + visits</li>
             <li>Trends + top pages</li>
-            <li>Device mix</li>
+            <li>Conversions panel (demo)</li>
           </ul>
         </div>
         <div class="plan" style="margin-top:12px;">
@@ -1776,7 +2296,7 @@ app.get("/store", (req, res) => {
           <div class="price">$199 <span class="muted">/mo</span></div>
           <ul>
             <li>AI “next steps” reports</li>
-            <li>Best assistant experience</li>
+            <li>AI action plans</li>
           </ul>
         </div>
       </div>
