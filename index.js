@@ -1300,6 +1300,61 @@ app.get(
 </style>
 </head>
 <body>
+<!-- Report Modal -->
+<div id="reportModal" style="display:none; position:fixed; inset:0; z-index:9999;">
+  <div id="reportBackdrop" style="position:absolute; inset:0; background:rgba(0,0,0,.6);"></div>
+
+  <div style="
+    position:relative;
+    max-width: 920px;
+    margin: 6vh auto;
+    padding: 0 14px;
+  ">
+    <div style="
+      background: rgba(15,23,42,.92);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 18px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.55);
+      overflow:hidden;
+    ">
+      <div style="
+        display:flex; justify-content:space-between; align-items:center;
+        padding: 14px 14px;
+        border-bottom: 1px solid rgba(255,255,255,.10);
+        background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      ">
+        <div>
+          <div style="font-weight:950; font-size:14px;">Report</div>
+          <div id="reportModalMeta" style="font-size:12px; color: rgba(255,255,255,.65); margin-top:2px;">—</div>
+        </div>
+        <button id="closeReportModal" class="btn" style="background: rgba(251,113,133,.12);">
+          Close
+        </button>
+      </div>
+
+      <div style="padding: 14px;">
+        <div id="reportModalBody" style="
+          white-space: pre-wrap;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace;
+          font-size: 13px;
+          line-height: 1.55;
+          background: rgba(15,23,42,.65);
+          border: 1px solid rgba(255,255,255,.10);
+          border-radius: 14px;
+          padding: 12px;
+          max-height: 62vh;
+          overflow:auto;
+        ">Loading…</div>
+
+        <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+          <button id="copyReportBtn" class="btn">Copy</button>
+          <button id="downloadReportBtn" class="btn">Download .txt</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="wrap">
   <div class="topbar">
     <div class="brand">
@@ -1444,6 +1499,63 @@ app.get(
     }
 
     res.setHeader("Content-Type", "text/html");
+// --- Report Modal helpers ---
+let LAST_REPORT = null;
+
+function openReportModal(report){
+  // report: { report_text, report_date, created_at }
+  LAST_REPORT = report || null;
+
+  const modal = document.getElementById("reportModal");
+  const meta = document.getElementById("reportModalMeta");
+  const body = document.getElementById("reportModalBody");
+
+  if(!modal || !meta || !body) return;
+
+  meta.textContent = report
+    ? ("Date: " + (report.report_date || "—") + " • " + (report.created_at || ""))
+    : "—";
+
+  body.textContent = report?.report_text || "No report found.";
+  modal.style.display = "block";
+}
+
+function closeReportModal(){
+  const modal = document.getElementById("reportModal");
+  if(modal) modal.style.display = "none";
+}
+
+// close handlers
+document.getElementById("closeReportModal")?.addEventListener("click", closeReportModal);
+document.getElementById("reportBackdrop")?.addEventListener("click", closeReportModal);
+document.addEventListener("keydown", (e) => {
+  if(e.key === "Escape") closeReportModal();
+});
+
+// copy + download
+document.getElementById("copyReportBtn")?.addEventListener("click", async () => {
+  if(!LAST_REPORT?.report_text) return;
+  try{
+    await navigator.clipboard.writeText(LAST_REPORT.report_text);
+    alert("Copied ✅");
+  }catch(e){
+    alert("Copy failed");
+  }
+});
+
+document.getElementById("downloadReportBtn")?.addEventListener("click", () => {
+  if(!LAST_REPORT?.report_text) return;
+  const filename = "constrava_report_" + (LAST_REPORT.report_date || "latest") + ".txt";
+  const blob = new Blob([LAST_REPORT.report_text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
 
     res.send(`<!doctype html>
 <html lang="en">
@@ -1828,10 +1940,14 @@ app.get(
       const j = await r.json();
       if(!j.ok){ el("latestReport").textContent = j.error || "No report"; return; }
       el("latestReport").textContent = j.report.report_text || "";
+      LAST_REPORT = j.report;
       el("reportMeta").textContent = "Latest: " + j.report.report_date + " • " + (j.report.created_at || "");
     }catch(e){
       el("latestReport").textContent = "Error loading report";
     }
+document.getElementById("latestReport")?.addEventListener("click", () => {
+  if(LAST_REPORT) openReportModal(LAST_REPORT);
+});
 
     try{
       const r2 = await fetch("/reports?token=" + encodeURIComponent(TOKEN) + "&limit=10");
@@ -1885,6 +2001,7 @@ app.get(
 
     drawBars(el("bars"), j.top_pages || []);
     await loadReports();
+    if (LAST_REPORT) openReportModal(LAST_REPORT);
   }
 
   refreshBtn.addEventListener("click", refresh);
