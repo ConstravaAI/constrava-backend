@@ -2246,7 +2246,7 @@ app.get("/store", (req, res) => {
   });
 </script>
 </body>
-</html>\`);
+</html>);
   } catch (err) {
     res.status(500).send(String(err.message || err));
   }
