@@ -1,34 +1,18 @@
-// index.js (ESM) — Constrava MVP+ backend (dashboard + storefront + auth + charts + AI UI + optional scheduler)
-//
-// ✅ Neon Postgres (pg)
-// ✅ /sites creates site_id + dashboard_token (token = "site access token")
-// ✅ tracker: /tracker.js + /events collector
-// ✅ token-secured dashboard + APIs
-// ✅ storefront route + demo plan activation (Stripe later)
-// ✅ user accounts: /auth/register, /auth/login (cookie sessions)
-// ✅ dashboard graphs (SVG) + reports UI + AI generate button
-// ✅ optional in-process daily scheduler (NOT real cron) + manual job trigger
-//
-// ✅ DEMO/CLIENT “FUN” FEATURES ADDED (the “everything” pack)
-// ✅ Live traffic endpoint: GET /live?token=...&since=ISO
-// ✅ Demo event firing: POST /demo/fire-event { token, event_name, page_type, device }
-// ✅ Shareable demo links: POST /demo/link { token } -> { url } and GET /d/:code redirects to dashboard
-// ✅ Action plan AI endpoint (full_ai only): POST /generate-action-plan?token=...
-// ✅ Enhanced metrics: conversions + top pages (10) + share % + conversion rate
-// ✅ Demo seeder can also seed leads/purchases/cta_click (optional rates)
+// index.js (ESM) — Constrava MVP+ backend (rewritten, fixed)
+// Node 18+ recommended (global fetch).
 //
 // ENV REQUIRED:
 // - DATABASE_URL
 //
 // OPTIONAL ENV:
-// - PUBLIC_BASE_URL (recommended)
-// - PUBLIC_EVENTS_URL (if tracker collector differs)
-// - ENABLE_DEMO_SEED=true  (allow /demo/seed)
-// - ENABLE_DEMO_ACTIVATE=true (allow plan activation via /demo/activate-plan)
+// - PUBLIC_BASE_URL
+// - PUBLIC_EVENTS_URL
+// - ENABLE_DEMO_SEED=true
+// - ENABLE_DEMO_ACTIVATE=false (to disable demo plan activation)
 // - OPENAI_API_KEY (+ optional OPENAI_MODEL)
-// - RESEND_API_KEY + FROM_EMAIL (email sending)
-// - ENABLE_SCHEDULER=true (in-process scheduler; not reliable like real cron)
-// - BILLING_WEBHOOK_SECRET (reserved for Stripe later)
+// - RESEND_API_KEY + FROM_EMAIL
+// - ENABLE_SCHEDULER=true
+// - COOKIE_SECURE=true
 
 import express from "express";
 import cors from "cors";
@@ -45,11 +29,14 @@ app.use(express.urlencoded({ extended: true }));
 const PORT = process.env.PORT || 10000;
 const DATABASE_URL = process.env.DATABASE_URL;
 
-if (!DATABASE_URL) console.error("Missing DATABASE_URL env var");
+if (!DATABASE_URL) {
+  console.error("❌ Missing DATABASE_URL env var");
+}
+
 const pool = new Pool({ connectionString: DATABASE_URL });
 
 /* ---------------------------
-   Small helpers
+   Helpers
 ----------------------------*/
 function setNoStore(res) {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
@@ -58,11 +45,11 @@ function setNoStore(res) {
 }
 
 function publicBaseUrl(req) {
-  return (
-    process.env.PUBLIC_BASE_URL ||
-    `${req.protocol}://${req.get("host")}` ||
-    "https://constrava-backend.onrender.com"
-  );
+  // prefer explicit env, otherwise build from request
+  if (process.env.PUBLIC_BASE_URL) return process.env.PUBLIC_BASE_URL;
+  const host = req.get("host");
+  if (host) return `${req.protocol}://${host}`;
+  return "https://constrava-backend.onrender.com";
 }
 
 function requireEnv(name) {
@@ -105,21 +92,14 @@ function validateCustomToken(token) {
   return null;
 }
 
-// password hashing (no bcrypt)
-function hashPassword(password) {
-  const salt = crypto.randomBytes(16);
-  const hash = crypto.scryptSync(String(password), salt, 64);
-  return { salt: salt.toString("hex"), hash: hash.toString("hex") };
-}
-function verifyPassword(password, saltHex, hashHex) {
-  const salt = Buffer.from(saltHex, "hex");
-  const hash = Buffer.from(hashHex, "hex");
-  const test = crypto.scryptSync(String(password), salt, 64);
-  return crypto.timingSafeEqual(hash, test);
-}
-
 function safeEmail(x) {
   return String(x || "").trim().toLowerCase();
+}
+
+function clamp01(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
 }
 
 function planGate(site, allowedPlans) {
@@ -136,38 +116,24 @@ function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
 
-function clamp01(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
+/* ---------------------------
+   Password hashing (no bcrypt)
+----------------------------*/
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.scryptSync(String(password), salt, 64);
+  return { salt: salt.toString("hex"), hash: hash.toString("hex") };
+}
+function verifyPassword(password, saltHex, hashHex) {
+  const salt = Buffer.from(saltHex, "hex");
+  const hash = Buffer.from(hashHex, "hex");
+  const test = crypto.scryptSync(String(password), salt, 64);
+  return crypto.timingSafeEqual(hash, test);
 }
 
 /* ---------------------------
-   DB helpers
+   Cookie helpers (no cookie-parser)
 ----------------------------*/
-async function getSiteByToken(token) {
-  if (!token) return null;
-  const r = await pool.query(
-    `SELECT site_id, site_name, owner_email, dashboard_token, plan
-     FROM sites
-     WHERE dashboard_token=$1
-     LIMIT 1`,
-    [token]
-  );
-  return r.rows[0] || null;
-}
-
-async function getSiteById(site_id) {
-  const r = await pool.query(
-    `SELECT site_id, site_name, owner_email, dashboard_token, plan
-     FROM sites
-     WHERE site_id=$1
-     LIMIT 1`,
-    [site_id]
-  );
-  return r.rows[0] || null;
-}
-
 function getCookie(req, name) {
   const raw = req.headers.cookie || "";
   const parts = raw.split(";").map((s) => s.trim());
@@ -204,6 +170,32 @@ function setCookie(res, name, value, opts = {}) {
 
 function clearCookie(res, name) {
   res.setHeader("Set-Cookie", `${name}=; Path=/; Max-Age=0; SameSite=Lax`);
+}
+
+/* ---------------------------
+   DB helpers
+----------------------------*/
+async function getSiteByToken(token) {
+  if (!token) return null;
+  const r = await pool.query(
+    `SELECT site_id, site_name, owner_email, dashboard_token, plan
+     FROM sites
+     WHERE dashboard_token=$1
+     LIMIT 1`,
+    [token]
+  );
+  return r.rows[0] || null;
+}
+
+async function getSiteById(site_id) {
+  const r = await pool.query(
+    `SELECT site_id, site_name, owner_email, dashboard_token, plan
+     FROM sites
+     WHERE site_id=$1
+     LIMIT 1`,
+    [site_id]
+  );
+  return r.rows[0] || null;
 }
 
 async function getSession(req) {
@@ -285,7 +277,6 @@ async function ensureTables() {
     );
   `);
 
-  // ✅ shareable demo links
   await pool.query(`
     CREATE TABLE IF NOT EXISTS demo_links (
       code TEXT PRIMARY KEY,
@@ -296,7 +287,6 @@ async function ensureTables() {
 
   console.log("✅ Tables ready");
 }
-ensureTables().catch((e) => console.error("ensureTables failed:", e.message));
 
 /* ---------------------------
    Basic routes
@@ -321,7 +311,7 @@ app.get(
 );
 
 /* ---------------------------
-   Auth (real user accounts)
+   Auth (user accounts)
 ----------------------------*/
 app.post(
   "/auth/register",
@@ -335,11 +325,9 @@ app.post(
         .json({ ok: false, error: "site_id, email, password, and token are required" });
     }
 
-    // Must prove they own the site via access token
     const site = await getSiteById(site_id);
     if (!site) return res.status(404).json({ ok: false, error: "site_id not found" });
-    if (site.dashboard_token !== token)
-      return res.status(401).json({ ok: false, error: "Invalid site token" });
+    if (site.dashboard_token !== token) return res.status(401).json({ ok: false, error: "Invalid site token" });
 
     const e = safeEmail(email);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))
@@ -352,8 +340,8 @@ app.post(
     try {
       const r = await pool.query(
         `INSERT INTO users (site_id, email, password_salt, password_hash)
-       VALUES ($1,$2,$3,$4)
-       RETURNING id, email, site_id`,
+         VALUES ($1,$2,$3,$4)
+         RETURNING id, email, site_id`,
         [site_id, e, salt, hash]
       );
       res.json({ ok: true, user: r.rows[0] });
@@ -377,9 +365,9 @@ app.post(
 
     const r = await pool.query(
       `SELECT id, site_id, email, password_salt, password_hash
-     FROM users
-     WHERE email=$1
-     LIMIT 1`,
+       FROM users
+       WHERE email=$1
+       LIMIT 1`,
       [e]
     );
     if (r.rows.length === 0) return res.status(401).json({ ok: false, error: "Invalid login" });
@@ -390,7 +378,7 @@ app.post(
     }
 
     const session_id = crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000); // 14 days
+    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
 
     await pool.query(`INSERT INTO sessions (session_id, user_id, expires_at) VALUES ($1,$2,$3)`, [
       session_id,
@@ -419,9 +407,7 @@ app.post(
   "/auth/logout",
   asyncHandler(async (req, res) => {
     const sid = getCookie(req, "constrava_session");
-    if (sid) {
-      await pool.query(`DELETE FROM sessions WHERE session_id=$1`, [sid]);
-    }
+    if (sid) await pool.query(`DELETE FROM sessions WHERE session_id=$1`, [sid]);
     clearCookie(res, "constrava_session");
     res.json({ ok: true });
   })
@@ -468,7 +454,7 @@ app.post(
     try {
       await pool.query(
         `INSERT INTO sites (site_id, site_name, owner_email, dashboard_token, plan)
-       VALUES ($1,$2,$3,$4,'unpaid')`,
+         VALUES ($1,$2,$3,$4,'unpaid')`,
         [site_id, String(site_name).trim(), safeEmail(owner_email), token]
       );
     } catch (err) {
@@ -499,7 +485,6 @@ app.get("/tracker.js", (req, res) => {
   res.setHeader("Content-Type", "application/javascript");
   const endpoint = (process.env.PUBLIC_EVENTS_URL || "https://constrava-backend.onrender.com") + "/events";
 
-  // very small, safe snippet: page_view only
   res.send(`
 (function () {
   try {
@@ -521,7 +506,7 @@ app.get("/tracker.js", (req, res) => {
     }).catch(function(){});
   } catch (e) {}
 })();
-`);
+  `);
 });
 
 /* ---------------------------
@@ -532,16 +517,14 @@ app.post(
   "/events",
   asyncHandler(async (req, res) => {
     const { site_id, event_name, page_type, device } = req.body || {};
-    if (!site_id || !event_name) {
-      return res.status(400).json({ ok: false, error: "site_id and event_name required" });
-    }
+    if (!site_id || !event_name) return res.status(400).json({ ok: false, error: "site_id and event_name required" });
 
     const site = await pool.query("SELECT 1 FROM sites WHERE site_id=$1", [site_id]);
     if (site.rows.length === 0) return res.status(403).json({ ok: false, error: "Invalid site_id" });
 
     await pool.query(
       `INSERT INTO events_raw (site_id, event_name, page_type, device)
-     VALUES ($1,$2,$3,$4)`,
+       VALUES ($1,$2,$3,$4)`,
       [site_id, String(event_name), page_type || null, device || null]
     );
 
@@ -550,7 +533,7 @@ app.post(
 );
 
 /* ---------------------------
-   DEMO: fire events (page_view / lead / purchase / cta_click)
+   DEMO: fire events
    POST /demo/fire-event { token, event_name, page_type?, device? }
 ----------------------------*/
 app.post(
@@ -588,7 +571,7 @@ app.get(
     setNoStore(res);
 
     const token = req.query.token;
-    const since = req.query.since; // ISO
+    const since = req.query.since;
     if (!token) return res.status(400).json({ ok: false, error: "token required" });
 
     const site = await getSiteByToken(token);
@@ -653,7 +636,7 @@ app.post(
     const site = await getSiteByToken(token);
     if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
-    const code = crypto.randomBytes(4).toString("hex"); // short
+    const code = crypto.randomBytes(4).toString("hex");
     await pool.query(`INSERT INTO demo_links (code, token) VALUES ($1,$2)`, [code, token]);
 
     const base = process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
@@ -674,9 +657,8 @@ app.get(
 );
 
 /* ---------------------------
-   Metrics (token-secured)
+   Metrics
    GET /metrics?token=...&days=7
-   ✅ includes conversions + top pages (10) + share % + conversion rate
 ----------------------------*/
 app.get(
   "/metrics",
@@ -689,99 +671,101 @@ app.get(
 
     const site_id = site.site_id;
     const days = normalizeDays(req.query.days);
-    const startDate = `${days - 1} days`;
 
     const todayRes = await pool.query(
       `
-    SELECT COUNT(*)::int AS visits_today
-    FROM events_raw
-    WHERE site_id = $1
-      AND event_name = 'page_view'
-      AND created_at::date = CURRENT_DATE
-    `,
+      SELECT COUNT(*)::int AS visits_today
+      FROM events_raw
+      WHERE site_id = $1
+        AND event_name = 'page_view'
+        AND created_at::date = CURRENT_DATE
+      `,
       [site_id]
     );
 
+    // (days-1) used to include today
+    const startDateInterval = `${days - 1} days`;
+
     const trendRes = await pool.query(
       `
-    SELECT d::date AS day, COALESCE(COUNT(e.*),0)::int AS visits
-    FROM generate_series(CURRENT_DATE - $2::interval, CURRENT_DATE, INTERVAL '1 day') d
-    LEFT JOIN events_raw e
-      ON e.site_id = $1
-     AND e.event_name = 'page_view'
-     AND e.created_at::date = d::date
-    GROUP BY d
-    ORDER BY d
-    `,
-      [site_id, startDate]
+      SELECT d::date AS day, COALESCE(COUNT(e.*),0)::int AS visits
+      FROM generate_series(CURRENT_DATE - $2::interval, CURRENT_DATE, INTERVAL '1 day') d
+      LEFT JOIN events_raw e
+        ON e.site_id = $1
+       AND e.event_name = 'page_view'
+       AND e.created_at::date = d::date
+      GROUP BY d
+      ORDER BY d
+      `,
+      [site_id, startDateInterval]
     );
 
     const visits_range = trendRes.rows.reduce((sum, r) => sum + (r.visits || 0), 0);
 
     const topPagesRes = await pool.query(
       `
-    SELECT page_type, COUNT(*)::int AS views
-    FROM events_raw
-    WHERE site_id = $1
-      AND event_name = 'page_view'
-      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
-      AND page_type IS NOT NULL
-    GROUP BY page_type
-    ORDER BY views DESC
-    LIMIT 5
-    `,
+      SELECT page_type, COUNT(*)::int AS views
+      FROM events_raw
+      WHERE site_id = $1
+        AND event_name = 'page_view'
+        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+        AND page_type IS NOT NULL
+      GROUP BY page_type
+      ORDER BY views DESC
+      LIMIT 5
+      `,
       [site_id, days]
     );
 
     const topPagesRangeRes = await pool.query(
       `
-    SELECT page_type, COUNT(*)::int AS views
-    FROM events_raw
-    WHERE site_id = $1
-      AND event_name = 'page_view'
-      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
-      AND page_type IS NOT NULL
-    GROUP BY page_type
-    ORDER BY views DESC
-    LIMIT 10
-    `,
+      SELECT page_type, COUNT(*)::int AS views
+      FROM events_raw
+      WHERE site_id = $1
+        AND event_name = 'page_view'
+        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+        AND page_type IS NOT NULL
+      GROUP BY page_type
+      ORDER BY views DESC
+      LIMIT 10
+      `,
       [site_id, days]
     );
 
     const deviceRes = await pool.query(
       `
-    SELECT
-      SUM(CASE WHEN device = 'mobile' THEN 1 ELSE 0 END)::int AS mobile,
-      SUM(CASE WHEN device = 'desktop' THEN 1 ELSE 0 END)::int AS desktop
-    FROM events_raw
-    WHERE site_id = $1
-      AND event_name = 'page_view'
-      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
-    `,
+      SELECT
+        SUM(CASE WHEN device = 'mobile' THEN 1 ELSE 0 END)::int AS mobile,
+        SUM(CASE WHEN device = 'desktop' THEN 1 ELSE 0 END)::int AS desktop
+      FROM events_raw
+      WHERE site_id = $1
+        AND event_name = 'page_view'
+        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+      `,
       [site_id, days]
     );
 
     const goalsRangeRes = await pool.query(
       `
-    SELECT
-      SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
-      SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases,
-      SUM(CASE WHEN event_name='cta_click' THEN 1 ELSE 0 END)::int AS cta_clicks
-    FROM events_raw
-    WHERE site_id=$1
-      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
-    `,
+      SELECT
+        SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
+        SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases,
+        SUM(CASE WHEN event_name='cta_click' THEN 1 ELSE 0 END)::int AS cta_clicks
+      FROM events_raw
+      WHERE site_id=$1
+        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+      `,
       [site_id, days]
     );
 
     const lastEventRes = await pool.query(
       `
-    SELECT event_name, page_type, device, created_at
-    FROM events_raw
-    WHERE site_id = $1
-    ORDER BY created_at DESC
-    LIMIT 1
-    `,
+      SELECT event_name, page_type, device, created_at
+      FROM events_raw
+      WHERE site_id = $1
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
       [site_id]
     );
 
@@ -807,25 +791,21 @@ app.get(
       visits_today: todayRes.rows[0]?.visits_today || 0,
       visits_range,
       trend: trendRes.rows.map((r) => ({ day: String(r.day), visits: r.visits })),
-
-      // original
       top_pages: topPagesRes.rows || [],
       device_mix: deviceRes.rows[0] || { mobile: 0, desktop: 0 },
       last_event: lastEventRes.rows[0] || null,
-
-      // new goodies
       leads,
       purchases,
       cta_clicks,
-      conversion_rate, // leads / visits_range
-      purchase_rate, // purchases / visits_range
+      conversion_rate,
+      purchase_rate,
       top_pages_range
     });
   })
 );
 
 /* ---------------------------
-   Reports: list + latest
+   Reports
 ----------------------------*/
 app.get(
   "/reports",
@@ -839,10 +819,10 @@ app.get(
 
     const r = await pool.query(
       `SELECT site_id, report_date, created_at, LEFT(report_text, 260) AS preview
-     FROM daily_reports
-     WHERE site_id=$1
-     ORDER BY report_date DESC, created_at DESC
-     LIMIT $2`,
+       FROM daily_reports
+       WHERE site_id=$1
+       ORDER BY report_date DESC, created_at DESC
+       LIMIT $2`,
       [site.site_id, limit]
     );
 
@@ -860,10 +840,10 @@ app.get(
 
     const r = await pool.query(
       `SELECT site_id, report_date, report_text, created_at
-     FROM daily_reports
-     WHERE site_id=$1
-     ORDER BY report_date DESC, created_at DESC
-     LIMIT 1`,
+       FROM daily_reports
+       WHERE site_id=$1
+       ORDER BY report_date DESC, created_at DESC
+       LIMIT 1`,
       [site.site_id]
     );
 
@@ -873,14 +853,8 @@ app.get(
 );
 
 /* ---------------------------
-   Demo data seeder
+   Demo seeder
    POST /demo/seed?token=...
-   Body options:
-   - days (default 7)
-   - events_per_day (default 40, max 500)
-   - lead_rate (0..1) default 0.02
-   - purchase_rate (0..1) default 0.004
-   - cta_rate (0..1) default 0.06
 ----------------------------*/
 app.post(
   "/demo/seed",
@@ -914,26 +888,21 @@ app.post(
 
         const r = Math.random();
         const page =
-          r < 0.30
-            ? "/"
-            : r < 0.55
-              ? "/pricing"
-              : r < 0.70
-                ? "/services"
-                : r < 0.80
-                  ? "/contact"
-                  : pages[Math.floor(Math.random() * pages.length)];
+          r < 0.30 ? "/" :
+          r < 0.55 ? "/pricing" :
+          r < 0.70 ? "/services" :
+          r < 0.80 ? "/contact" :
+          pages[Math.floor(Math.random() * pages.length)];
 
         const device = Math.random() < 0.62 ? "mobile" : "desktop";
 
         await pool.query(
           `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
-         VALUES ($1, 'page_view', $2, $3, $4)`,
+           VALUES ($1, 'page_view', $2, $3, $4)`,
           [site_id, page, device, ts.toISOString()]
         );
         inserted++;
 
-        // optional extra events
         const roll = Math.random();
         if (roll < purchaseRate) {
           await pool.query(
@@ -960,7 +929,6 @@ app.post(
       }
     }
 
-    // seed 2 reports
     const sample1 =
       "Summary:\nTraffic is concentrating on Pricing and Services.\n\n" +
       "Trend:\nVisitors are exploring multiple pages.\n\n" +
@@ -975,14 +943,14 @@ app.post(
 
     await pool.query(
       `INSERT INTO daily_reports (site_id, report_date, report_text)
-     VALUES ($1, CURRENT_DATE - INTERVAL '1 day', $2)
-     ON CONFLICT (site_id, report_date) DO NOTHING`,
+       VALUES ($1, CURRENT_DATE - INTERVAL '1 day', $2)
+       ON CONFLICT (site_id, report_date) DO NOTHING`,
       [site_id, sample1]
     );
     await pool.query(
       `INSERT INTO daily_reports (site_id, report_date, report_text)
-     VALUES ($1, CURRENT_DATE, $2)
-     ON CONFLICT (site_id, report_date) DO NOTHING`,
+       VALUES ($1, CURRENT_DATE, $2)
+       ON CONFLICT (site_id, report_date) DO NOTHING`,
       [site_id, sample2]
     );
 
@@ -1016,15 +984,18 @@ app.post(
 
     const metricsRes = await pool.query(
       `
-    SELECT
-      $1::text as site_id,
-      COUNT(*)::int AS total_events,
-      SUM(CASE WHEN event_name='page_view' THEN 1 ELSE 0 END)::int AS page_views
-    FROM events_raw
-    WHERE site_id=$1 AND created_at >= NOW() - INTERVAL '7 days'
-    `,
+      SELECT
+        $1::text as site_id,
+        COUNT(*)::int AS total_events,
+        SUM(CASE WHEN event_name='page_view' THEN 1 ELSE 0 END)::int AS page_views,
+        SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
+        SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases
+      FROM events_raw
+      WHERE site_id=$1 AND created_at >= NOW() - INTERVAL '7 days'
+      `,
       [site.site_id]
     );
+
     const metrics = metricsRes.rows[0];
 
     const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -1036,10 +1007,7 @@ app.post(
       body: JSON.stringify({
         model: process.env.OPENAI_MODEL || "gpt-4o",
         messages: [
-          {
-            role: "system",
-            content: "You are a helpful business analytics assistant. Be plain-English, actionable, and concise."
-          },
+          { role: "system", content: "You are a helpful business analytics assistant. Be plain-English, actionable, and concise." },
           {
             role: "user",
             content:
@@ -1057,10 +1025,10 @@ app.post(
 
     const saved = await pool.query(
       `INSERT INTO daily_reports (site_id, report_date, report_text)
-     VALUES ($1, CURRENT_DATE, $2)
-     ON CONFLICT (site_id, report_date)
-     DO UPDATE SET report_text = EXCLUDED.report_text
-     RETURNING site_id, report_date, report_text, created_at`,
+       VALUES ($1, CURRENT_DATE, $2)
+       ON CONFLICT (site_id, report_date)
+       DO UPDATE SET report_text = EXCLUDED.report_text
+       RETURNING site_id, report_date, report_text, created_at`,
       [site.site_id, reportText]
     );
 
@@ -1071,7 +1039,6 @@ app.post(
 /* ---------------------------
    AI action plan (FULL AI only)
    POST /generate-action-plan?token=...
-   - richer “wow” output and saves as today's report
 ----------------------------*/
 app.post(
   "/generate-action-plan",
@@ -1193,10 +1160,10 @@ app.post(
 
     const r = await pool.query(
       `SELECT report_text, report_date
-     FROM daily_reports
-     WHERE site_id=$1
-     ORDER BY report_date DESC, created_at DESC
-     LIMIT 1`,
+       FROM daily_reports
+       WHERE site_id=$1
+       ORDER BY report_date DESC, created_at DESC
+       LIMIT 1`,
       [site.site_id]
     );
     if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
@@ -1224,8 +1191,37 @@ app.post(
 );
 
 /* ---------------------------
-   Storefront (no Stripe yet)
-   GET  /storefront?token=...
+   DEMO: activate a plan
+   POST /demo/activate-plan { token, plan }
+----------------------------*/
+app.post(
+  "/demo/activate-plan",
+  asyncHandler(async (req, res) => {
+    if (process.env.ENABLE_DEMO_ACTIVATE === "false") {
+      return res.status(403).json({ ok: false, error: "Demo activation disabled" });
+    }
+
+    const { token, plan } = req.body || {};
+    const allowed = new Set(["starter", "pro", "full_ai"]);
+
+    if (!token) return res.status(400).json({ ok: false, error: "token required" });
+    if (!plan || !allowed.has(plan)) return res.status(400).json({ ok: false, error: "Invalid plan" });
+
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+    const r = await pool.query(`UPDATE sites SET plan=$2 WHERE site_id=$1 RETURNING site_id, plan`, [
+      site.site_id,
+      plan
+    ]);
+
+    res.json({ ok: true, updated: r.rows[0] });
+  })
+);
+
+/* ---------------------------
+   Storefront (token-gated)
+   GET /storefront?token=...
 ----------------------------*/
 app.get(
   "/storefront",
@@ -1238,7 +1234,6 @@ app.get(
 
     const site_id = site.site_id;
     const plan = site.plan || "unpaid";
-
     res.setHeader("Content-Type", "text/html");
 
     res.send(`<!doctype html>
@@ -1249,7 +1244,7 @@ app.get(
 <title>Constrava — Plans</title>
 <style>
   :root{
-    --bg:#0b0f19; --panel:#111827; --panel2:#0f172a; --text:#e5e7eb; --muted:#9ca3af;
+    --bg:#0b0f19; --panel:#111827; --text:#e5e7eb; --muted:#9ca3af;
     --border:rgba(255,255,255,.10); --accent:#60a5fa; --accent2:#34d399; --danger:#fb7185;
     --shadow:0 10px 30px rgba(0,0,0,.35); --radius:16px;
   }
@@ -1295,79 +1290,23 @@ app.get(
   .btnGreen:hover{border-color: rgba(52,211,153,.5)}
   .note{
     margin-top:16px; padding:12px; border-radius: 14px; border:1px dashed rgba(255,255,255,.16);
-    background: rgba(15,23,42,.35); color: var(--muted); font-size:13px; line-height:1.55;
+    background: rgba(15,23,42,.35); color: var(--muted); font-size:13px; line-height: 1.55;
   }
 </style>
 </head>
 <body>
-<!-- Report Modal -->
-<div id="reportModal" style="display:none; position:fixed; inset:0; z-index:9999;">
-  <div id="reportBackdrop" style="position:absolute; inset:0; background:rgba(0,0,0,.6);"></div>
-
-  <div style="
-    position:relative;
-    max-width: 920px;
-    margin: 6vh auto;
-    padding: 0 14px;
-  ">
-    <div style="
-      background: rgba(15,23,42,.92);
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 18px;
-      box-shadow: 0 20px 60px rgba(0,0,0,.55);
-      overflow:hidden;
-    ">
-      <div style="
-        display:flex; justify-content:space-between; align-items:center;
-        padding: 14px 14px;
-        border-bottom: 1px solid rgba(255,255,255,.10);
-        background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-      ">
-        <div>
-          <div style="font-weight:950; font-size:14px;">Report</div>
-          <div id="reportModalMeta" style="font-size:12px; color: rgba(255,255,255,.65); margin-top:2px;">—</div>
-        </div>
-        <button id="closeReportModal" class="btn" style="background: rgba(251,113,133,.12);">
-          Close
-        </button>
-      </div>
-
-      <div style="padding: 14px;">
-        <div id="reportModalBody" style="
-          white-space: pre-wrap;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace;
-          font-size: 13px;
-          line-height: 1.55;
-          background: rgba(15,23,42,.65);
-          border: 1px solid rgba(255,255,255,.10);
-          border-radius: 14px;
-          padding: 12px;
-          max-height: 62vh;
-          overflow:auto;
-        ">Loading…</div>
-
-        <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
-          <button id="copyReportBtn" class="btn">Copy</button>
-          <button id="downloadReportBtn" class="btn">Download .txt</button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div class="wrap">
   <div class="topbar">
     <div class="brand">
       <div class="logo"></div>
       <div>
         <h1>Constrava Plans</h1>
-        <div class="sub">Activate your dashboard. Stripe comes later — this is the working infrastructure.</div>
+        <div class="sub">Activate your dashboard. Stripe comes later — demo activation for now.</div>
       </div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <span class="pill">Site: <b>${site_id}</b></span>
       <span class="pill">Current plan: <b>${plan}</b></span>
-      <span class="pill">Token login: <b>enabled</b></span>
     </div>
   </div>
 
@@ -1428,7 +1367,7 @@ app.get(
         headers: {"Content-Type":"application/json"},
         body: JSON.stringify({ token, plan })
       });
-      const data = await r.json();
+      const data = await r.json().catch(()=> ({}));
       if(!data.ok){
         statusEl.textContent = "Status: " + (data.error || "activation failed");
         return;
@@ -1446,41 +1385,8 @@ app.get(
 );
 
 /* ---------------------------
-   DEMO: activate a plan (NO secret)
-   POST /demo/activate-plan  { token, plan }
-----------------------------*/
-app.post(
-  "/demo/activate-plan",
-  asyncHandler(async (req, res) => {
-    if (process.env.ENABLE_DEMO_ACTIVATE === "false") {
-      return res.status(403).json({ ok: false, error: "Demo activation disabled" });
-    }
-
-    const { token, plan } = req.body || {};
-    const allowed = new Set(["starter", "pro", "full_ai"]);
-
-    if (!token) return res.status(400).json({ ok: false, error: "token required" });
-    if (!plan || !allowed.has(plan)) return res.status(400).json({ ok: false, error: "Invalid plan" });
-
-    const site = await getSiteByToken(token);
-    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
-
-    const r = await pool.query(`UPDATE sites SET plan=$2 WHERE site_id=$1 RETURNING site_id, plan`, [
-      site.site_id,
-      plan
-    ]);
-
-    res.json({ ok: true, updated: r.rows[0] });
-  })
-);
-
-/* ---------------------------
-   Dashboard UI
+   Dashboard UI (FIXED, full page)
    GET /dashboard?token=...
-   - unpaid users redirect to /storefront
-   - charts rendered with SVG
-   - AI report button if full_ai
-   ✅ Demo panel + live traffic + share link + action plan
 ----------------------------*/
 app.get(
   "/dashboard",
@@ -1494,68 +1400,9 @@ app.get(
     const site_id = site.site_id;
     const plan = site.plan || "unpaid";
 
-    if (plan === "unpaid") {
-      return res.redirect(`/storefront?token=${encodeURIComponent(token)}`);
-    }
+    if (plan === "unpaid") return res.redirect(`/storefront?token=${encodeURIComponent(token)}`);
 
     res.setHeader("Content-Type", "text/html");
-// --- Report Modal helpers ---
-let LAST_REPORT = null;
-
-function openReportModal(report){
-  // report: { report_text, report_date, created_at }
-  LAST_REPORT = report || null;
-
-  const modal = document.getElementById("reportModal");
-  const meta = document.getElementById("reportModalMeta");
-  const body = document.getElementById("reportModalBody");
-
-  if(!modal || !meta || !body) return;
-
-  meta.textContent = report
-    ? ("Date: " + (report.report_date || "—") + " • " + (report.created_at || ""))
-    : "—";
-
-  body.textContent = report?.report_text || "No report found.";
-  modal.style.display = "block";
-}
-
-function closeReportModal(){
-  const modal = document.getElementById("reportModal");
-  if(modal) modal.style.display = "none";
-}
-
-// close handlers
-document.getElementById("closeReportModal")?.addEventListener("click", closeReportModal);
-document.getElementById("reportBackdrop")?.addEventListener("click", closeReportModal);
-document.addEventListener("keydown", (e) => {
-  if(e.key === "Escape") closeReportModal();
-});
-
-// copy + download
-document.getElementById("copyReportBtn")?.addEventListener("click", async () => {
-  if(!LAST_REPORT?.report_text) return;
-  try{
-    await navigator.clipboard.writeText(LAST_REPORT.report_text);
-    alert("Copied ✅");
-  }catch(e){
-    alert("Copy failed");
-  }
-});
-
-document.getElementById("downloadReportBtn")?.addEventListener("click", () => {
-  if(!LAST_REPORT?.report_text) return;
-  const filename = "constrava_report_" + (LAST_REPORT.report_date || "latest") + ".txt";
-  const blob = new Blob([LAST_REPORT.report_text], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-});
 
     res.send(`<!doctype html>
 <html lang="en">
@@ -1566,8 +1413,6 @@ document.getElementById("downloadReportBtn")?.addEventListener("click", () => {
 <style>
   :root{
     --bg:#0b0f19;
-    --panel:#111827;
-    --panel2:#0f172a;
     --text:#e5e7eb;
     --muted:#9ca3af;
     --border:rgba(255,255,255,.08);
@@ -1695,6 +1540,7 @@ document.getElementById("downloadReportBtn")?.addEventListener("click", () => {
     padding: 12px;
     overflow:auto;
     min-height: 200px;
+    cursor: pointer;
   }
   .listItem{
     padding:10px 10px;
@@ -1718,11 +1564,33 @@ document.getElementById("downloadReportBtn")?.addEventListener("click", () => {
   }
   .linkBtn:hover{border-color: rgba(255,255,255,.18)}
   .err{color: var(--danger); font-weight:950}
-  .ok{color: var(--accent2); font-weight:950}
 </style>
 </head>
 
 <body>
+<!-- Report Modal -->
+<div id="reportModal" style="display:none; position:fixed; inset:0; z-index:9999;">
+  <div id="reportBackdrop" style="position:absolute; inset:0; background:rgba(0,0,0,.6);"></div>
+  <div style="position:relative; max-width: 920px; margin: 6vh auto; padding: 0 14px;">
+    <div style="background: rgba(15,23,42,.92); border: 1px solid rgba(255,255,255,.12); border-radius: 18px; box-shadow: 0 20px 60px rgba(0,0,0,.55); overflow:hidden;">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding: 14px; border-bottom: 1px solid rgba(255,255,255,.10); background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));">
+        <div>
+          <div style="font-weight:950; font-size:14px;">Report</div>
+          <div id="reportModalMeta" style="font-size:12px; color: rgba(255,255,255,.65); margin-top:2px;">—</div>
+        </div>
+        <button id="closeReportModal" class="btn" style="background: rgba(251,113,133,.12);">Close</button>
+      </div>
+      <div style="padding: 14px;">
+        <div id="reportModalBody" style="white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace; font-size: 13px; line-height: 1.55; background: rgba(15,23,42,.65); border: 1px solid rgba(255,255,255,.10); border-radius: 14px; padding: 12px; max-height: 62vh; overflow:auto;">Loading…</div>
+        <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+          <button id="copyReportBtn" class="btn">Copy</button>
+          <button id="downloadReportBtn" class="btn">Download .txt</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="wrap">
   <div class="topbar">
     <div class="brand">
@@ -1751,25 +1619,20 @@ document.getElementById("downloadReportBtn")?.addEventListener("click", () => {
     </div>
   </div>
 
-  <!-- ✅ Demo panel -->
   <div class="grid">
     <div class="card span12">
       <h2>Demo Controls <span class="pill">Play with it</span></h2>
-
       <div class="row" style="gap:10px;">
         <button class="btn" id="btnSimView">Simulate Page View</button>
         <button class="btn" id="btnSimLead">Simulate Lead</button>
         <button class="btn" id="btnSimPurchase">Simulate Purchase</button>
         <button class="btn" id="btnSimCta">Simulate CTA Click</button>
-
         <button class="btn" id="btnShare">Copy Share Link</button>
-
         <label class="pill" style="display:flex; align-items:center; gap:8px;">
           <input type="checkbox" id="liveToggle" />
           Live traffic
         </label>
       </div>
-
       <div class="muted" id="demoStatus" style="margin-top:10px;">Tip: turn on Live traffic and click Simulate Lead.</div>
     </div>
 
@@ -1849,9 +1712,55 @@ document.getElementById("downloadReportBtn")?.addEventListener("click", () => {
   function setDemoStatus(t){ if(demoStatus) demoStatus.textContent = t; }
 
   function el(id){ return document.getElementById(id); }
-  function pct(n){ return (Math.round(n*100)/100).toFixed(0) + "%"; }
-  function rate(n){ return (Math.round(n*10000)/100).toFixed(2) + "%"; } // 0.1234 -> 12.34%
+  function rate(n){ return (Math.round(n*10000)/100).toFixed(2) + "%"; }
 
+  // --- Report Modal helpers ---
+  let LAST_REPORT = null;
+
+  function openReportModal(report){
+    LAST_REPORT = report || null;
+    const modal = document.getElementById("reportModal");
+    const meta = document.getElementById("reportModalMeta");
+    const body = document.getElementById("reportModalBody");
+    if(!modal || !meta || !body) return;
+
+    meta.textContent = report
+      ? ("Date: " + (report.report_date || "—") + " • " + (report.created_at || ""))
+      : "—";
+
+    body.textContent = report?.report_text || "No report found.";
+    modal.style.display = "block";
+  }
+
+  function closeReportModal(){
+    const modal = document.getElementById("reportModal");
+    if(modal) modal.style.display = "none";
+  }
+
+  document.getElementById("closeReportModal")?.addEventListener("click", closeReportModal);
+  document.getElementById("reportBackdrop")?.addEventListener("click", closeReportModal);
+  document.addEventListener("keydown", (e) => { if(e.key === "Escape") closeReportModal(); });
+
+  document.getElementById("copyReportBtn")?.addEventListener("click", async () => {
+    if(!LAST_REPORT?.report_text) return;
+    try{ await navigator.clipboard.writeText(LAST_REPORT.report_text); alert("Copied ✅"); }
+    catch{ alert("Copy failed"); }
+  });
+
+  document.getElementById("downloadReportBtn")?.addEventListener("click", () => {
+    if(!LAST_REPORT?.report_text) return;
+    const filename = "constrava_report_" + (LAST_REPORT.report_date || "latest") + ".txt";
+    const blob = new Blob([LAST_REPORT.report_text], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  // show buttons for full_ai
   if (PLAN === "full_ai") {
     aiBtn.style.display = "inline-block";
     aiPlanBtn.style.display = "inline-block";
@@ -1863,19 +1772,18 @@ document.getElementById("downloadReportBtn")?.addEventListener("click", () => {
     svgClear(svg);
     const W=600,H=140,p=12;
     const max = Math.max(1, ...series.map(s => Number(s.visits||0)));
-    const min = 0;
-
-    const g = document.createElementNS("http://www.w3.org/2000/svg","path");
-    g.setAttribute("d", \`M \${p} \${H-p} L \${W-p} \${H-p}\`);
-    g.setAttribute("stroke","rgba(255,255,255,.10)");
-    g.setAttribute("fill","none");
-    svg.appendChild(g);
-
     const step = (W - 2*p) / Math.max(1, series.length - 1);
+
+    const baseline = document.createElementNS("http://www.w3.org/2000/svg","path");
+    baseline.setAttribute("d", \`M \${p} \${H-p} L \${W-p} \${H-p}\`);
+    baseline.setAttribute("stroke","rgba(255,255,255,.10)");
+    baseline.setAttribute("fill","none");
+    svg.appendChild(baseline);
+
     let d = "";
     series.forEach((s,i)=>{
       const x = p + i*step;
-      const y = (H-p) - ((Number(s.visits||0) - min) / (max-min || 1)) * (H-2*p);
+      const y = (H-p) - ((Number(s.visits||0) / (max||1)) * (H-2*p));
       d += (i===0 ? "M":"L") + x.toFixed(2) + " " + y.toFixed(2) + " ";
     });
 
@@ -1887,18 +1795,6 @@ document.getElementById("downloadReportBtn")?.addEventListener("click", () => {
     path.setAttribute("stroke-linecap","round");
     path.setAttribute("stroke-linejoin","round");
     svg.appendChild(path);
-
-    series.forEach((s,i)=>{
-      const x = p + i*step;
-      const y = (H-p) - ((Number(s.visits||0) - min) / (max-min || 1)) * (H-2*p);
-      const c = document.createElementNS("http://www.w3.org/2000/svg","circle");
-      c.setAttribute("cx", x);
-      c.setAttribute("cy", y);
-      c.setAttribute("r", 4);
-      c.setAttribute("fill", "rgba(52,211,153,.95)");
-      c.setAttribute("opacity", "0.9");
-      svg.appendChild(c);
-    });
   }
 
   function drawBars(svg, items){
@@ -1934,6 +1830,10 @@ document.getElementById("downloadReportBtn")?.addEventListener("click", () => {
     });
   }
 
+  document.getElementById("latestReport")?.addEventListener("click", () => {
+    if (LAST_REPORT) openReportModal(LAST_REPORT);
+  });
+
   async function loadReports(){
     try{
       const r = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
@@ -1945,9 +1845,6 @@ document.getElementById("downloadReportBtn")?.addEventListener("click", () => {
     }catch(e){
       el("latestReport").textContent = "Error loading report";
     }
-document.getElementById("latestReport")?.addEventListener("click", () => {
-  if(LAST_REPORT) openReportModal(LAST_REPORT);
-});
 
     try{
       const r2 = await fetch("/reports?token=" + encodeURIComponent(TOKEN) + "&limit=10");
@@ -2001,51 +1898,33 @@ document.getElementById("latestReport")?.addEventListener("click", () => {
 
     drawBars(el("bars"), j.top_pages || []);
     await loadReports();
-    if (LAST_REPORT) openReportModal(LAST_REPORT);
   }
 
   refreshBtn.addEventListener("click", refresh);
   rangeSel.addEventListener("change", refresh);
 
   aiBtn.addEventListener("click", async () => {
-    aiBtn.disabled = true;
-    aiBtn.textContent = "Generating…";
+    aiBtn.disabled = true; aiBtn.textContent = "Generating…";
     try{
       const r = await fetch("/generate-report?token=" + encodeURIComponent(TOKEN), { method: "POST" });
       const j = await r.json();
-      if(!j.ok){
-        alert(j.error || "AI report failed");
-      } else {
-        await loadReports();
-      }
-    }catch(e){
-      alert("AI error");
-    } finally {
-      aiBtn.disabled = false;
-      aiBtn.textContent = "Generate AI report";
-    }
+      if(!j.ok) alert(j.error || "AI report failed");
+      else await loadReports();
+    }catch(e){ alert("AI error"); }
+    finally { aiBtn.disabled = false; aiBtn.textContent = "Generate AI report"; }
   });
 
   aiPlanBtn.addEventListener("click", async () => {
-    aiPlanBtn.disabled = true;
-    aiPlanBtn.textContent = "Planning…";
+    aiPlanBtn.disabled = true; aiPlanBtn.textContent = "Planning…";
     try{
       const r = await fetch("/generate-action-plan?token=" + encodeURIComponent(TOKEN), { method: "POST" });
       const j = await r.json();
-      if(!j.ok){
-        alert(j.error || "AI action plan failed");
-      } else {
-        await loadReports();
-      }
-    }catch(e){
-      alert("AI error");
-    } finally {
-      aiPlanBtn.disabled = false;
-      aiPlanBtn.textContent = "AI action plan";
-    }
+      if(!j.ok) alert(j.error || "AI action plan failed");
+      else await loadReports();
+    }catch(e){ alert("AI error"); }
+    finally { aiPlanBtn.disabled = false; aiPlanBtn.textContent = "AI action plan"; }
   });
 
-  // Demo buttons
   async function fire(eventName){
     setDemoStatus("Sending " + eventName + "…");
     const r = await fetch("/demo/fire-event", {
@@ -2081,7 +1960,6 @@ document.getElementById("latestReport")?.addEventListener("click", () => {
     }
   });
 
-  // Live traffic toggle
   let liveTimer = null;
   let liveSince = new Date().toISOString();
 
@@ -2123,101 +2001,7 @@ document.getElementById("latestReport")?.addEventListener("click", () => {
 );
 
 /* ---------------------------
-   “Daily job” utilities
-----------------------------*/
-async function generateNonAiDailyReport(site_id) {
-  const metricsRes = await pool.query(
-    `
-    SELECT
-      COUNT(*)::int AS total_events,
-      SUM(CASE WHEN event_name='page_view' THEN 1 ELSE 0 END)::int AS page_views,
-      SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
-      SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases
-    FROM events_raw
-    WHERE site_id=$1 AND created_at >= NOW() - INTERVAL '1 day'
-    `,
-    [site_id]
-  );
-
-  const m = metricsRes.rows[0] || { total_events: 0, page_views: 0, leads: 0, purchases: 0 };
-
-  const topRes = await pool.query(
-    `
-    SELECT page_type, COUNT(*)::int AS views
-    FROM events_raw
-    WHERE site_id=$1 AND event_name='page_view' AND created_at >= NOW() - INTERVAL '7 days'
-    GROUP BY page_type
-    ORDER BY views DESC
-    LIMIT 3
-    `,
-    [site_id]
-  );
-
-  const lines = [];
-  lines.push("Summary:");
-  lines.push(`In the last 24 hours you recorded ${m.page_views || 0} page views.`);
-  lines.push(`Leads: ${m.leads || 0} • Purchases: ${m.purchases || 0}`);
-  lines.push("");
-  lines.push("Top pages (7d):");
-  if (!topRes.rows.length) lines.push("- (no data yet)");
-  for (const r of topRes.rows) lines.push(`- ${r.page_type || "/"}: ${r.views}`);
-  lines.push("");
-  lines.push("Next steps:");
-  lines.push("1) Put your strongest CTA on the top page");
-  lines.push("2) Add a lead capture (form / booking / email)");
-  lines.push("3) Track a conversion event next");
-  lines.push("");
-  lines.push("Metric to watch:");
-  lines.push("Lead rate (leads / visits)");
-
-  return lines.join("\n");
-}
-
-async function runDailyForAllSites() {
-  const sites = await pool.query(`SELECT site_id, plan FROM sites`);
-  let made = 0;
-
-  for (const s of sites.rows) {
-    const plan = s.plan || "unpaid";
-    if (plan !== "pro" && plan !== "full_ai") continue;
-
-    const txt = await generateNonAiDailyReport(s.site_id);
-
-    await pool.query(
-      `INSERT INTO daily_reports (site_id, report_date, report_text)
-       VALUES ($1, CURRENT_DATE, $2)
-       ON CONFLICT (site_id, report_date)
-       DO UPDATE SET report_text = EXCLUDED.report_text`,
-      [s.site_id, txt]
-    );
-    made++;
-  }
-
-  return { ok: true, updated_sites: made };
-}
-
-// Manual trigger (admin-ish). You can protect this later with a secret.
-app.post(
-  "/jobs/run-daily",
-  asyncHandler(async (req, res) => {
-    const result = await runDailyForAllSites();
-    res.json(result);
-  })
-);
-
-// Optional scheduler (in-process; not reliable like real cron)
-if (process.env.ENABLE_SCHEDULER === "true") {
-  console.log("⏱️ In-process scheduler enabled (not a real cron).");
-
-  runDailyForAllSites().catch(() => {});
-
-  setInterval(() => {
-    runDailyForAllSites().catch(() => {});
-  }, 6 * 60 * 60 * 1000);
-}
-
-/* ---------------------------
-   PUBLIC Storefront (NO token)
+   PUBLIC Store page (no token)
    GET /store
 ----------------------------*/
 app.get("/store", (req, res) => {
@@ -2227,7 +2011,7 @@ app.get("/store", (req, res) => {
 
     const base = publicBaseUrl(req);
 
-    res.send(`<!doctype html>
+    res.send(\`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
@@ -2237,7 +2021,6 @@ app.get("/store", (req, res) => {
     :root{
       --bg:#0b0f19;
       --panel: rgba(255,255,255,.06);
-      --panel2: rgba(15,23,42,.60);
       --text:#e5e7eb;
       --muted:#9ca3af;
       --border:rgba(255,255,255,.12);
@@ -2265,13 +2048,11 @@ app.get("/store", (req, res) => {
       background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
       border-radius: var(--radius);
       box-shadow: var(--shadow);
-      backdrop-filter: blur(10px);
     }
     .brand{display:flex;align-items:center;gap:12px;}
     .logo{
       width:44px;height:44px;border-radius:14px;
       background: linear-gradient(135deg, rgba(96,165,250,.95), rgba(52,211,153,.88));
-      box-shadow: 0 12px 26px rgba(96,165,250,.22);
     }
     h1{margin:0;font-size:18px;}
     .sub{margin-top:3px;font-size:12px;color:var(--muted);}
@@ -2282,8 +2063,10 @@ app.get("/store", (req, res) => {
       background: rgba(15,23,42,.55);
       white-space:nowrap;
     }
-    .hero{margin-top:18px;display:grid;grid-template-columns: 1.2fr .8fr;gap:16px;}
-    @media (max-width: 980px){ .hero{grid-template-columns:1fr;} }
+    .grid{margin-top:16px;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
+    .span8{grid-column: span 8;}
+    .span4{grid-column: span 4;}
+    @media (max-width: 980px){ .span8,.span4{grid-column: 1 / -1;} }
     .card{
       border:1px solid var(--border);
       border-radius: var(--radius);
@@ -2291,12 +2074,6 @@ app.get("/store", (req, res) => {
       box-shadow: var(--shadow);
       padding:16px;
     }
-    .heroTitle{font-size:30px;font-weight:1000;letter-spacing:.2px;margin:0;}
-    .heroText{margin-top:10px;color:var(--muted);line-height:1.55;max-width:70ch;}
-    .grid{margin-top:16px;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
-    .span8{grid-column: span 8;}
-    .span4{grid-column: span 4;}
-    @media (max-width: 980px){ .span8,.span4{grid-column: 1 / -1;} }
     label{display:block;font-size:12px;color:var(--muted);font-weight:900;margin:10px 0 6px;}
     input{
       width:100%;
@@ -2308,7 +2085,6 @@ app.get("/store", (req, res) => {
       outline:none;
       font-weight:800;
     }
-    input:focus{border-color: rgba(96,165,250,.55)}
     .row{display:flex;gap:12px;flex-wrap:wrap;}
     .row > div{flex:1; min-width: 240px;}
     .btn{
@@ -2322,27 +2098,7 @@ app.get("/store", (req, res) => {
       font-weight:1000;
       cursor:pointer;
     }
-    .btn:hover{border-color: rgba(96,165,250,.65)}
     .muted{color:var(--muted);font-size:12px;line-height:1.55;}
-    .plan{
-      border:1px solid var(--border);
-      border-radius: var(--radius);
-      background: rgba(15,23,42,.35);
-      padding:14px;
-    }
-    .plan h3{margin:0;font-size:14px;font-weight:1000;}
-    .price{margin-top:8px;font-size:26px;font-weight:1000;}
-    ul{margin:10px 0 0 0;padding:0 0 0 18px;line-height:1.6;}
-    .note{
-      margin-top:12px;
-      border:1px dashed rgba(255,255,255,.18);
-      border-radius: var(--radius);
-      padding:12px;
-      background: rgba(15,23,42,.30);
-      color: var(--muted);
-      font-size:12px;
-      line-height:1.55;
-    }
     .out{
       margin-top:12px;
       border:1px solid var(--border);
@@ -2357,7 +2113,6 @@ app.get("/store", (req, res) => {
       word-break:break-word;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
       font-size:12px;
-      color: var(--text);
     }
     .ok{color: var(--accent2); font-weight:1000}
     .err{color: var(--danger); font-weight:1000}
@@ -2373,50 +2128,7 @@ app.get("/store", (req, res) => {
           <div class="sub">Tracking + plain-English insights for small business sites</div>
         </div>
       </div>
-      <div class="pill">Backend: <b>${base}</b></div>
-    </div>
-
-    <div class="hero">
-      <div class="card">
-        <h2 class="heroTitle">Create your site in 60 seconds</h2>
-        <div class="heroText">
-          This page is public. Anyone can create a site and instantly get:
-          <b>dashboard link</b>, <b>access token</b>, and <b>tracking snippet</b>.
-        </div>
-
-        <div class="note">
-          <b>Security note:</b> Your access token is basically your password. If you choose your own token,
-          make it strong and don’t share it.
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="plan">
-          <h3>Starter</h3>
-          <div class="price">$29 <span class="muted">/mo</span></div>
-          <ul>
-            <li>Dashboard + visits</li>
-            <li>Trends + top pages</li>
-            <li>Conversions panel (demo)</li>
-          </ul>
-        </div>
-        <div class="plan" style="margin-top:12px;">
-          <h3>Pro</h3>
-          <div class="price">$79 <span class="muted">/mo</span></div>
-          <ul>
-            <li>Email latest report</li>
-            <li>More reporting workflow</li>
-          </ul>
-        </div>
-        <div class="plan" style="margin-top:12px;">
-          <h3>Full AI</h3>
-          <div class="price">$199 <span class="muted">/mo</span></div>
-          <ul>
-            <li>AI “next steps” reports</li>
-            <li>AI action plans</li>
-          </ul>
-        </div>
-      </div>
+      <div class="pill">Backend: <b>\${base}</b></div>
     </div>
 
     <div class="grid">
@@ -2464,23 +2176,21 @@ app.get("/store", (req, res) => {
       </div>
 
       <div class="card span4">
-        <h2 style="margin:0;font-size:16px;font-weight:1000;">Next steps after you create</h2>
+        <h2 style="margin:0;font-size:16px;font-weight:1000;">Next steps</h2>
         <div class="muted" style="margin-top:10px;line-height:1.6;">
           1) Copy the <b>tracking snippet</b> into your website.<br/>
           2) Visit the <b>dashboard link</b>.<br/>
           3) If your plan is <b>unpaid</b>, you’ll be redirected to activate.
         </div>
-
-        <div class="note" style="margin-top:12px;">
-          <b>Tip:</b> If you want demo data, call:<br/>
-          <span class="pill">POST /demo/seed?token=YOUR_TOKEN</span>
+        <div class="muted" style="margin-top:12px;">
+          Demo data: <span class="pill">POST /demo/seed?token=YOUR_TOKEN</span>
         </div>
       </div>
     </div>
   </div>
 
 <script>
-  const base = ${JSON.stringify(base)};
+  const base = \${JSON.stringify(base)};
   const form = document.getElementById("createForm");
   const msg = document.getElementById("msg");
   const out = document.getElementById("out");
@@ -2536,11 +2246,99 @@ app.get("/store", (req, res) => {
   });
 </script>
 </body>
-</html>`);
+</html>\`);
   } catch (err) {
     res.status(500).send(String(err.message || err));
   }
 });
+
+/* ---------------------------
+   “Daily job” utilities
+----------------------------*/
+async function generateNonAiDailyReport(site_id) {
+  const metricsRes = await pool.query(
+    `
+    SELECT
+      COUNT(*)::int AS total_events,
+      SUM(CASE WHEN event_name='page_view' THEN 1 ELSE 0 END)::int AS page_views,
+      SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
+      SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases
+    FROM events_raw
+    WHERE site_id=$1 AND created_at >= NOW() - INTERVAL '1 day'
+    `,
+    [site_id]
+  );
+
+  const m = metricsRes.rows[0] || { total_events: 0, page_views: 0, leads: 0, purchases: 0 };
+
+  const topRes = await pool.query(
+    `
+    SELECT page_type, COUNT(*)::int AS views
+    FROM events_raw
+    WHERE site_id=$1 AND event_name='page_view' AND created_at >= NOW() - INTERVAL '7 days'
+    GROUP BY page_type
+    ORDER BY views DESC
+    LIMIT 3
+    `,
+    [site_id]
+  );
+
+  const lines = [];
+  lines.push("Summary:");
+  lines.push(\`In the last 24 hours you recorded \${m.page_views || 0} page views.\`);
+  lines.push(\`Leads: \${m.leads || 0} • Purchases: \${m.purchases || 0}\`);
+  lines.push("");
+  lines.push("Top pages (7d):");
+  if (!topRes.rows.length) lines.push("- (no data yet)");
+  for (const r of topRes.rows) lines.push(\`- \${r.page_type || "/"}: \${r.views}\`);
+  lines.push("");
+  lines.push("Next steps:");
+  lines.push("1) Put your strongest CTA on the top page");
+  lines.push("2) Add a lead capture (form / booking / email)");
+  lines.push("3) Track a conversion event next");
+  lines.push("");
+  lines.push("Metric to watch:");
+  lines.push("Lead rate (leads / visits)");
+
+  return lines.join("\\n");
+}
+
+async function runDailyForAllSites() {
+  const sites = await pool.query(`SELECT site_id, plan FROM sites`);
+  let made = 0;
+
+  for (const s of sites.rows) {
+    const plan = s.plan || "unpaid";
+    if (plan !== "pro" && plan !== "full_ai") continue;
+
+    const txt = await generateNonAiDailyReport(s.site_id);
+
+    await pool.query(
+      `INSERT INTO daily_reports (site_id, report_date, report_text)
+       VALUES ($1, CURRENT_DATE, $2)
+       ON CONFLICT (site_id, report_date)
+       DO UPDATE SET report_text = EXCLUDED.report_text`,
+      [s.site_id, txt]
+    );
+    made++;
+  }
+
+  return { ok: true, updated_sites: made };
+}
+
+app.post(
+  "/jobs/run-daily",
+  asyncHandler(async (req, res) => {
+    const result = await runDailyForAllSites();
+    res.json(result);
+  })
+);
+
+if (process.env.ENABLE_SCHEDULER === "true") {
+  console.log("⏱️ In-process scheduler enabled (not a real cron).");
+  runDailyForAllSites().catch(() => {});
+  setInterval(() => runDailyForAllSites().catch(() => {}), 6 * 60 * 60 * 1000);
+}
 
 /* ---------------------------
    Errors
@@ -2551,8 +2349,14 @@ app.use((err, req, res, next) => {
 });
 
 /* ---------------------------
-   Start server
+   Start server (WAIT for DB)
 ----------------------------*/
-app.listen(PORT, () => {
-  console.log(`🚀 Constrava running on port ${PORT}`);
-});
+(async () => {
+  try {
+    await ensureTables();
+    app.listen(PORT, () => console.log(\`🚀 Constrava running on port \${PORT}\`));
+  } catch (e) {
+    console.error("❌ Failed to start:", e?.message || e);
+    process.exit(1);
+  }
+})();
