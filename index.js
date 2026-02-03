@@ -1342,19 +1342,6 @@ app.get(
       </ul>
       <button class="btn" onclick="activate('starter')">Activate Starter</button>
     </div>
-
-    <div class="card">
-      <h3 class="name">Pro</h3>
-      <div class="price">$79 <span class="muted">/mo</span></div>
-      <div class="muted">Reporting workflow + email sending.</div>
-      <ul>
-        <li>Everything in Starter</li>
-        <li>Email latest report</li>
-        <li>Scheduler-ready</li>
-      </ul>
-      <button class="btn btnGreen" onclick="activate('pro')">Activate Pro</button>
-    </div>
-
     <div class="card">
       <h3 class="name">Full AI</h3>
       <div class="price">$199 <span class="muted">/mo</span></div>
