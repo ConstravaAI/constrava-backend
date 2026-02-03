@@ -2285,12 +2285,12 @@ async function generateNonAiDailyReport(site_id) {
 
   const lines = [];
   lines.push("Summary:");
-  lines.push(\`In the last 24 hours you recorded \${m.page_views || 0} page views.\`);
-  lines.push(\`Leads: \${m.leads || 0} • Purchases: \${m.purchases || 0}\`);
+  lines.push(`In the last 24 hours you recorded ${m.page_views || 0} page views.`);
+lines.push(`Leads: ${m.leads || 0} • Purchases: ${m.purchases || 0}`);
   lines.push("");
   lines.push("Top pages (7d):");
   if (!topRes.rows.length) lines.push("- (no data yet)");
-  for (const r of topRes.rows) lines.push(\`- \${r.page_type || "/"}: \${r.views}\`);
+ for (const r of topRes.rows) lines.push(`- ${r.page_type || "/"}: ${r.views}`);
   lines.push("");
   lines.push("Next steps:");
   lines.push("1) Put your strongest CTA on the top page");
