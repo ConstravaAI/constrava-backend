@@ -1715,6 +1715,22 @@ app.get(
     </div>
   </div>
 </div>
+<!-- Popup modal -->
+<div id="modalBg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;padding:18px;">
+  <div style="max-width:900px;margin:40px auto;background:rgba(15,23,42,.95);border:1px solid rgba(255,255,255,.16);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.45);overflow:hidden;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.12);">
+      <div style="font-weight:950" id="modalTitle">Done</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button id="modalCopy" class="btnGhost">Copy</button>
+        <button id="modalClose" class="btn">Close</button>
+      </div>
+    </div>
+    <div style="padding:14px;">
+      <div class="muted" id="modalSub" style="margin-bottom:10px;">Report generated.</div>
+      <pre id="modalBody" style="max-height:60vh;overflow:auto;margin:0;"></pre>
+    </div>
+  </div>
+</div>
 
 <script>
   const TOKEN = ${TOKEN_JS};
@@ -1723,6 +1739,25 @@ app.get(
 
   const $ = (id) => document.getElementById(id);
   const statusEl = $("status");
+  function openModal(title, sub, body){
+  $("modalTitle").textContent = title || "Done";
+  $("modalSub").textContent = sub || "";
+  $("modalBody").textContent = body || "";
+  $("modalBg").style.display = "block";
+}
+
+function closeModal(){
+  $("modalBg").style.display = "none";
+}
+
+$("modalClose").addEventListener("click", closeModal);
+$("modalBg").addEventListener("click", (e) => { if (e.target === $("modalBg")) closeModal(); });
+$("modalCopy").addEventListener("click", async () => {
+  const text = $("modalBody").textContent || "";
+  try { await navigator.clipboard.writeText(text); setStatus("copied ✅"); }
+  catch { setStatus("copy failed"); }
+});
+
 
   function setStatus(t){ statusEl.textContent = "Status: " + t; }
   function pct(n){ return (Math.round((Number(n)||0) * 10000) / 100).toFixed(2) + "%"; }
