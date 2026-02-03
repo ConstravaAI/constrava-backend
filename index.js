@@ -484,7 +484,7 @@ app.post(
 app.get("/tracker.js", (req, res) => {
   res.setHeader("Content-Type", "application/javascript");
   const endpoint = (process.env.PUBLIC_EVENTS_URL || "https://constrava-backend.onrender.com") + "/events";
-
+Menu
   res.send(`
 (function () {
   try {
