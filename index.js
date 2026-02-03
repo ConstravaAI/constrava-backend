@@ -1,18 +1,18 @@
-// index.js (ESM) — Constrava MVP+ backend (rewritten, fixed)
-// Node 18+ recommended (global fetch).
+// index.js (ESM) — Constrava MVP+ backend (WORKING)
+// Node 18+ recommended (Render supports Node 18/20+). Uses global fetch.
 //
 // ENV REQUIRED:
 // - DATABASE_URL
 //
 // OPTIONAL ENV:
-// - PUBLIC_BASE_URL
-// - PUBLIC_EVENTS_URL
-// - ENABLE_DEMO_SEED=true
-// - ENABLE_DEMO_ACTIVATE=false (to disable demo plan activation)
-// - OPENAI_API_KEY (+ optional OPENAI_MODEL)
-// - RESEND_API_KEY + FROM_EMAIL
-// - ENABLE_SCHEDULER=true
-// - COOKIE_SECURE=true
+// - PUBLIC_BASE_URL         (e.g. https://your-service.onrender.com)
+// - PUBLIC_EVENTS_URL       (defaults to PUBLIC_BASE_URL or request host)
+// - ENABLE_DEMO_SEED=true   (enables POST /demo/seed)
+// - ENABLE_DEMO_ACTIVATE=false (disables POST /demo/activate-plan)
+// - OPENAI_API_KEY (+ optional OPENAI_MODEL) (for FULL AI endpoints)
+// - RESEND_API_KEY + FROM_EMAIL (for email endpoint)
+// - ENABLE_SCHEDULER=true   (in-process scheduler every 6h)
+// - COOKIE_SECURE=true      (sets Secure on session cookie)
 
 import express from "express";
 import cors from "cors";
@@ -45,11 +45,15 @@ function setNoStore(res) {
 }
 
 function publicBaseUrl(req) {
-  // prefer explicit env, otherwise build from request
   if (process.env.PUBLIC_BASE_URL) return process.env.PUBLIC_BASE_URL;
   const host = req.get("host");
   if (host) return `${req.protocol}://${host}`;
   return "https://constrava-backend.onrender.com";
+}
+
+function publicEventsUrl(req) {
+  if (process.env.PUBLIC_EVENTS_URL) return process.env.PUBLIC_EVENTS_URL;
+  return publicBaseUrl(req);
 }
 
 function requireEnv(name) {
@@ -59,7 +63,7 @@ function requireEnv(name) {
 }
 
 function normalizeDays(input) {
-  const n = parseInt(String(input || "7"), 10);
+  const n = parseInt(String(input ?? "7"), 10);
   const allowed = new Set([1, 7, 30, 365, 730, 1825]);
   return allowed.has(n) ? n : 7;
 }
@@ -124,6 +128,7 @@ function hashPassword(password) {
   const hash = crypto.scryptSync(String(password), salt, 64);
   return { salt: salt.toString("hex"), hash: hash.toString("hex") };
 }
+
 function verifyPassword(password, saltHex, hashHex) {
   const salt = Buffer.from(saltHex, "hex");
   const hash = Buffer.from(hashHex, "hex");
@@ -327,7 +332,8 @@ app.post(
 
     const site = await getSiteById(site_id);
     if (!site) return res.status(404).json({ ok: false, error: "site_id not found" });
-    if (site.dashboard_token !== token) return res.status(401).json({ ok: false, error: "Invalid site token" });
+    if (site.dashboard_token !== token)
+      return res.status(401).json({ ok: false, error: "Invalid site token" });
 
     const e = safeEmail(email);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))
@@ -398,7 +404,7 @@ app.post(
       ok: true,
       user: { email: u.email, site_id: u.site_id },
       site: { site_id: site?.site_id, plan: site?.plan || "unpaid" },
-      hint: "You are logged in (cookie). Dashboard still requires ?token=... for now."
+      hint: "You are logged in (cookie). Dashboard still uses ?token=... for now."
     });
   })
 );
@@ -483,8 +489,9 @@ app.post(
 ----------------------------*/
 app.get("/tracker.js", (req, res) => {
   res.setHeader("Content-Type", "application/javascript");
-  const endpoint = (process.env.PUBLIC_EVENTS_URL || "https://constrava-backend.onrender.com") + "/events";
-Menu
+  const endpoint = publicEventsUrl(req) + "/events";
+
+  // IMPORTANT: This uses a normal JS string (backticks) but is self-contained and valid JS.
   res.send(`
 (function () {
   try {
@@ -494,7 +501,7 @@ Menu
     var siteId = script.getAttribute("data-site-id");
     if (!siteId) return;
 
-    fetch("${endpoint}", {
+    fetch(${JSON.stringify(endpoint)}, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -683,7 +690,6 @@ app.get(
       [site_id]
     );
 
-    // (days-1) used to include today
     const startDateInterval = `${days - 1} days`;
 
     const trendRes = await pool.query(
@@ -1234,7 +1240,7 @@ app.get(
 
     const site_id = site.site_id;
     const plan = site.plan || "unpaid";
-    res.setHeader("Content-Type", "text/html");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
 
     res.send(`<!doctype html>
 <html lang="en">
@@ -1385,7 +1391,7 @@ app.get(
 );
 
 /* ---------------------------
-   Dashboard UI (FIXED, full page)
+   Dashboard UI
    GET /dashboard?token=...
 ----------------------------*/
 app.get(
@@ -1402,595 +1408,140 @@ app.get(
 
     if (plan === "unpaid") return res.redirect(`/storefront?token=${encodeURIComponent(token)}`);
 
-    res.setHeader("Content-Type", "text/html");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+
+    // Keep dashboard reliable: small + robust (no giant risky nesting).
+    // (You can paste your fancy dashboard back in once deploy is stable.)
+    const TOKEN_JS = JSON.stringify(String(token || ""));
+    const PLAN_JS = JSON.stringify(String(plan || ""));
 
     res.send(`<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Constrava Dashboard</title>
 <style>
-  :root{
-    --bg:#0b0f19;
-    --text:#e5e7eb;
-    --muted:#9ca3af;
-    --border:rgba(255,255,255,.08);
-    --accent:#60a5fa;
-    --accent2:#34d399;
-    --danger:#fb7185;
-    --shadow: 0 10px 30px rgba(0,0,0,.35);
-    --radius:16px;
-  }
-  *{box-sizing:border-box}
-  body{
-    margin:0;
-    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-    background: radial-gradient(1200px 800px at 20% -10%, rgba(96,165,250,.25), transparent 60%),
-                radial-gradient(900px 600px at 90% 0%, rgba(52,211,153,.18), transparent 55%),
-                var(--bg);
-    color:var(--text);
-  }
-  .wrap{max-width:1180px; margin:0 auto; padding:26px 18px 60px;}
-  .topbar{
-    display:flex; align-items:center; justify-content:space-between;
-    gap:14px; padding:18px 18px;
-    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-    border:1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    backdrop-filter: blur(10px);
-  }
-  .brand{display:flex; align-items:center; gap:12px;}
-  .logo{
-    width:40px; height:40px; border-radius:12px;
-    background: linear-gradient(135deg, rgba(96,165,250,.9), rgba(52,211,153,.85));
-    box-shadow: 0 10px 25px rgba(96,165,250,.25);
-  }
-  h1{font-size:18px; margin:0;}
-  .sub{font-size:12px; color:var(--muted); margin-top:2px;}
-  .controls{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
-  .pill{
-    font-size:12px; color: var(--muted);
-    border:1px solid var(--border);
-    padding:6px 10px;
-    border-radius:999px;
-    background: rgba(15,23,42,.6);
-  }
-  .btn{
-    padding:10px 14px;
-    border-radius:12px;
-    border:1px solid var(--border);
-    background: rgba(96,165,250,.12);
-    color: var(--text);
-    cursor:pointer;
-    font-weight:900;
-  }
-  .btn:hover{border-color: rgba(96,165,250,.5)}
-  .btnGreen{background: rgba(52,211,153,.14);}
-  .btnGreen:hover{border-color: rgba(52,211,153,.5)}
-  select{
-    border-radius:12px;
-    border:1px solid var(--border);
-    background: rgba(15,23,42,.6);
-    color: var(--text);
-    padding:10px 12px;
-    font-weight:900;
-    outline:none;
-  }
-  .grid{
-    margin-top:18px;
-    display:grid;
-    grid-template-columns: repeat(12, 1fr);
-    gap:16px;
-  }
-  .span12{grid-column: 1 / -1;}
-  .span8{grid-column: span 8;}
-  .span6{grid-column: span 6;}
-  .span4{grid-column: span 4;}
-  @media (max-width: 1000px){
-    .span8,.span6,.span4{grid-column: 1 / -1;}
-    .topbar{flex-direction:column; align-items:flex-start;}
-  }
-  .card{
-    background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
-    border:1px solid var(--border);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    padding:16px;
-  }
-  .card h2{
-    margin:0 0 10px 0;
-    font-size:13px;
-    color: var(--muted);
-    letter-spacing:.2px;
-    font-weight:950;
-    display:flex; align-items:center; justify-content:space-between;
-    gap:10px;
-  }
-  .kpi{font-size:28px; font-weight:1000; letter-spacing:.2px; margin-top:8px;}
-  .muted{color:var(--muted); font-size:12px; line-height:1.45;}
-  .row{display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap;}
-  .mini{
-    background: rgba(15,23,42,.55);
-    border:1px solid var(--border);
-    border-radius: 14px;
-    padding:12px;
-    flex:1;
-    min-width: 160px;
-  }
-  .mini .label{font-size:12px; color:var(--muted); font-weight:900;}
-  .mini .value{font-size:14px; font-weight:1000; margin-top:4px;}
-  .chartBox{
-    background: rgba(15,23,42,.55);
-    border:1px solid var(--border);
-    border-radius: 14px;
-    padding:12px;
-  }
-  svg{width:100%; height:140px; display:block;}
-  .bar svg{height:170px;}
-  .latest{
-    white-space: pre-wrap;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
-    font-size: 13px;
-    line-height: 1.45;
-    background: rgba(15,23,42,.65);
-    border:1px solid var(--border);
-    border-radius: 12px;
-    padding: 12px;
-    overflow:auto;
-    min-height: 200px;
-    cursor: pointer;
-  }
-  .listItem{
-    padding:10px 10px;
-    border-radius: 12px;
-    border:1px solid var(--border);
-    background: rgba(15,23,42,.55);
-    margin-top:10px;
-  }
-  .linkBtn{
-    padding:10px 14px;
-    border-radius:12px;
-    border:1px solid var(--border);
-    background: rgba(15,23,42,.55);
-    color: var(--text);
-    cursor:pointer;
-    font-weight:900;
-    text-decoration:none;
-    display:inline-flex;
-    align-items:center;
-    gap:8px;
-  }
-  .linkBtn:hover{border-color: rgba(255,255,255,.18)}
-  .err{color: var(--danger); font-weight:950}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b0f19;color:#e5e7eb}
+  .wrap{max-width:980px;margin:0 auto;padding:22px}
+  .card{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);border-radius:14px;padding:14px;margin-top:14px}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .pill{display:inline-block;padding:6px 10px;border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(15,23,42,.55);font-size:12px;color:#9ca3af}
+  button,select,a{border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(96,165,250,.14);color:#e5e7eb;padding:10px 12px;font-weight:800;cursor:pointer;text-decoration:none}
+  a{display:inline-flex;align-items:center}
+  .muted{color:#9ca3af;font-size:12px;line-height:1.5}
+  .kpi{font-size:28px;font-weight:900}
+  pre{white-space:pre-wrap;background:rgba(15,23,42,.55);padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.12)}
 </style>
 </head>
-
 <body>
-<!-- Report Modal -->
-<div id="reportModal" style="display:none; position:fixed; inset:0; z-index:9999;">
-  <div id="reportBackdrop" style="position:absolute; inset:0; background:rgba(0,0,0,.6);"></div>
-  <div style="position:relative; max-width: 920px; margin: 6vh auto; padding: 0 14px;">
-    <div style="background: rgba(15,23,42,.92); border: 1px solid rgba(255,255,255,.12); border-radius: 18px; box-shadow: 0 20px 60px rgba(0,0,0,.55); overflow:hidden;">
-      <div style="display:flex; justify-content:space-between; align-items:center; padding: 14px; border-bottom: 1px solid rgba(255,255,255,.10); background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));">
-        <div>
-          <div style="font-weight:950; font-size:14px;">Report</div>
-          <div id="reportModalMeta" style="font-size:12px; color: rgba(255,255,255,.65); margin-top:2px;">—</div>
-        </div>
-        <button id="closeReportModal" class="btn" style="background: rgba(251,113,133,.12);">Close</button>
-      </div>
-      <div style="padding: 14px;">
-        <div id="reportModalBody" style="white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace; font-size: 13px; line-height: 1.55; background: rgba(15,23,42,.65); border: 1px solid rgba(255,255,255,.10); border-radius: 14px; padding: 12px; max-height: 62vh; overflow:auto;">Loading…</div>
-        <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
-          <button id="copyReportBtn" class="btn">Copy</button>
-          <button id="downloadReportBtn" class="btn">Download .txt</button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div class="wrap">
-  <div class="topbar">
-    <div class="brand">
-      <div class="logo"></div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center">
       <div>
-        <h1>Constrava Dashboard</h1>
-        <div class="sub">Plan: <b>${plan}</b> • Site: <b>${site_id}</b></div>
+        <div style="font-weight:900">Constrava Dashboard</div>
+        <div class="muted">Site: <b>${site_id}</b> • Plan: <b>${plan}</b></div>
       </div>
-    </div>
-
-    <div class="controls">
-      <select id="rangeSel" title="Time range">
-        <option value="1">1 day</option>
-        <option value="7" selected>1 week</option>
-        <option value="30">1 month</option>
-        <option value="365">1 year</option>
-        <option value="730">2 years</option>
-        <option value="1825">5 years</option>
-      </select>
-
-      <button class="btn" id="refreshBtn">Refresh</button>
-      <a class="linkBtn" href="/storefront?token=${encodeURIComponent(token)}">Plans</a>
-
-      <button class="btn btnGreen" id="aiBtn" style="display:none;">Generate AI report</button>
-      <button class="btn btnGreen" id="aiPlanBtn" style="display:none;">AI action plan</button>
+      <div class="row">
+        <select id="days">
+          <option value="1">1 day</option>
+          <option value="7" selected>7 days</option>
+          <option value="30">30 days</option>
+          <option value="365">1 year</option>
+        </select>
+        <button id="refresh">Refresh</button>
+        <a href="/storefront?token=${encodeURIComponent(token)}">Plans</a>
+      </div>
     </div>
   </div>
 
-  <div class="grid">
-    <div class="card span12">
-      <h2>Demo Controls <span class="pill">Play with it</span></h2>
-      <div class="row" style="gap:10px;">
-        <button class="btn" id="btnSimView">Simulate Page View</button>
-        <button class="btn" id="btnSimLead">Simulate Lead</button>
-        <button class="btn" id="btnSimPurchase">Simulate Purchase</button>
-        <button class="btn" id="btnSimCta">Simulate CTA Click</button>
-        <button class="btn" id="btnShare">Copy Share Link</button>
-        <label class="pill" style="display:flex; align-items:center; gap:8px;">
-          <input type="checkbox" id="liveToggle" />
-          Live traffic
-        </label>
-      </div>
-      <div class="muted" id="demoStatus" style="margin-top:10px;">Tip: turn on Live traffic and click Simulate Lead.</div>
+  <div class="row">
+    <div class="card" style="flex:1;min-width:220px">
+      <div class="muted">Visits today</div>
+      <div class="kpi" id="today">—</div>
     </div>
+    <div class="card" style="flex:1;min-width:220px">
+      <div class="muted">Visits in range</div>
+      <div class="kpi" id="range">—</div>
+    </div>
+    <div class="card" style="flex:1;min-width:220px">
+      <div class="muted">Lead rate</div>
+      <div class="kpi" id="leadRate">—</div>
+    </div>
+  </div>
 
-    <div class="card span4">
-      <h2>Visits today</h2>
-      <div class="kpi" id="kpiToday">—</div>
-      <div class="muted">Real-time from your installed tracker.</div>
+  <div class="card">
+    <div class="row">
+      <button id="simView">Sim page_view</button>
+      <button id="simLead">Sim lead</button>
+      <button id="simPurchase">Sim purchase</button>
+      <button id="simCta">Sim cta_click</button>
+      <button id="share">Copy share link</button>
+      <span class="pill" id="status">Status: idle</span>
     </div>
+    <div class="muted" style="margin-top:10px">Tip: enable demo seeding with ENABLE_DEMO_SEED=true then POST /demo/seed?token=YOUR_TOKEN</div>
+  </div>
 
-    <div class="card span4">
-      <h2>Visits in range</h2>
-      <div class="kpi" id="kpiRange">—</div>
-      <div class="muted">Total page views in selected range.</div>
-    </div>
-
-    <div class="card span4">
-      <h2>Conversions</h2>
-      <div class="row">
-        <div class="mini">
-          <div class="label">Leads</div>
-          <div class="value" id="leadsKpi">—</div>
-        </div>
-        <div class="mini">
-          <div class="label">Purchases</div>
-          <div class="value" id="purchasesKpi">—</div>
-        </div>
-        <div class="mini">
-          <div class="label">Lead rate</div>
-          <div class="value" id="leadRateKpi">—</div>
-        </div>
-      </div>
-      <div class="muted" style="margin-top:10px;">Uses demo “lead/purchase” events.</div>
-    </div>
-
-    <div class="card span8">
-      <h2>Trend</h2>
-      <div class="chartBox">
-        <svg id="spark" viewBox="0 0 600 140" preserveAspectRatio="none"></svg>
-      </div>
-      <div class="muted" id="trendHint" style="margin-top:10px">—</div>
-    </div>
-
-    <div class="card span4 bar">
-      <h2>Top pages</h2>
-      <div class="chartBox">
-        <svg id="bars" viewBox="0 0 600 170" preserveAspectRatio="none"></svg>
-      </div>
-      <div class="muted">Top 5 paths in range.</div>
-    </div>
-
-    <div class="card span6">
-      <h2>Latest report</h2>
-      <div class="latest" id="latestReport">Loading…</div>
-      <div class="muted" id="reportMeta" style="margin-top:10px">—</div>
-    </div>
-
-    <div class="card span6">
-      <h2>Report history</h2>
-      <div id="history">Loading…</div>
-      <div class="muted" style="margin-top:10px">
-        Tip: Seed demo data with <span class="pill">POST /demo/seed?token=YOUR_TOKEN</span>
-      </div>
-    </div>
+  <div class="card">
+    <div class="muted">Latest report</div>
+    <pre id="report">Loading…</pre>
   </div>
 </div>
 
 <script>
-  const TOKEN = ${JSON.stringify(String(token || ""))};
-  const PLAN  = ${JSON.stringify(String(plan || ""))};
+  const TOKEN = ${TOKEN_JS};
+  const PLAN = ${PLAN_JS};
 
-  const rangeSel = document.getElementById("rangeSel");
-  const refreshBtn = document.getElementById("refreshBtn");
-  const aiBtn = document.getElementById("aiBtn");
-  const aiPlanBtn = document.getElementById("aiPlanBtn");
+  const el = (id) => document.getElementById(id);
+  const statusEl = el("status");
 
-  const demoStatus = document.getElementById("demoStatus");
-  function setDemoStatus(t){ if(demoStatus) demoStatus.textContent = t; }
-
-  function el(id){ return document.getElementById(id); }
+  function setStatus(t){ statusEl.textContent = "Status: " + t; }
   function rate(n){ return (Math.round(n*10000)/100).toFixed(2) + "%"; }
 
-  // --- Report Modal helpers ---
-  let LAST_REPORT = null;
-
-  function openReportModal(report){
-    LAST_REPORT = report || null;
-    const modal = document.getElementById("reportModal");
-    const meta = document.getElementById("reportModalMeta");
-    const body = document.getElementById("reportModalBody");
-    if(!modal || !meta || !body) return;
-
-    meta.textContent = report
-      ? ("Date: " + (report.report_date || "—") + " • " + (report.created_at || ""))
-      : "—";
-
-    body.textContent = report?.report_text || "No report found.";
-    modal.style.display = "block";
-  }
-
-  function closeReportModal(){
-    const modal = document.getElementById("reportModal");
-    if(modal) modal.style.display = "none";
-  }
-
-  document.getElementById("closeReportModal")?.addEventListener("click", closeReportModal);
-  document.getElementById("reportBackdrop")?.addEventListener("click", closeReportModal);
-  document.addEventListener("keydown", (e) => { if(e.key === "Escape") closeReportModal(); });
-
-  document.getElementById("copyReportBtn")?.addEventListener("click", async () => {
-    if(!LAST_REPORT?.report_text) return;
-    try{ await navigator.clipboard.writeText(LAST_REPORT.report_text); alert("Copied ✅"); }
-    catch{ alert("Copy failed"); }
-  });
-
-  document.getElementById("downloadReportBtn")?.addEventListener("click", () => {
-    if(!LAST_REPORT?.report_text) return;
-    const filename = "constrava_report_" + (LAST_REPORT.report_date || "latest") + ".txt";
-    const blob = new Blob([LAST_REPORT.report_text], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  });
-
-  // show buttons for full_ai
-  if (PLAN === "full_ai") {
-    aiBtn.style.display = "inline-block";
-    aiPlanBtn.style.display = "inline-block";
-  }
-
-  function svgClear(svg){ while(svg.firstChild) svg.removeChild(svg.firstChild); }
-
-  function drawSpark(svg, series){
-    svgClear(svg);
-    const W=600,H=140,p=12;
-    const max = Math.max(1, ...series.map(s => Number(s.visits||0)));
-    const step = (W - 2*p) / Math.max(1, series.length - 1);
-
-    const baseline = document.createElementNS("http://www.w3.org/2000/svg","path");
-    baseline.setAttribute("d", \`M \${p} \${H-p} L \${W-p} \${H-p}\`);
-    baseline.setAttribute("stroke","rgba(255,255,255,.10)");
-    baseline.setAttribute("fill","none");
-    svg.appendChild(baseline);
-
-    let d = "";
-    series.forEach((s,i)=>{
-      const x = p + i*step;
-      const y = (H-p) - ((Number(s.visits||0) / (max||1)) * (H-2*p));
-      d += (i===0 ? "M":"L") + x.toFixed(2) + " " + y.toFixed(2) + " ";
-    });
-
-    const path = document.createElementNS("http://www.w3.org/2000/svg","path");
-    path.setAttribute("d", d.trim());
-    path.setAttribute("stroke","rgba(96,165,250,.95)");
-    path.setAttribute("stroke-width","3");
-    path.setAttribute("fill","none");
-    path.setAttribute("stroke-linecap","round");
-    path.setAttribute("stroke-linejoin","round");
-    svg.appendChild(path);
-  }
-
-  function drawBars(svg, items){
-    svgClear(svg);
-    const W=600,H=170,p=14;
-    const max = Math.max(1, ...items.map(i => Number(i.views||0)));
-    const barW = (W - 2*p) / Math.max(1, items.length);
-
-    items.forEach((it, idx)=>{
-      const v = Number(it.views||0);
-      const h = ((v / max) * (H - 2*p));
-      const x = p + idx * barW + 6;
-      const y = (H - p) - h;
-
-      const r = document.createElementNS("http://www.w3.org/2000/svg","rect");
-      r.setAttribute("x", x);
-      r.setAttribute("y", y);
-      r.setAttribute("width", Math.max(8, barW - 12));
-      r.setAttribute("height", h);
-      r.setAttribute("rx", 8);
-      r.setAttribute("fill", "rgba(96,165,250,.45)");
-      r.setAttribute("stroke", "rgba(96,165,250,.9)");
-      r.setAttribute("stroke-width", "1");
-      svg.appendChild(r);
-
-      const t = document.createElementNS("http://www.w3.org/2000/svg","text");
-      t.setAttribute("x", x);
-      t.setAttribute("y", H - 4);
-      t.setAttribute("fill", "rgba(229,231,235,.85)");
-      t.setAttribute("font-size", "11");
-      t.textContent = (it.page_type || "").slice(0, 10) || "/";
-      svg.appendChild(t);
-    });
-  }
-
-  document.getElementById("latestReport")?.addEventListener("click", () => {
-    if (LAST_REPORT) openReportModal(LAST_REPORT);
-  });
-
-  async function loadReports(){
-    try{
-      const r = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
-      const j = await r.json();
-      if(!j.ok){ el("latestReport").textContent = j.error || "No report"; return; }
-      el("latestReport").textContent = j.report.report_text || "";
-      LAST_REPORT = j.report;
-      el("reportMeta").textContent = "Latest: " + j.report.report_date + " • " + (j.report.created_at || "");
-    }catch(e){
-      el("latestReport").textContent = "Error loading report";
-    }
-
-    try{
-      const r2 = await fetch("/reports?token=" + encodeURIComponent(TOKEN) + "&limit=10");
-      const j2 = await r2.json();
-      if(!j2.ok){ el("history").innerHTML = "<div class='err'>"+(j2.error||"Error")+"</div>"; return; }
-      if(!j2.reports || !j2.reports.length){ el("history").innerHTML = "<div class='muted'>No reports yet.</div>"; return; }
-      el("history").innerHTML = j2.reports.map(x => (
-        "<div class='listItem'>" +
-          "<div style='font-weight:950;font-size:12px;'>"+ x.report_date +"</div>" +
-          "<div style='margin-top:6px;font-size:13px;opacity:.95;white-space:pre-wrap;'>"+ (x.preview || "") +"</div>" +
-        "</div>"
-      )).join("");
-    }catch(e){
-      el("history").innerHTML = "<div class='err'>Error loading history</div>";
-    }
-  }
-
   async function refresh(){
-    const days = rangeSel.value;
-
-    el("kpiToday").textContent = "—";
-    el("kpiRange").textContent = "—";
-    el("leadsKpi").textContent = "—";
-    el("purchasesKpi").textContent = "—";
-    el("leadRateKpi").textContent = "—";
-    el("trendHint").textContent = "Loading…";
-
+    const days = el("days").value;
+    setStatus("loading metrics…");
     const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
-    const j = await r.json();
+    const j = await r.json().catch(()=> ({}));
+    if(!j.ok){ setStatus(j.error || "error"); return; }
+    el("today").textContent = j.visits_today;
+    el("range").textContent = j.visits_range;
+    el("leadRate").textContent = rate(j.conversion_rate || 0);
 
-    if(!j.ok){
-      el("trendHint").innerHTML = "<span class='err'>" + (j.error || "Error") + "</span>";
-      return;
-    }
-
-    el("kpiToday").textContent = j.visits_today;
-    el("kpiRange").textContent = j.visits_range;
-
-    el("leadsKpi").textContent = j.leads ?? 0;
-    el("purchasesKpi").textContent = j.purchases ?? 0;
-    el("leadRateKpi").textContent = rate(j.conversion_rate || 0);
-
-    const trend = j.trend || [];
-    drawSpark(el("spark"), trend);
-
-    const last = trend.length ? trend[trend.length-1].visits : 0;
-    const prev = trend.length > 1 ? trend[trend.length-2].visits : last;
-    const diff = last - prev;
-    const sign = diff === 0 ? "flat" : (diff > 0 ? "up" : "down");
-    el("trendHint").textContent = "Last day: " + last + " • Change vs previous day: " + diff + " (" + sign + ")";
-
-    drawBars(el("bars"), j.top_pages || []);
-    await loadReports();
+    const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
+    const jj = await rr.json().catch(()=> ({}));
+    el("report").textContent = jj.ok ? (jj.report.report_text || "") : (jj.error || "No report");
+    setStatus("ready");
   }
-
-  refreshBtn.addEventListener("click", refresh);
-  rangeSel.addEventListener("change", refresh);
-
-  aiBtn.addEventListener("click", async () => {
-    aiBtn.disabled = true; aiBtn.textContent = "Generating…";
-    try{
-      const r = await fetch("/generate-report?token=" + encodeURIComponent(TOKEN), { method: "POST" });
-      const j = await r.json();
-      if(!j.ok) alert(j.error || "AI report failed");
-      else await loadReports();
-    }catch(e){ alert("AI error"); }
-    finally { aiBtn.disabled = false; aiBtn.textContent = "Generate AI report"; }
-  });
-
-  aiPlanBtn.addEventListener("click", async () => {
-    aiPlanBtn.disabled = true; aiPlanBtn.textContent = "Planning…";
-    try{
-      const r = await fetch("/generate-action-plan?token=" + encodeURIComponent(TOKEN), { method: "POST" });
-      const j = await r.json();
-      if(!j.ok) alert(j.error || "AI action plan failed");
-      else await loadReports();
-    }catch(e){ alert("AI error"); }
-    finally { aiPlanBtn.disabled = false; aiPlanBtn.textContent = "AI action plan"; }
-  });
 
   async function fire(eventName){
-    setDemoStatus("Sending " + eventName + "…");
+    setStatus("sending " + eventName + "…");
     const r = await fetch("/demo/fire-event", {
       method: "POST",
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify({ token: TOKEN, event_name: eventName, page_type: location.pathname, device: "desktop" })
     });
-    const d = await r.json();
-    if(!d.ok){ setDemoStatus("Error: " + (d.error || "unknown")); return; }
-    setDemoStatus("✅ Fired " + eventName + ". Refreshing…");
-    setTimeout(() => { refresh(); }, 450);
+    const d = await r.json().catch(()=> ({}));
+    if(!d.ok){ setStatus(d.error || "error"); return; }
+    setStatus("sent ✅ refreshing…");
+    setTimeout(refresh, 400);
   }
 
-  document.getElementById("btnSimView")?.addEventListener("click", () => fire("page_view"));
-  document.getElementById("btnSimLead")?.addEventListener("click", () => fire("lead"));
-  document.getElementById("btnSimPurchase")?.addEventListener("click", () => fire("purchase"));
-  document.getElementById("btnSimCta")?.addEventListener("click", () => fire("cta_click"));
+  el("refresh").addEventListener("click", refresh);
+  el("days").addEventListener("change", refresh);
 
-  document.getElementById("btnShare")?.addEventListener("click", async () => {
-    setDemoStatus("Creating share link…");
-    const r = await fetch("/demo/link", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ token: TOKEN })
-    });
-    const d = await r.json();
-    if(!d.ok){ setDemoStatus("Error: " + (d.error || "unknown")); return; }
-    try{
-      await navigator.clipboard.writeText(d.url);
-      setDemoStatus("✅ Copied: " + d.url);
-    }catch(e){
-      setDemoStatus("Share link: " + d.url);
-    }
-  });
+  el("simView").addEventListener("click", () => fire("page_view"));
+  el("simLead").addEventListener("click", () => fire("lead"));
+  el("simPurchase").addEventListener("click", () => fire("purchase"));
+  el("simCta").addEventListener("click", () => fire("cta_click"));
 
-  let liveTimer = null;
-  let liveSince = new Date().toISOString();
-
-  async function liveTick(){
-    try{
-      const r = await fetch("/live?token=" + encodeURIComponent(TOKEN) + "&since=" + encodeURIComponent(liveSince));
-      const d = await r.json();
-      if(d.ok){
-        liveSince = d.now || new Date().toISOString();
-        if(d.new_page_views > 0){
-          setDemoStatus("📈 Live: +" + d.new_page_views + " new views. Refreshing…");
-          setTimeout(()=> refresh(), 450);
-        } else {
-          setDemoStatus("Live traffic: listening…");
-        }
-      }
-    }catch(e){
-      setDemoStatus("Live traffic: error");
-    }
-  }
-
-  document.getElementById("liveToggle")?.addEventListener("change", (e) => {
-    if(e.target.checked){
-      setDemoStatus("Live traffic: ON");
-      liveSince = new Date().toISOString();
-      liveTimer = setInterval(liveTick, 2500);
-    } else {
-      setDemoStatus("Live traffic: OFF");
-      if(liveTimer) clearInterval(liveTimer);
-      liveTimer = null;
-    }
+  el("share").addEventListener("click", async () => {
+    setStatus("creating share link…");
+    const r = await fetch("/demo/link", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ token: TOKEN }) });
+    const d = await r.json().catch(()=> ({}));
+    if(!d.ok){ setStatus(d.error || "error"); return; }
+    try{ await navigator.clipboard.writeText(d.url); setStatus("copied ✅"); }
+    catch{ setStatus("share link: " + d.url); }
   });
 
   refresh();
@@ -2004,12 +1555,14 @@ app.get(
    PUBLIC Store page (no token)
    GET /store
 ----------------------------*/
-app.get("/store", (req, res) => {
-  try {
+app.get(
+  "/store",
+  asyncHandler(async (req, res) => {
     setNoStore(res);
-    res.setHeader("Content-Type", "text/html");
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
 
     const base = publicBaseUrl(req);
+    const BASE_JS = JSON.stringify(base);
 
     res.send(`<!doctype html>
 <html lang="en">
@@ -2128,7 +1681,7 @@ app.get("/store", (req, res) => {
           <div class="sub">Tracking + plain-English insights for small business sites</div>
         </div>
       </div>
-      <div class="pill">Backend: <b>\${base}</b></div>
+      <div class="pill">Backend: <b>${base}</b></div>
     </div>
 
     <div class="grid">
@@ -2190,7 +1743,7 @@ app.get("/store", (req, res) => {
   </div>
 
 <script>
-  const base = \${JSON.stringify(base)};
+  const base = ${BASE_JS};
   const form = document.getElementById("createForm");
   const msg = document.getElementById("msg");
   const out = document.getElementById("out");
@@ -2247,10 +1800,8 @@ app.get("/store", (req, res) => {
 </script>
 </body>
 </html>`);
-  } catch (err) {
-    res.status(500).send(String(err.message || err));
-  }
-});
+  })
+);
 
 /* ---------------------------
    “Daily job” utilities
@@ -2286,11 +1837,11 @@ async function generateNonAiDailyReport(site_id) {
   const lines = [];
   lines.push("Summary:");
   lines.push(`In the last 24 hours you recorded ${m.page_views || 0} page views.`);
-lines.push(`Leads: ${m.leads || 0} • Purchases: ${m.purchases || 0}`);
+  lines.push(`Leads: ${m.leads || 0} • Purchases: ${m.purchases || 0}`);
   lines.push("");
   lines.push("Top pages (7d):");
   if (!topRes.rows.length) lines.push("- (no data yet)");
- for (const r of topRes.rows) lines.push(`- ${r.page_type || "/"}: ${r.views}`);
+  for (const r of topRes.rows) lines.push(`- ${r.page_type || "/"}: ${r.views}`);
   lines.push("");
   lines.push("Next steps:");
   lines.push("1) Put your strongest CTA on the top page");
@@ -2300,7 +1851,7 @@ lines.push(`Leads: ${m.leads || 0} • Purchases: ${m.purchases || 0}`);
   lines.push("Metric to watch:");
   lines.push("Lead rate (leads / visits)");
 
-  return lines.join("\\n");
+  return lines.join("\n");
 }
 
 async function runDailyForAllSites() {
@@ -2354,7 +1905,7 @@ app.use((err, req, res, next) => {
 (async () => {
   try {
     await ensureTables();
-    app.listen(PORT, () => console.log(\`🚀 Constrava running on port \${PORT}\`));
+    app.listen(PORT, () => console.log(`🚀 Constrava running on port ${PORT}`));
   } catch (e) {
     console.error("❌ Failed to start:", e?.message || e);
     process.exit(1);
