@@ -1394,6 +1394,10 @@ app.get(
    Dashboard UI
    GET /dashboard?token=...
 ----------------------------*/
+/* ---------------------------
+   Dashboard UI (RESTORED)
+   GET /dashboard?token=...
+----------------------------*/
 app.get(
   "/dashboard",
   asyncHandler(async (req, res) => {
@@ -1403,17 +1407,14 @@ app.get(
     const site = await getSiteByToken(token);
     if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
 
-    const site_id = site.site_id;
     const plan = site.plan || "unpaid";
+    if (plan === "unpaid") return res.redirect("/storefront?token=" + encodeURIComponent(token));
 
-    if (plan === "unpaid") return res.redirect(`/storefront?token=${encodeURIComponent(token)}`);
-
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-
-    // Keep dashboard reliable: small + robust (no giant risky nesting).
-    // (You can paste your fancy dashboard back in once deploy is stable.)
     const TOKEN_JS = JSON.stringify(String(token || ""));
     const PLAN_JS = JSON.stringify(String(plan || ""));
+    const SITEID_JS = JSON.stringify(String(site.site_id || ""));
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
 
     res.send(`<!doctype html>
 <html lang="en">
@@ -1422,96 +1423,624 @@ app.get(
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Constrava Dashboard</title>
 <style>
-  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#0b0f19;color:#e5e7eb}
-  .wrap{max-width:980px;margin:0 auto;padding:22px}
-  .card{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);border-radius:14px;padding:14px;margin-top:14px}
-  .row{display:flex;gap:12px;flex-wrap:wrap}
-  .pill{display:inline-block;padding:6px 10px;border:1px solid rgba(255,255,255,.12);border-radius:999px;background:rgba(15,23,42,.55);font-size:12px;color:#9ca3af}
-  button,select,a{border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(96,165,250,.14);color:#e5e7eb;padding:10px 12px;font-weight:800;cursor:pointer;text-decoration:none}
-  a{display:inline-flex;align-items:center}
-  .muted{color:#9ca3af;font-size:12px;line-height:1.5}
-  .kpi{font-size:28px;font-weight:900}
-  pre{white-space:pre-wrap;background:rgba(15,23,42,.55);padding:12px;border-radius:12px;border:1px solid rgba(255,255,255,.12)}
+  :root{
+    --bg:#0b0f19;
+    --panel: rgba(255,255,255,.06);
+    --panel2: rgba(255,255,255,.04);
+    --text:#e5e7eb;
+    --muted:#9ca3af;
+    --border: rgba(255,255,255,.12);
+    --accent:#60a5fa;
+    --accent2:#34d399;
+    --danger:#fb7185;
+    --shadow: 0 14px 40px rgba(0,0,0,.35);
+    --radius: 16px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial;
+    background:
+      radial-gradient(1100px 720px at 20% -10%, rgba(96,165,250,.20), transparent 60%),
+      radial-gradient(900px 620px at 90% 0%, rgba(52,211,153,.14), transparent 55%),
+      var(--bg);
+    color: var(--text);
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 16px 60px}
+  .top{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    padding:16px;
+    border:1px solid var(--border);
+    border-radius: var(--radius);
+    background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
+    box-shadow: var(--shadow);
+  }
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg, rgba(96,165,250,.95), rgba(52,211,153,.88));}
+  h1{margin:0;font-size:18px;font-weight:950}
+  .sub{margin-top:3px;font-size:12px;color:var(--muted)}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .pill{
+    display:inline-block;
+    padding:7px 10px;
+    border:1px solid var(--border);
+    border-radius:999px;
+    background: rgba(15,23,42,.55);
+    font-size:12px;
+    color: var(--muted);
+    white-space:nowrap;
+  }
+  .grid{margin-top:14px;display:grid;grid-template-columns:repeat(12,1fr);gap:12px;}
+  .card{
+    border:1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--panel2);
+    box-shadow: var(--shadow);
+    padding:14px;
+    min-width:0;
+  }
+  .kpi{font-size:28px;font-weight:1000;letter-spacing:-0.5px}
+  .kpiSmall{font-size:18px;font-weight:950}
+  .muted{color:var(--muted);font-size:12px;line-height:1.5}
+  button,select,a,input{
+    border-radius:12px;border:1px solid var(--border);
+    background: rgba(15,23,42,.55);
+    color: var(--text);
+    padding:10px 12px;
+    font-weight:900;
+    cursor:pointer;
+    text-decoration:none;
+    outline:none;
+  }
+  button:hover,a:hover,select:hover{border-color: rgba(96,165,250,.55)}
+  .btn{background: rgba(96,165,250,.14)}
+  .btnGreen{background: rgba(52,211,153,.14)}
+  .btnDanger{background: rgba(251,113,133,.10)}
+  .btnGhost{background: rgba(255,255,255,.04)}
+  .divider{height:1px;background: rgba(255,255,255,.10);margin:12px 0;}
+  .span12{grid-column:1 / -1}
+  .span8{grid-column: span 8}
+  .span6{grid-column: span 6}
+  .span5{grid-column: span 5}
+  .span4{grid-column: span 4}
+  .span3{grid-column: span 3}
+  @media (max-width: 980px){
+    .span8,.span6,.span5,.span4,.span3{grid-column:1 / -1}
+  }
+  .chartBox{padding:10px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background: rgba(15,23,42,.35)}
+  svg{display:block;width:100%;height:auto}
+  .list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+  .item{
+    display:flex;justify-content:space-between;gap:10px;align-items:center;
+    padding:10px 10px;border:1px solid rgba(255,255,255,.10);
+    border-radius:14px;background: rgba(15,23,42,.35);
+  }
+  .barWrap{flex:1;min-width:0}
+  .bar{
+    height:10px;border-radius:999px;background: rgba(96,165,250,.20);
+    border:1px solid rgba(255,255,255,.10);
+    overflow:hidden;
+  }
+  .bar > div{height:100%;background: rgba(96,165,250,.70)}
+  .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace}
+  pre{
+    margin:10px 0 0 0;
+    white-space:pre-wrap;
+    background: rgba(15,23,42,.55);
+    border:1px solid rgba(255,255,255,.12);
+    padding:12px;border-radius:14px;
+  }
+  .rightBtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="card">
-    <div class="row" style="justify-content:space-between;align-items:center">
+  <div class="top">
+    <div class="brand">
+      <div class="logo"></div>
       <div>
-        <div style="font-weight:900">Constrava Dashboard</div>
-        <div class="muted">Site: <b>${site_id}</b> • Plan: <b>${plan}</b></div>
-      </div>
-      <div class="row">
-        <select id="days">
-          <option value="1">1 day</option>
-          <option value="7" selected>7 days</option>
-          <option value="30">30 days</option>
-          <option value="365">1 year</option>
-        </select>
-        <button id="refresh">Refresh</button>
-        <a href="/storefront?token=${encodeURIComponent(token)}">Plans</a>
+        <h1>Constrava Dashboard</h1>
+        <div class="sub">Site: <b id="siteId"></b> • Plan: <b id="plan"></b></div>
       </div>
     </div>
-  </div>
 
-  <div class="row">
-    <div class="card" style="flex:1;min-width:220px">
-      <div class="muted">Visits today</div>
-      <div class="kpi" id="today">—</div>
-    </div>
-    <div class="card" style="flex:1;min-width:220px">
-      <div class="muted">Visits in range</div>
-      <div class="kpi" id="range">—</div>
-    </div>
-    <div class="card" style="flex:1;min-width:220px">
-      <div class="muted">Lead rate</div>
-      <div class="kpi" id="leadRate">—</div>
-    </div>
-  </div>
-
-  <div class="card">
     <div class="row">
-      <button id="simView">Sim page_view</button>
-      <button id="simLead">Sim lead</button>
-      <button id="simPurchase">Sim purchase</button>
-      <button id="simCta">Sim cta_click</button>
-      <button id="share">Copy share link</button>
+      <select id="days">
+        <option value="1">1 day</option>
+        <option value="7" selected>7 days</option>
+        <option value="30">30 days</option>
+        <option value="365">1 year</option>
+      </select>
+      <button class="btn" id="refresh">Refresh</button>
+      <a class="btnGhost" id="plansLink" href="#">Plans</a>
       <span class="pill" id="status">Status: idle</span>
     </div>
-    <div class="muted" style="margin-top:10px">Tip: enable demo seeding with ENABLE_DEMO_SEED=true then POST /demo/seed?token=YOUR_TOKEN</div>
   </div>
 
-  <div class="card">
-    <div class="muted">Latest report</div>
-    <pre id="report">Loading…</pre>
+  <div class="grid">
+    <!-- KPIs -->
+    <div class="card span3">
+      <div class="muted">Visits today</div>
+      <div class="kpi" id="kpiToday">—</div>
+      <div class="muted" id="kpiTodaySub"></div>
+    </div>
+    <div class="card span3">
+      <div class="muted">Visits in range</div>
+      <div class="kpi" id="kpiRange">—</div>
+      <div class="muted" id="kpiRangeSub"></div>
+    </div>
+    <div class="card span3">
+      <div class="muted">Lead rate (leads/visits)</div>
+      <div class="kpi" id="kpiLeadRate">—</div>
+      <div class="muted">Goal: increase with better CTA + forms</div>
+    </div>
+    <div class="card span3">
+      <div class="muted">Purchase rate</div>
+      <div class="kpi" id="kpiPurchaseRate">—</div>
+      <div class="muted" id="kpiGoalSub">Leads / Purchases / CTA</div>
+    </div>
+
+    <!-- Trend -->
+    <div class="card span8">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Traffic trend</div>
+          <div class="muted">Visits per day (selected window)</div>
+        </div>
+        <div class="row">
+          <span class="pill">Max/day: <b id="maxDay">—</b></span>
+          <span class="pill">Avg/day: <b id="avgDay">—</b></span>
+        </div>
+      </div>
+
+      <div class="chartBox" style="margin-top:10px">
+        <svg id="trendSvg" viewBox="0 0 900 260" role="img" aria-label="Traffic trend chart"></svg>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="row">
+        <button class="btnGhost" id="simView">Sim page_view</button>
+        <button class="btnGhost" id="simLead">Sim lead</button>
+        <button class="btnGhost" id="simPurchase">Sim purchase</button>
+        <button class="btnGhost" id="simCta">Sim cta_click</button>
+        <button class="btn" id="share">Copy share link</button>
+        <button class="btnDanger" id="seedBtn">Seed demo data</button>
+      </div>
+      <div class="muted" style="margin-top:10px">Seeder requires <span class="mono">ENABLE_DEMO_SEED=true</span>. Sim buttons work any time.</div>
+    </div>
+
+    <!-- Live -->
+    <div class="card span4">
+      <div style="font-weight:950">Live</div>
+      <div class="muted">Polls every few seconds for new page_views</div>
+      <div class="divider"></div>
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <div class="muted">New page_views (since last check)</div>
+          <div class="kpiSmall" id="liveNew">—</div>
+        </div>
+        <div>
+          <div class="muted">Last event</div>
+          <div class="kpiSmall" id="liveLast">—</div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="muted">Details</div>
+      <pre id="liveJson">Loading…</pre>
+      <div class="row" style="margin-top:10px">
+        <button class="btnGhost" id="liveToggle">Pause</button>
+        <button class="btnGhost" id="liveNow">Check now</button>
+      </div>
+    </div>
+
+    <!-- Top Pages -->
+    <div class="card span6">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Top pages</div>
+          <div class="muted">Most viewed pages in range</div>
+        </div>
+        <span class="pill">Showing top 10</span>
+      </div>
+      <div class="list" id="topPages">Loading…</div>
+    </div>
+
+    <!-- Device Mix + Goals -->
+    <div class="card span6">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Device mix & goals</div>
+          <div class="muted">Breakdown + conversions</div>
+        </div>
+        <span class="pill">Visits → Leads → Purchases</span>
+      </div>
+
+      <div class="grid" style="margin-top:10px;gap:10px">
+        <div class="card" style="grid-column: span 6; background: rgba(15,23,42,.35); box-shadow:none">
+          <div class="muted">Device donut</div>
+          <div class="chartBox" style="margin-top:8px">
+            <svg id="deviceSvg" viewBox="0 0 240 160" role="img" aria-label="Device mix chart"></svg>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <span class="pill">Mobile: <b id="mob">—</b></span>
+            <span class="pill">Desktop: <b id="desk">—</b></span>
+          </div>
+        </div>
+
+        <div class="card" style="grid-column: span 6; background: rgba(15,23,42,.35); box-shadow:none">
+          <div class="muted">Goals in range</div>
+          <div class="row" style="margin-top:6px">
+            <span class="pill">Leads: <b id="leads">—</b></span>
+            <span class="pill">Purchases: <b id="purchases">—</b></span>
+            <span class="pill">CTA: <b id="cta">—</b></span>
+          </div>
+          <div class="divider"></div>
+          <div class="muted">Rates</div>
+          <div class="row" style="margin-top:6px">
+            <span class="pill">Lead rate: <b id="leadRate2">—</b></span>
+            <span class="pill">Purchase rate: <b id="purchaseRate2">—</b></span>
+          </div>
+          <div class="divider"></div>
+          <div class="muted">Last event</div>
+          <pre id="lastEvent">Loading…</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reports -->
+    <div class="card span12">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Reports</div>
+          <div class="muted">Latest report + history</div>
+        </div>
+        <div class="rightBtns">
+          <button class="btnGreen" id="aiReportBtn" style="display:none">Generate AI report</button>
+          <button class="btnGreen" id="aiPlanBtn" style="display:none">AI action plan</button>
+          <button class="btnGhost" id="loadReports">Refresh list</button>
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top:10px;gap:12px">
+        <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
+          <div class="muted">Latest</div>
+          <pre id="report">Loading…</pre>
+        </div>
+        <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
+          <div class="muted">History (click to open)</div>
+          <div class="list" id="reportsList">Loading…</div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
 <script>
   const TOKEN = ${TOKEN_JS};
   const PLAN = ${PLAN_JS};
+  const SITE_ID = ${SITEID_JS};
 
-  const el = (id) => document.getElementById(id);
-  const statusEl = el("status");
+  const $ = (id) => document.getElementById(id);
+  const statusEl = $("status");
 
   function setStatus(t){ statusEl.textContent = "Status: " + t; }
-  function rate(n){ return (Math.round(n*10000)/100).toFixed(2) + "%"; }
+  function pct(n){ return (Math.round((Number(n)||0) * 10000) / 100).toFixed(2) + "%"; }
+  function clamp(n,min,max){ n=Number(n)||0; return Math.max(min, Math.min(max, n)); }
+
+  $("siteId").textContent = SITE_ID;
+  $("plan").textContent = PLAN;
+  $("plansLink").href = "/storefront?token=" + encodeURIComponent(TOKEN);
+
+  // Show AI buttons only if allowed by plan
+  if (PLAN === "full_ai"){
+    $("aiReportBtn").style.display = "inline-block";
+    $("aiPlanBtn").style.display = "inline-block";
+  }
+
+  function esc(s){
+    return String(s||"").replace(/[&<>"']/g, (c) => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"
+    })[c]);
+  }
+
+  function renderTrend(svgEl, trend){
+    // trend = [{day, visits}]
+    const W = 900, H = 260, p = 18;
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+    // background grid
+    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bg.setAttribute("x","0"); bg.setAttribute("y","0");
+    bg.setAttribute("width", String(W)); bg.setAttribute("height", String(H));
+    bg.setAttribute("rx","14");
+    bg.setAttribute("fill","rgba(15,23,42,.25)");
+    bg.setAttribute("stroke","rgba(255,255,255,.10)");
+    svgEl.appendChild(bg);
+
+    const n = trend.length || 0;
+    if (!n){
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      t.setAttribute("x", String(p));
+      t.setAttribute("y", String(p+22));
+      t.setAttribute("fill","rgba(229,231,235,.75)");
+      t.setAttribute("font-size","14");
+      t.textContent = "No data yet.";
+      svgEl.appendChild(t);
+      return;
+    }
+
+    let maxV = 0, sumV = 0;
+    for (let i=0;i<n;i++){ maxV = Math.max(maxV, trend[i].visits||0); sumV += (trend[i].visits||0); }
+    const avg = n ? (sumV / n) : 0;
+    $("maxDay").textContent = String(maxV);
+    $("avgDay").textContent = String(Math.round(avg*10)/10);
+
+    const innerW = W - p*2;
+    const innerH = H - p*2;
+
+    function x(i){
+      if (n === 1) return p + innerW/2;
+      return p + (i * innerW) / (n - 1);
+    }
+    function y(v){
+      const m = Math.max(1, maxV);
+      const t = clamp(v / m, 0, 1);
+      return p + (1 - t) * innerH;
+    }
+
+    // baseline
+    const base = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    base.setAttribute("d", "M " + p + " " + (H-p) + " L " + (W-p) + " " + (H-p));
+    base.setAttribute("stroke","rgba(255,255,255,.10)");
+    base.setAttribute("fill","none");
+    svgEl.appendChild(base);
+
+    // path
+    let d = "";
+    for (let i=0;i<n;i++){
+      const xi = x(i);
+      const yi = y(trend[i].visits||0);
+      d += (i===0 ? "M " : " L ") + xi + " " + yi;
+    }
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    path.setAttribute("stroke","rgba(96,165,250,.90)");
+    path.setAttribute("stroke-width","3");
+    path.setAttribute("fill","none");
+    path.setAttribute("stroke-linecap","round");
+    path.setAttribute("stroke-linejoin","round");
+    svgEl.appendChild(path);
+
+    // dots + labels (sparse)
+    for (let i=0;i<n;i++){
+      const xi = x(i);
+      const yi = y(trend[i].visits||0);
+
+      const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      c.setAttribute("cx", String(xi));
+      c.setAttribute("cy", String(yi));
+      c.setAttribute("r","3.5");
+      c.setAttribute("fill","rgba(96,165,250,.95)");
+      c.setAttribute("stroke","rgba(255,255,255,.20)");
+      svgEl.appendChild(c);
+
+      // label every ~5 points or ends
+      const show = (i===0 || i===n-1 || (n>=10 && i % Math.ceil(n/6) === 0));
+      if (show){
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("x", String(xi));
+        t.setAttribute("y", String(H - 6));
+        t.setAttribute("fill","rgba(229,231,235,.65)");
+        t.setAttribute("font-size","11");
+        t.setAttribute("text-anchor","middle");
+        const day = String(trend[i].day||"").slice(5); // MM-DD
+        t.textContent = day;
+        svgEl.appendChild(t);
+      }
+    }
+  }
+
+  function renderDevice(svgEl, mobile, desktop){
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+    const W=240, H=160;
+    const cx=80, cy=80;
+    const r=50, w=16;
+    const total = (mobile||0) + (desktop||0);
+    const m = total ? (mobile/total) : 0.5;
+    const start = -Math.PI/2;
+    const mid = start + (Math.PI*2*m);
+
+    function arc(a0,a1,color){
+      const x0 = cx + r*Math.cos(a0), y0 = cy + r*Math.sin(a0);
+      const x1 = cx + r*Math.cos(a1), y1 = cy + r*Math.sin(a1);
+      const large = (a1-a0) > Math.PI ? 1 : 0;
+      const p = document.createElementNS("http://www.w3.org/2000/svg","path");
+      p.setAttribute("d",
+        "M " + x0 + " " + y0 +
+        " A " + r + " " + r + " 0 " + large + " 1 " + x1 + " " + y1
+      );
+      p.setAttribute("stroke", color);
+      p.setAttribute("stroke-width", String(w));
+      p.setAttribute("fill","none");
+      p.setAttribute("stroke-linecap","round");
+      svgEl.appendChild(p);
+    }
+
+    const ring = document.createElementNS("http://www.w3.org/2000/svg","circle");
+    ring.setAttribute("cx", String(cx));
+    ring.setAttribute("cy", String(cy));
+    ring.setAttribute("r", String(r));
+    ring.setAttribute("stroke","rgba(255,255,255,.12)");
+    ring.setAttribute("stroke-width", String(w));
+    ring.setAttribute("fill","none");
+    svgEl.appendChild(ring);
+
+    arc(start, mid, "rgba(52,211,153,.90)");      // mobile
+    arc(mid, start + Math.PI*2, "rgba(96,165,250,.90)"); // desktop
+
+    const label = document.createElementNS("http://www.w3.org/2000/svg","text");
+    label.setAttribute("x", String(cx));
+    label.setAttribute("y", String(cy+6));
+    label.setAttribute("text-anchor","middle");
+    label.setAttribute("fill","rgba(229,231,235,.90)");
+    label.setAttribute("font-size","14");
+    label.textContent = total ? (Math.round(m*100) + "% mobile") : "No data";
+    svgEl.appendChild(label);
+
+    // legend
+    const t1 = document.createElementNS("http://www.w3.org/2000/svg","text");
+    t1.setAttribute("x","150"); t1.setAttribute("y","72");
+    t1.setAttribute("fill","rgba(229,231,235,.75)"); t1.setAttribute("font-size","12");
+    t1.textContent = "Mobile";
+    svgEl.appendChild(t1);
+
+    const s1 = document.createElementNS("http://www.w3.org/2000/svg","rect");
+    s1.setAttribute("x","132"); s1.setAttribute("y","62"); s1.setAttribute("width","12"); s1.setAttribute("height","12");
+    s1.setAttribute("rx","3"); s1.setAttribute("fill","rgba(52,211,153,.90)");
+    svgEl.appendChild(s1);
+
+    const t2 = document.createElementNS("http://www.w3.org/2000/svg","text");
+    t2.setAttribute("x","150"); t2.setAttribute("y","102");
+    t2.setAttribute("fill","rgba(229,231,235,.75)"); t2.setAttribute("font-size","12");
+    t2.textContent = "Desktop";
+    svgEl.appendChild(t2);
+
+    const s2 = document.createElementNS("http://www.w3.org/2000/svg","rect");
+    s2.setAttribute("x","132"); s2.setAttribute("y","92"); s2.setAttribute("width","12"); s2.setAttribute("height","12");
+    s2.setAttribute("rx","3"); s2.setAttribute("fill","rgba(96,165,250,.90)");
+    svgEl.appendChild(s2);
+  }
+
+  function renderTopPages(container, rows){
+    container.innerHTML = "";
+    if (!rows || !rows.length){
+      container.textContent = "No page data yet.";
+      return;
+    }
+    // rows from API: top_pages_range [{page_type, views, share}]
+    for (let i=0;i<rows.length;i++){
+      const r = rows[i];
+      const page = r.page_type || "/";
+      const views = r.views || 0;
+      const share = r.share || 0;
+
+      const item = document.createElement("div");
+      item.className = "item";
+
+      const left = document.createElement("div");
+      left.style.minWidth = "160px";
+      left.style.maxWidth = "50%";
+      left.style.overflow = "hidden";
+      left.style.textOverflow = "ellipsis";
+      left.style.whiteSpace = "nowrap";
+      left.innerHTML = "<b>" + esc(page) + "</b><div class='muted'>" + views + " views • " + share + "%</div>";
+
+      const barWrap = document.createElement("div");
+      barWrap.className = "barWrap";
+
+      const bar = document.createElement("div");
+      bar.className = "bar";
+
+      const fill = document.createElement("div");
+      fill.style.width = clamp(share, 0, 100) + "%";
+
+      bar.appendChild(fill);
+      barWrap.appendChild(bar);
+
+      item.appendChild(left);
+      item.appendChild(barWrap);
+      container.appendChild(item);
+    }
+  }
 
   async function refresh(){
-    const days = el("days").value;
-    setStatus("loading metrics…");
-    const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
-    const j = await r.json().catch(()=> ({}));
-    if(!j.ok){ setStatus(j.error || "error"); return; }
-    el("today").textContent = j.visits_today;
-    el("range").textContent = j.visits_range;
-    el("leadRate").textContent = rate(j.conversion_rate || 0);
+    try{
+      const days = $("days").value;
+      setStatus("loading metrics…");
 
+      const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
+      const j = await r.json().catch(()=> ({}));
+      if(!j.ok){ setStatus(j.error || "error"); return; }
+
+      $("kpiToday").textContent = j.visits_today;
+      $("kpiTodaySub").textContent = j.last_event ? ("Last event: " + (j.last_event.event_name || "—")) : "";
+      $("kpiRange").textContent = j.visits_range;
+      $("kpiRangeSub").textContent = "Window: " + j.days + " day(s)";
+      $("kpiLeadRate").textContent = pct(j.conversion_rate || 0);
+      $("kpiPurchaseRate").textContent = pct(j.purchase_rate || 0);
+
+      $("leads").textContent = j.leads || 0;
+      $("purchases").textContent = j.purchases || 0;
+      $("cta").textContent = j.cta_clicks || 0;
+      $("leadRate2").textContent = pct(j.conversion_rate || 0);
+      $("purchaseRate2").textContent = pct(j.purchase_rate || 0);
+
+      const mob = (j.device_mix && j.device_mix.mobile) ? j.device_mix.mobile : 0;
+      const desk = (j.device_mix && j.device_mix.desktop) ? j.device_mix.desktop : 0;
+      $("mob").textContent = mob;
+      $("desk").textContent = desk;
+
+      $("lastEvent").textContent = j.last_event ? JSON.stringify(j.last_event, null, 2) : "No events yet.";
+
+      renderTrend($("trendSvg"), j.trend || []);
+      renderDevice($("deviceSvg"), mob, desk);
+      renderTopPages($("topPages"), j.top_pages_range || []);
+
+      await loadLatestReport();
+      await loadReportsList();
+
+      setStatus("ready");
+    }catch(e){
+      setStatus("error: " + (e && e.message ? e.message : "unknown"));
+    }
+  }
+
+  async function loadLatestReport(){
     const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
     const jj = await rr.json().catch(()=> ({}));
-    el("report").textContent = jj.ok ? (jj.report.report_text || "") : (jj.error || "No report");
-    setStatus("ready");
+    $("report").textContent = jj.ok ? (jj.report.report_text || "") : (jj.error || "No report");
+  }
+
+  async function loadReportsList(){
+    const r = await fetch("/reports?token=" + encodeURIComponent(TOKEN) + "&limit=30");
+    const j = await r.json().catch(()=> ({}));
+    const list = $("reportsList");
+    list.innerHTML = "";
+
+    if(!j.ok){
+      list.textContent = j.error || "Failed to load reports";
+      return;
+    }
+    if(!j.reports || !j.reports.length){
+      list.textContent = "No reports yet.";
+      return;
+    }
+
+    for (let i=0;i<j.reports.length;i++){
+      const rep = j.reports[i];
+      const item = document.createElement("div");
+      item.className = "item";
+      item.style.cursor = "pointer";
+
+      const left = document.createElement("div");
+      left.innerHTML = "<b>" + esc(rep.report_date) + "</b><div class='muted'>" + esc(rep.preview || "") + "</div>";
+
+      const right = document.createElement("div");
+      right.className = "pill";
+      right.textContent = "Open";
+
+      item.appendChild(left);
+      item.appendChild(right);
+
+      item.addEventListener("click", async () => {
+        // We don't have /reports/:id endpoint, so just show latest for now.
+        // (If you want, we can add /report?date=YYYY-MM-DD later.)
+        $("report").textContent = "Tip: add a report-by-date endpoint to open older reports precisely.";
+      });
+
+      list.appendChild(item);
+    }
   }
 
   async function fire(eventName){
@@ -1524,32 +2053,105 @@ app.get(
     const d = await r.json().catch(()=> ({}));
     if(!d.ok){ setStatus(d.error || "error"); return; }
     setStatus("sent ✅ refreshing…");
-    setTimeout(refresh, 400);
+    setTimeout(refresh, 350);
   }
 
-  el("refresh").addEventListener("click", refresh);
-  el("days").addEventListener("change", refresh);
+  async function seed(){
+    setStatus("seeding…");
+    const r = await fetch("/demo/seed?token=" + encodeURIComponent(TOKEN), { method:"POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ days: 14, events_per_day: 60 })});
+    const j = await r.json().catch(()=> ({}));
+    if(!j.ok){ setStatus(j.error || "seed failed"); return; }
+    setStatus("seeded ✅ refreshing…");
+    setTimeout(refresh, 450);
+  }
 
-  el("simView").addEventListener("click", () => fire("page_view"));
-  el("simLead").addEventListener("click", () => fire("lead"));
-  el("simPurchase").addEventListener("click", () => fire("purchase"));
-  el("simCta").addEventListener("click", () => fire("cta_click"));
-
-  el("share").addEventListener("click", async () => {
+  async function share(){
     setStatus("creating share link…");
-    const r = await fetch("/demo/link", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ token: TOKEN }) });
+    const r = await fetch("/demo/link", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ token: TOKEN })
+    });
     const d = await r.json().catch(()=> ({}));
     if(!d.ok){ setStatus(d.error || "error"); return; }
     try{ await navigator.clipboard.writeText(d.url); setStatus("copied ✅"); }
     catch{ setStatus("share link: " + d.url); }
-  });
+  }
 
+  async function aiReport(){
+    setStatus("generating AI report…");
+    const r = await fetch("/generate-report?token=" + encodeURIComponent(TOKEN), { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ token: TOKEN })});
+    const j = await r.json().catch(()=> ({}));
+    if(!j.ok){ setStatus(j.error || "AI report failed"); return; }
+    setStatus("AI report saved ✅");
+    await loadLatestReport();
+    await loadReportsList();
+  }
+
+  async function aiPlan(){
+    setStatus("generating AI action plan…");
+    const r = await fetch("/generate-action-plan?token=" + encodeURIComponent(TOKEN), { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ token: TOKEN })});
+    const j = await r.json().catch(()=> ({}));
+    if(!j.ok){ setStatus(j.error || "AI plan failed"); return; }
+    setStatus("AI plan saved ✅");
+    await loadLatestReport();
+    await loadReportsList();
+  }
+
+  // Live polling
+  let liveSince = new Date().toISOString();
+  let liveOn = true;
+  let liveTimer = null;
+
+  async function liveCheck(){
+    try{
+      const url = "/live?token=" + encodeURIComponent(TOKEN) + "&since=" + encodeURIComponent(liveSince);
+      const r = await fetch(url);
+      const j = await r.json().catch(()=> ({}));
+      if(!j.ok){ return; }
+      $("liveNew").textContent = String(j.new_page_views || 0);
+      $("liveLast").textContent = j.last_event ? (j.last_event.event_name || "—") : "—";
+      $("liveJson").textContent = JSON.stringify(j, null, 2);
+      liveSince = j.now || new Date().toISOString();
+    }catch(e){}
+  }
+
+  function startLive(){
+    if (liveTimer) clearInterval(liveTimer);
+    liveTimer = setInterval(() => { if(liveOn) liveCheck(); }, 3500);
+  }
+
+  $("refresh").addEventListener("click", refresh);
+  $("days").addEventListener("change", refresh);
+
+  $("simView").addEventListener("click", () => fire("page_view"));
+  $("simLead").addEventListener("click", () => fire("lead"));
+  $("simPurchase").addEventListener("click", () => fire("purchase"));
+  $("simCta").addEventListener("click", () => fire("cta_click"));
+
+  $("share").addEventListener("click", share);
+  $("seedBtn").addEventListener("click", seed);
+
+  $("loadReports").addEventListener("click", loadReportsList);
+  $("aiReportBtn").addEventListener("click", aiReport);
+  $("aiPlanBtn").addEventListener("click", aiPlan);
+
+  $("liveToggle").addEventListener("click", () => {
+    liveOn = !liveOn;
+    $("liveToggle").textContent = liveOn ? "Pause" : "Resume";
+    if (liveOn) liveCheck();
+  });
+  $("liveNow").addEventListener("click", liveCheck);
+
+  startLive();
+  liveCheck();
   refresh();
 </script>
 </body>
 </html>`);
   })
 );
+
 
 /* ---------------------------
    PUBLIC Store page (no token)
