@@ -2113,25 +2113,28 @@ $("modalCopy").addEventListener("click", async () => {
     catch{ setStatus("share link: " + d.url); }
   }
 
-  async function aiReport(){
-    setStatus("generating AI report…");
-    const r = await fetch("/generate-report?token=" + encodeURIComponent(TOKEN), { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ token: TOKEN })});
-    const j = await r.json().catch(()=> ({}));
-    if(!j.ok){ setStatus(j.error || "AI report failed"); return; }
-    setStatus("AI report saved ✅");
-    await loadLatestReport();
-    await loadReportsList();
-  }
+async function aiReport(){
+  setStatus("generating AI report…");
+  const r = await fetch("/generate-report?token=" + encodeURIComponent(TOKEN), {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ token: TOKEN })
+  });
+  const j = await r.json().catch(()=> ({}));
+  if(!j.ok){ setStatus(j.error || "AI report failed"); return; }
 
-  async function aiPlan(){
-    setStatus("generating AI action plan…");
-    const r = await fetch("/generate-action-plan?token=" + encodeURIComponent(TOKEN), { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ token: TOKEN })});
-    const j = await r.json().catch(()=> ({}));
-    if(!j.ok){ setStatus(j.error || "AI plan failed"); return; }
-    setStatus("AI plan saved ✅");
-    await loadLatestReport();
-    await loadReportsList();
-  }
+  const text = (j.report && j.report.report_text) ? j.report.report_text : "";
+  openModal(
+    "AI report complete ✅",
+    "Saved to reports. You can copy it below.",
+    text
+  );
+
+  setStatus("AI report saved ✅");
+  await loadLatestReport();
+  await loadReportsList();
+}
+
 
   // Live polling
   let liveSince = new Date().toISOString();
