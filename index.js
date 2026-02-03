@@ -1291,6 +1291,20 @@ app.get(
     background: rgba(96,165,250,.14); color:var(--text);
     cursor:pointer; font-weight:950;
   }
+  .btnAi{
+  background: linear-gradient(135deg, rgba(52,211,153,.22), rgba(96,165,250,.22));
+  border-color: rgba(52,211,153,.35);
+  box-shadow: 0 0 0 1px rgba(52,211,153,.10), 0 14px 40px rgba(52,211,153,.12);
+}
+.btnAi:hover{
+  border-color: rgba(52,211,153,.65);
+  box-shadow: 0 0 0 1px rgba(52,211,153,.18), 0 18px 52px rgba(96,165,250,.18);
+}
+.spark{
+  display:inline-block;
+  margin-right:8px;
+  transform: translateY(1px);
+}
   .btn:hover{border-color: rgba(96,165,250,.5)}
   .btnGreen{background: rgba(52,211,153,.14)}
   .btnGreen:hover{border-color: rgba(52,211,153,.5)}
@@ -1545,16 +1559,22 @@ app.get(
     </div>
 
     <div class="row">
-      <select id="days">
-        <option value="1">1 day</option>
-        <option value="7" selected>7 days</option>
-        <option value="30">30 days</option>
-        <option value="365">1 year</option>
-      </select>
-      <button class="btn" id="refresh">Refresh</button>
-      <a class="btnGhost" id="plansLink" href="#">Plans</a>
-      <span class="pill" id="status">Status: idle</span>
-    </div>
+     <select id="days">
+  <option value="1">1 day</option>
+  <option value="7" selected>7 days</option>
+  <option value="30">30 days</option>
+  <option value="365">1 year</option>
+</select>
+
+<button class="btnAi" id="aiReportTop">
+  ✨ AI Report
+</button>
+
+<button class="btn" id="refresh">Refresh</button>
+<a class="btnGhost" id="plansLink" href="#">Plans</a>
+<span class="pill" id="status">Status: idle</span>
+</div>
+
   </div>
 
   <div class="grid">
@@ -2161,6 +2181,8 @@ async function aiReport(){
 
   $("refresh").addEventListener("click", refresh);
   $("days").addEventListener("change", refresh);
+  $("aiReportTop").addEventListener("click", aiReport);
+
 
   $("simView").addEventListener("click", () => fire("page_view"));
   $("simLead").addEventListener("click", () => fire("lead"));
