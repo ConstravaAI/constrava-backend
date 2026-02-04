@@ -1884,8 +1884,9 @@ const history = [];
 function addMsg(role, text){
   const wrap = document.createElement("div");
   wrap.style.margin = "8px 0";
-  wrap.innerHTML = `<div class="pill" style="display:inline-block;margin-bottom:6px">${role}</div>
-  <div style="white-space:pre-wrap;line-height:1.55">${esc(text)}</div>`;
+wrap.innerHTML =
+  '<div class="pill" style="display:inline-block;margin-bottom:6px">' + role + '</div>' +
+  '<div style="white-space:pre-wrap;line-height:1.55">' + esc(text) + '</div>';
   chatEl.appendChild(wrap);
   chatEl.scrollTop = chatEl.scrollHeight;
 }
