@@ -1344,7 +1344,7 @@ app.get(
     </div>
     <div class="card">
       <h3 class="name">Full AI</h3>
-      <div class="price">$199 <span class="muted">/mo</span></div>
+      <div class="price">$99 <span class="muted">/mo</span></div>
       <div class="muted">AI summaries + next steps + action plans.</div>
       <ul>
         <li>Everything in Pro</li>
