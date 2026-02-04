@@ -809,6 +809,113 @@ app.get(
     });
   })
 );
+/* ---------------------------
+   Ai Assitant Dashboard
+----------------------------*/
+app.post(
+  "/api/ai/chat",
+  asyncHandler(async (req, res) => {
+    setNoStore(res);
+
+    const token = req.query.token || req.body?.token; // or use your getToken helper
+    const site = await getSiteByToken(token);
+    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+    const gate = planGate(site, ["full_ai"]);
+    if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+    const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
+    const message = String(req.body?.message || "").trim();
+    const history = Array.isArray(req.body?.history) ? req.body.history.slice(-12) : []; // keep it short
+    if (!message) return res.status(400).json({ ok: false, error: "message required" });
+
+    // Gather context (keep it light + fast)
+    const days = 30;
+
+    const metricsRes = await pool.query(
+      `
+      SELECT
+        COUNT(*)::int AS total_events,
+        SUM(CASE WHEN event_name='page_view' THEN 1 ELSE 0 END)::int AS page_views,
+        SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
+        SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases,
+        SUM(CASE WHEN event_name='cta_click' THEN 1 ELSE 0 END)::int AS cta_clicks
+      FROM events_raw
+      WHERE site_id=$1 AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+      `,
+      [site.site_id, days]
+    );
+
+    const topPagesRes = await pool.query(
+      `
+      SELECT page_type, COUNT(*)::int AS views
+      FROM events_raw
+      WHERE site_id=$1 AND event_name='page_view'
+        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+        AND page_type IS NOT NULL
+      GROUP BY 1
+      ORDER BY views DESC
+      LIMIT 8
+      `,
+      [site.site_id, days]
+    );
+
+    const lastReportRes = await pool.query(
+      `
+      SELECT report_date, report_text
+      FROM daily_reports
+      WHERE site_id=$1
+      ORDER BY report_date DESC, created_at DESC
+      LIMIT 1
+      `,
+      [site.site_id]
+    );
+
+    const context = {
+      site_id: site.site_id,
+      plan: site.plan,
+      window_days: days,
+      metrics_30d: metricsRes.rows[0],
+      top_pages_30d: topPagesRes.rows,
+      latest_report: lastReportRes.rows[0] || null
+    };
+
+    const system = `
+You are Constrava's on-dashboard analytics assistant.
+- Be plain-English, specific, and actionable.
+- Use the provided site context.
+- If data is insufficient, say what’s missing and suggest what to track.
+- Avoid guarantees. If forecasting, use probabilistic language and label it as an estimate.
+- Prefer: (1) what’s happening, (2) why it might be happening, (3) next best actions, (4) a metric to watch.
+`;
+
+    const messages = [
+      { role: "system", content: system.trim() },
+      { role: "user", content: "Site context JSON:\n" + JSON.stringify(context) },
+      ...history.map(h => ({ role: h.role, content: String(h.content || "") })),
+      { role: "user", content: message }
+    ];
+
+    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+        messages,
+        temperature: 0.4
+      })
+    });
+
+    const aiData = await aiRes.json();
+    const reply = aiData?.choices?.[0]?.message?.content;
+    if (!reply) return res.status(500).json({ ok: false, error: "AI response missing" });
+
+    res.json({ ok: true, reply });
+  })
+);
 
 /* ---------------------------
    Reports
@@ -1565,6 +1672,31 @@ app.get(
   </div>
 
   <div class="grid">
+  <div class="card span12" id="aiAssistantCard">
+  <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+    <div>
+      <div style="font-weight:950">AI Assistant</div>
+      <div class="muted">Ask questions about your traffic, conversions, and next steps.</div>
+    </div>
+    <span class="pill">AI tier required</span>
+  </div>
+
+  <div class="divider"></div>
+
+  <div id="aiChat" style="height:220px;overflow:auto;padding:10px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(15,23,42,.35)"></div>
+
+  <div class="row" style="margin-top:10px">
+    <input id="aiInput" placeholder="Ask: What should I fix first?" style="flex:1;min-width:220px" />
+    <button class="btnGreen" id="aiSend">Send</button>
+  </div>
+
+  <div class="row" style="margin-top:10px">
+    <button class="btnGhost" id="qp1">What changed this week?</button>
+    <button class="btnGhost" id="qp2">Where are users dropping off?</button>
+    <button class="btnGhost" id="qp3">Give me 3 next steps</button>
+  </div>
+</div>
+
     <!-- KPIs -->
     <div class="card span3">
       <div class="muted">Visits today</div>
@@ -1745,6 +1877,62 @@ app.get(
   const SITE_ID = ${SITEID_JS};
 
   const $ = (id) => document.getElementById(id);
+  const chatEl = $("aiChat");
+const inputEl = $("aiInput");
+const history = [];
+
+function addMsg(role, text){
+  const wrap = document.createElement("div");
+  wrap.style.margin = "8px 0";
+  wrap.innerHTML = `<div class="pill" style="display:inline-block;margin-bottom:6px">${role}</div>
+  <div style="white-space:pre-wrap;line-height:1.55">${esc(text)}</div>`;
+  chatEl.appendChild(wrap);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+async function sendToAI(text){
+  if (PLAN !== "full_ai"){
+    addMsg("assistant", "AI Assistant requires the full_ai plan.");
+    return;
+  }
+
+  addMsg("you", text);
+  history.push({ role: "user", content: text });
+
+  addMsg("assistant", "Typing…");
+  const typingNode = chatEl.lastChild;
+
+  const r = await fetch("/api/ai/chat?token=" + encodeURIComponent(TOKEN), {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ message: text, history })
+  });
+
+  const j = await r.json().catch(()=> ({}));
+  if (!j.ok){
+    typingNode.querySelector("div:nth-child(2)").textContent = j.error || "AI error";
+    return;
+  }
+
+  const reply = j.reply || "";
+  typingNode.querySelector("div:nth-child(2)").textContent = reply;
+  history.push({ role: "assistant", content: reply });
+}
+
+$("aiSend").addEventListener("click", () => {
+  const t = inputEl.value.trim();
+  if (!t) return;
+  inputEl.value = "";
+  sendToAI(t);
+});
+inputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") $("aiSend").click();
+});
+
+$("qp1").addEventListener("click", () => sendToAI("What changed this week? Summarize the main trends and why they might be happening."));
+$("qp2").addEventListener("click", () => sendToAI("Where are users likely dropping off? Use the top pages and goals to infer the biggest friction points."));
+$("qp3").addEventListener("click", () => sendToAI("Give me 3 next steps to improve lead rate and one metric to watch."));
+
   const statusEl = $("status");
   function openModal(title, sub, body){
   $("modalTitle").textContent = title || "Done";
