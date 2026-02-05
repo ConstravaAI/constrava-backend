@@ -2388,6 +2388,9 @@ async function aiReport(){
   $("refresh").addEventListener("click", refresh);
   $("days").addEventListener("change", refresh);
   $("aiReportTop").addEventListener("click", aiReport);
+if ($("aiReportTopBtn")){
+  $("aiReportTopBtn").addEventListener("click", aiReport);
+}
 
 
   $("simView").addEventListener("click", () => fire("page_view"));
@@ -2758,9 +2761,7 @@ if (process.env.ENABLE_SCHEDULER === "true") {
   runDailyForAllSites().catch(() => {});
   setInterval(() => runDailyForAllSites().catch(() => {}), 6 * 60 * 60 * 1000);
 }
-if ($("aiReportTopBtn")){
-  $("aiReportTopBtn").addEventListener("click", aiReport);
-}
+
 
 /* ---------------------------
    Errors
