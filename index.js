@@ -119,9 +119,6 @@ function planGate(site, allowedPlans) {
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
-if ($("aiReportTopBtn")){
-  $("aiReportTopBtn").addEventListener("click", aiReport);
-}
 
 /* ---------------------------
    Password hashing (no bcrypt)
@@ -2760,6 +2757,9 @@ if (process.env.ENABLE_SCHEDULER === "true") {
   console.log("⏱️ In-process scheduler enabled (not a real cron).");
   runDailyForAllSites().catch(() => {});
   setInterval(() => runDailyForAllSites().catch(() => {}), 6 * 60 * 60 * 1000);
+}
+if ($("aiReportTopBtn")){
+  $("aiReportTopBtn").addEventListener("click", aiReport);
 }
 
 /* ---------------------------
