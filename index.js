@@ -1659,7 +1659,7 @@ app.get(
   <option value="30">30 days</option>
   <option value="365">1 year</option>
 </select>
-
+<button class="btnDanger" id="seedBtn">Seed demo data</button>
 <button class="btnAi" id="aiReportTop">
   ✨ AI Report
 </button>
@@ -1744,7 +1744,6 @@ app.get(
         <button class="btnGhost" id="simPurchase">Sim purchase</button>
         <button class="btnGhost" id="simCta">Sim cta_click</button>
         <button class="btn" id="share">Copy share link</button>
-        <button class="btnDanger" id="seedBtn">Seed demo data</button>
       </div>
       <div class="muted" style="margin-top:10px">Seeder requires <span class="mono">ENABLE_DEMO_SEED=true</span>. Sim buttons work any time.</div>
     </div>
