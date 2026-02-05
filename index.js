@@ -119,6 +119,9 @@ function planGate(site, allowedPlans) {
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 }
+if ($("aiReportTopBtn")){
+  $("aiReportTopBtn").addEventListener("click", aiReport);
+}
 
 /* ---------------------------
    Password hashing (no bcrypt)
