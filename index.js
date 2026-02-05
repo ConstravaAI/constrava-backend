@@ -1453,9 +1453,40 @@ app.get(
 
   <div class="divider"></div>
 
-  <pre id="latestAiReport">
-Loading latest report...
-  </pre>
+  <div id="reportEmpty" class="muted">Loading latest report...</div>
+
+<div id="reportView" style="display:none">
+  <div class="grid" style="margin-top:10px;gap:10px">
+    <div class="card" style="grid-column: span 6; background: rgba(15,23,42,.35); box-shadow:none">
+      <div style="font-weight:950">What happened</div>
+      <div class="muted" id="repWhat" style="margin-top:6px"></div>
+    </div>
+
+    <div class="card" style="grid-column: span 6; background: rgba(15,23,42,.35); box-shadow:none">
+      <div style="font-weight:950">Trend + what it means</div>
+      <div class="muted" id="repTrend" style="margin-top:6px"></div>
+    </div>
+
+    <div class="card" style="grid-column: span 8; background: rgba(15,23,42,.35); box-shadow:none">
+      <div style="font-weight:950">Next steps</div>
+      <ul id="repSteps" style="margin:10px 0 0 18px;line-height:1.7;color:var(--text)"></ul>
+    </div>
+
+    <div class="card" style="grid-column: span 4; background: rgba(15,23,42,.35); box-shadow:none">
+      <div style="font-weight:950">Metric to watch</div>
+      <div class="kpiSmall" id="repMetric" style="margin-top:8px">—</div>
+      <div class="muted" style="margin-top:6px">Track this weekly.</div>
+      <div class="divider"></div>
+      <button class="btnGhost" id="copyFullReport">Copy full report</button>
+    </div>
+  </div>
+
+  <details style="margin-top:10px">
+    <summary class="muted" style="cursor:pointer">Show full report</summary>
+    <pre id="repFull" style="margin-top:10px;max-height:320px;overflow:auto"></pre>
+  </details>
+</div>
+
 </div>
     <div class="card">
       <h3 class="name">Starter</h3>
@@ -1908,6 +1939,43 @@ app.get(
   const SITE_ID = ${SITEID_JS};
 
   const $ = (id) => document.getElementById(id);
+  /* ===== REPORT PARSER ===== */
+
+function splitLines(text){
+  return String(text||"")
+    .replace(/\r\n/g,"\n")
+    .split("\n")
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function parseReport(text){
+  const lines = splitLines(text);
+  const out = { what:"", trend:"", steps:[], metric:"", full:text||"" };
+  let mode = "";
+
+  for (const raw of lines){
+    const l = raw.replace(/\*\*/g,"");
+
+    if (/^1\)|^what happened/i.test(l)){ mode="what"; continue; }
+    if (/^2\)|^trend/i.test(l)){ mode="trend"; continue; }
+    if (/^3\)|^next steps/i.test(l)){ mode="steps"; continue; }
+    if (/^4\)|^metric/i.test(l)){ mode="metric"; continue; }
+
+    if (mode === "steps"){
+      const cleaned = l.replace(/^[-•]\s*/,"");
+      if (cleaned) out.steps.push(cleaned);
+    } else if (mode === "what"){
+      out.what += " " + l;
+    } else if (mode === "trend"){
+      out.trend += " " + l;
+    } else if (mode === "metric"){
+      out.metric += " " + l;
+    }
+  }
+
+  return out;
+}
   const chatEl = $("aiChat");
 const inputEl = $("aiInput");
 const history = [];
@@ -2258,22 +2326,38 @@ $("modalCopy").addEventListener("click", async () => {
     }
   }
 
-  async function loadLatestReport(){
+async function loadLatestReport(){
   const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
   const jj = await rr.json().catch(()=> ({}));
 
-  const text = jj.ok
-    ? (jj.report.report_text || "")
-    : (jj.error || "No report yet.");
+  const text = jj.ok ? (jj.report.report_text || "") : "";
 
-  if ($("latestAiReport")){
-    $("latestAiReport").textContent = text;
+  if (!text){
+    if ($("reportEmpty")) $("reportEmpty").textContent = "No report yet.";
+    return;
   }
 
-  if ($("report")){
-    $("report").textContent = text;
+  const parsed = parseReport(text);
+
+  if ($("repWhat")) $("repWhat").textContent = parsed.what;
+  if ($("repTrend")) $("repTrend").textContent = parsed.trend;
+
+  const stepsEl = $("repSteps");
+  if (stepsEl){
+    stepsEl.innerHTML = "";
+    parsed.steps.forEach(s => {
+      const li = document.createElement("li");
+      li.textContent = s;
+      stepsEl.appendChild(li);
+    });
   }
+
+  if ($("repMetric")) $("repMetric").textContent = parsed.metric;
+  if ($("repFull")) $("repFull").textContent = text;
+
+  if ($("report")) $("report").textContent = text;
 }
+
 
 
   async function loadReportsList(){
