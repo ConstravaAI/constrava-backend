@@ -1403,6 +1403,16 @@ app.get(
   border-color: rgba(52,211,153,.35);
   box-shadow: 0 0 0 1px rgba(52,211,153,.10), 0 14px 40px rgba(52,211,153,.12);
 }
+.btnAi{
+  background: linear-gradient(135deg, rgba(52,211,153,.22), rgba(96,165,250,.22));
+  border-color: rgba(52,211,153,.35);
+  box-shadow: 0 0 0 1px rgba(52,211,153,.10), 0 14px 40px rgba(52,211,153,.12);
+}
+.btnAi:hover{
+  border-color: rgba(52,211,153,.65);
+  box-shadow: 0 0 0 1px rgba(52,211,153,.18), 0 18px 52px rgba(96,165,250,.18);
+}
+
 .btnAi:hover{
   border-color: rgba(52,211,153,.65);
   box-shadow: 0 0 0 1px rgba(52,211,153,.18), 0 18px 52px rgba(96,165,250,.18);
@@ -1759,7 +1769,6 @@ app.get(
 
     <div class="divider"></div>
     <pre id="latestAiReport">Loading latest report...</pre>
-    if ($("latestAiReport")) $("latestAiReport").textContent = text || "No report yet.";
 
   </div>
     <!-- KPIs -->
@@ -2339,6 +2348,12 @@ async function loadLatestReport(){
 
   const text = jj.ok ? (jj.report.report_text || "") : "";
 
+  // ✅ Update the top card pre
+  if ($("latestAiReport")) $("latestAiReport").textContent = text || "No report yet.";
+
+  // Keep your other area updated too
+  if ($("report")) $("report").textContent = text || "No report yet.";
+
   if (!text){
     if ($("reportEmpty")) $("reportEmpty").textContent = "No report yet.";
     return;
@@ -2358,6 +2373,11 @@ async function loadLatestReport(){
       stepsEl.appendChild(li);
     });
   }
+
+  if ($("repMetric")) $("repMetric").textContent = parsed.metric;
+  if ($("repFull")) $("repFull").textContent = text;
+}
+
 
   if ($("repMetric")) $("repMetric").textContent = parsed.metric;
   if ($("repFull")) $("repFull").textContent = text;
@@ -2459,6 +2479,12 @@ async function aiReport(){
     "Saved to reports. You can copy it below.",
     text
   );
+
+  setStatus("AI report saved ✅");
+  await loadLatestReport();
+  await loadReportsList();
+}
+
 async function aiPlan(){
   setStatus("generating AI action plan…");
   const r = await fetch("/generate-action-plan?token=" + encodeURIComponent(TOKEN), {
@@ -2476,6 +2502,12 @@ async function aiPlan(){
     "Saved to reports. You can copy it below.",
     text
   );
+
+  setStatus("action plan saved ✅");
+  await loadLatestReport();
+  await loadReportsList();
+}
+
 
   setStatus("action plan saved ✅");
   await loadLatestReport();
