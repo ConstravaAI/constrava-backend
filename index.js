@@ -1438,6 +1438,25 @@ app.get(
   </div>
 
   <div class="grid">
+  <!-- LATEST AI REPORT (TOP CARD) -->
+<div class="card span12" id="latestReportTop">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+    <div>
+      <div style="font-weight:950">Latest AI Report</div>
+      <div class="muted">Your most recent AI-generated insights</div>
+    </div>
+
+    <button class="btnGreen" id="aiReportTopBtn">
+      Generate new AI report
+    </button>
+  </div>
+
+  <div class="divider"></div>
+
+  <pre id="latestAiReport">
+Loading latest report...
+  </pre>
+</div>
     <div class="card">
       <h3 class="name">Starter</h3>
       <div class="price">$29 <span class="muted">/mo</span></div>
@@ -2227,10 +2246,22 @@ $("modalCopy").addEventListener("click", async () => {
   }
 
   async function loadLatestReport(){
-    const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
-    const jj = await rr.json().catch(()=> ({}));
-    $("report").textContent = jj.ok ? (jj.report.report_text || "") : (jj.error || "No report");
+  const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
+  const jj = await rr.json().catch(()=> ({}));
+
+  const text = jj.ok
+    ? (jj.report.report_text || "")
+    : (jj.error || "No report yet.");
+
+  if ($("latestAiReport")){
+    $("latestAiReport").textContent = text;
   }
+
+  if ($("report")){
+    $("report").textContent = text;
+  }
+}
+
 
   async function loadReportsList(){
     const r = await fetch("/reports?token=" + encodeURIComponent(TOKEN) + "&limit=30");
