@@ -1759,6 +1759,8 @@ app.get(
 
     <div class="divider"></div>
     <pre id="latestAiReport">Loading latest report...</pre>
+    if ($("latestAiReport")) $("latestAiReport").textContent = text || "No report yet.";
+
   </div>
     <!-- KPIs -->
     <div class="card span3">
@@ -2068,11 +2070,16 @@ $("modalCopy").addEventListener("click", async () => {
     $("aiPlanBtn").style.display = "inline-block";
   }
 
-  function esc(s){
-    return String(s||"").replace(/[&<>"']/g, (c) => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"
-    })[c]);
-  }
+ function esc(s){
+  return String(s || "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;"
+  })[c]);
+}
+
 
   function renderTrend(svgEl, trend){
     // trend = [{day, visits}]
@@ -2452,6 +2459,28 @@ async function aiReport(){
     "Saved to reports. You can copy it below.",
     text
   );
+async function aiPlan(){
+  setStatus("generating AI action plan…");
+  const r = await fetch("/generate-action-plan?token=" + encodeURIComponent(TOKEN), {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ token: TOKEN })
+  });
+
+  const j = await r.json().catch(()=> ({}));
+  if(!j.ok){ setStatus(j.error || "AI action plan failed"); return; }
+
+  const text = (j.report && j.report.report_text) ? j.report.report_text : "";
+  openModal(
+    "AI action plan ✅",
+    "Saved to reports. You can copy it below.",
+    text
+  );
+
+  setStatus("action plan saved ✅");
+  await loadLatestReport();
+  await loadReportsList();
+}
 
   setStatus("AI report saved ✅");
   await loadLatestReport();
@@ -2496,11 +2525,12 @@ if ($("aiReportTopBtn")){
   $("simCta").addEventListener("click", () => fire("cta_click"));
 
   $("share").addEventListener("click", share);
-  $("seedBtn").addEventListener("click", seed);
+  if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
+
 
   $("loadReports").addEventListener("click", loadReportsList);
   $("aiReportBtn").addEventListener("click", aiReport);
-  $("aiPlanBtn").addEventListener("click", aiPlan);
+  if ($("aiPlanBtn")) $("aiPlanBtn").addEventListener("click", aiPlan);
 
   $("liveToggle").addEventListener("click", () => {
     liveOn = !liveOn;
