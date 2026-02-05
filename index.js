@@ -1549,20 +1549,6 @@ app.get(
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Constrava Dashboard</title>
- <!-- LATEST AI REPORT (TOP CARD) -->
-  <div class="card span12" id="latestReportTop">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-      <div>
-        <div style="font-weight:950">Latest AI Report</div>
-        <div class="muted">Your most recent AI-generated insights</div>
-      </div>
-
-      <button class="btnGreen" id="aiReportTopBtn">Generate new AI report</button>
-    </div>
-
-    <div class="divider"></div>
-    <pre id="latestAiReport">Loading latest report...</pre>
-  </div>
 <style>
   :root{
     --bg:#0b0f19;
@@ -1729,7 +1715,20 @@ app.get(
     <button class="btnGhost" id="qp3">Give me 3 next steps</button>
   </div>
 </div>
+ <!-- LATEST AI REPORT (TOP CARD) -->
+  <div class="card span12" id="latestReportTop">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:950">Latest AI Report</div>
+        <div class="muted">Your most recent AI-generated insights</div>
+      </div>
 
+      <button class="btnGreen" id="aiReportTopBtn">Generate new AI report</button>
+    </div>
+
+    <div class="divider"></div>
+    <pre id="latestAiReport">Loading latest report...</pre>
+  </div>
     <!-- KPIs -->
     <div class="card span3">
       <div class="muted">Visits today</div>
