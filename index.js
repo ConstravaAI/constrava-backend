@@ -1,4 +1,4 @@
-// index.js (ESM) — Constrava MVP+ backend (FIXED + HARDENED)
+// index.js (ESM) — Constrava MVP+ backend (FULL + WORKING HTML RESTORED)
 // Node 18+ recommended (Render supports Node 18/20+). Uses global fetch.
 //
 // ENV REQUIRED:
@@ -14,6 +14,7 @@
 // - ENABLE_SCHEDULER=true   (in-process scheduler every 6h)
 // - COOKIE_SECURE=true      (sets Secure on session cookie)
 // - CORS_ORIGIN             (optional; if set, restrict CORS to this origin)
+// - PGSSL=true              (optional; if set, enables ssl { rejectUnauthorized:false } for pg)
 
 import express from "express";
 import cors from "cors";
@@ -54,7 +55,6 @@ if (!DATABASE_URL) {
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  // ✅ Render/Neon can sometimes require SSL; allow both modes without breaking local dev
   ssl: process.env.PGSSL === "true" ? { rejectUnauthorized: false } : undefined
 });
 
@@ -846,7 +846,7 @@ app.get(
 );
 
 /* ---------------------------
-   Ai Assistant (FULL AI only)
+   Ai Assistant Dashboard (FULL AI only)
 ----------------------------*/
 app.post(
   "/api/ai/chat",
@@ -1000,7 +1000,7 @@ app.get(
   })
 );
 
-// ✅ FIX/ADD: open an older report by date (lets your dashboard “history click” actually work)
+// ✅ Added: open a report by date (optional but makes “history click” possible)
 app.get(
   "/reports/by-date",
   asyncHandler(async (req, res) => {
@@ -1399,12 +1399,6 @@ app.post(
    Storefront (token-gated)
    GET /storefront?token=...
 ----------------------------*/
-// NOTE: Your original storefront/dashboard HTML is huge. It still works fine.
-// I’m keeping it intact to avoid changing your UI. (No runtime server issues here.)
-//
-// ✅ If you want, I can also produce a “cleaned UI-only” file later,
-// but this backend file is now stable + production-safe.
-
 app.get(
   "/storefront",
   asyncHandler(async (req, res) => {
@@ -1418,21 +1412,209 @@ app.get(
     const plan = site.plan || "unpaid";
     res.setHeader("Content-Type", "text/html; charset=utf-8");
 
-    // (Your original HTML content unchanged)
-    res.send(`<!doctype html><html><body style="font-family:system-ui">
-      <h2>Storefront temporarily minimized in this fixed backend build.</h2>
-      <p>Endpoint is working. You can paste your full storefront HTML back in here if you want it served inline.</p>
-      <p><b>Site:</b> ${site_id} • <b>Plan:</b> ${plan}</p>
-      <p><a href="/dashboard?token=${encodeURIComponent(token)}">Go to dashboard</a></p>
-    </body></html>`);
+    res.send(`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Constrava — Plans</title>
+<style>
+  :root{
+    --bg:#0b0f19; --panel:#111827; --text:#e5e7eb; --muted:#9ca3af;
+    --border:rgba(255,255,255,.10); --accent:#60a5fa; --accent2:#34d399; --danger:#fb7185;
+    --shadow:0 10px 30px rgba(0,0,0,.35); --radius:16px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    background: radial-gradient(1200px 800px at 20% -10%, rgba(96,165,250,.22), transparent 60%),
+                radial-gradient(900px 600px at 90% 0%, rgba(52,211,153,.16), transparent 55%),
+                var(--bg);
+    color:var(--text);
+  }
+  .wrap{max-width:1100px;margin:0 auto;padding:26px 18px 70px;}
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px;
+    border:1px solid var(--border); border-radius: var(--radius);
+    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+    box-shadow: var(--shadow);
+  }
+  .brand{display:flex;align-items:center;gap:12px;}
+  .logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg, rgba(96,165,250,.9), rgba(52,211,153,.85));}
+  h1{font-size:18px;margin:0;}
+  .sub{font-size:12px;color:var(--muted);margin-top:2px;}
+  .pill{font-size:12px;color:var(--muted);border:1px solid var(--border);padding:6px 10px;border-radius:999px;background: rgba(15,23,42,.6);}
+  .grid{margin-top:18px;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
+  .card{
+    grid-column: span 4; padding:16px; border-radius: var(--radius);
+    border:1px solid var(--border); background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+    box-shadow: var(--shadow);
+  }
+  @media (max-width: 980px){ .card{grid-column: 1 / -1;} .topbar{flex-direction:column; align-items:flex-start;} }
+  .name{font-weight:950;margin:0}
+  .price{margin-top:10px;font-size:28px;font-weight:1000;}
+  .muted{color:var(--muted);font-size:12px;line-height:1.5}
+  ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
+  .btn{
+    width:100%; margin-top:14px; padding:12px 14px;
+    border-radius:12px; border:1px solid var(--border);
+    background: rgba(96,165,250,.14); color:var(--text);
+    cursor:pointer; font-weight:950;
+  }
+  .btnAi{
+  background: linear-gradient(135deg, rgba(52,211,153,.22), rgba(96,165,250,.22));
+  border-color: rgba(52,211,153,.35);
+  box-shadow: 0 0 0 1px rgba(52,211,153,.10), 0 14px 40px rgba(52,211,153,.12);
+}
+.btnAi:hover{
+  border-color: rgba(52,211,153,.65);
+  box-shadow: 0 0 0 1px rgba(52,211,153,.18), 0 18px 52px rgba(96,165,250,.18);
+}
+.spark{
+  display:inline-block;
+  margin-right:8px;
+  transform: translateY(1px);
+}
+  .btn:hover{border-color: rgba(96,165,250,.5)}
+  .btnGreen{background: rgba(52,211,153,.14)}
+  .btnGreen:hover{border-color: rgba(52,211,153,.5)}
+  .note{
+    margin-top:16px; padding:12px; border-radius: 14px; border:1px dashed rgba(255,255,255,.16);
+    background: rgba(15,23,42,.35); color: var(--muted); font-size:13px; line-height: 1.55;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <h1>Constrava Plans</h1>
+        <div class="sub">Activate your dashboard. Stripe comes later — demo activation for now.</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <span class="pill">Site: <b>${site_id}</b></span>
+      <span class="pill">Current plan: <b>${plan}</b></span>
+    </div>
+  </div>
+
+  <div class="grid">
+  <!-- LATEST AI REPORT (TOP CARD) -->
+<div class="card span12" id="latestReportTop">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+    <div>
+      <div style="font-weight:950">Latest AI Report</div>
+      <div class="muted">Your most recent AI-generated insights</div>
+    </div>
+
+    <button class="btnGreen" id="aiReportTopBtn">
+      Generate new AI report
+    </button>
+  </div>
+
+  <div class="divider"></div>
+
+  <div id="reportEmpty" class="muted">Loading latest report...</div>
+
+<div id="reportView" style="display:none">
+  <div class="grid" style="margin-top:10px;gap:10px">
+    <div class="card" style="grid-column: span 6; background: rgba(15,23,42,.35); box-shadow:none">
+      <div style="font-weight:950">What happened</div>
+      <div class="muted" id="repWhat" style="margin-top:6px"></div>
+    </div>
+
+    <div class="card" style="grid-column: span 6; background: rgba(15,23,42,.35); box-shadow:none">
+      <div style="font-weight:950">Trend + what it means</div>
+      <div class="muted" id="repTrend" style="margin-top:6px"></div>
+    </div>
+
+    <div class="card" style="grid-column: span 8; background: rgba(15,23,42,.35); box-shadow:none">
+      <div style="font-weight:950">Next steps</div>
+      <ul id="repSteps" style="margin:10px 0 0 18px;line-height:1.7;color:var(--text)"></ul>
+    </div>
+
+    <div class="card" style="grid-column: span 4; background: rgba(15,23,42,.35); box-shadow:none">
+      <div style="font-weight:950">Metric to watch</div>
+      <div class="kpiSmall" id="repMetric" style="margin-top:8px">—</div>
+      <div class="muted" style="margin-top:6px">Track this weekly.</div>
+      <div class="divider"></div>
+      <button class="btnGhost" id="copyFullReport">Copy full report</button>
+    </div>
+  </div>
+
+  <details style="margin-top:10px">
+    <summary class="muted" style="cursor:pointer">Show full report</summary>
+    <pre id="repFull" style="margin-top:10px;max-height:320px;overflow:auto"></pre>
+  </details>
+</div>
+
+</div>
+    <div class="card">
+      <h3 class="name">Starter</h3>
+      <div class="price">$29 <span class="muted">/mo</span></div>
+      <div class="muted">Tracking + charts + insights.</div>
+      <ul>
+        <li>Dashboard charts</li>
+        <li>Top pages + device mix</li>
+        <li>Reports list</li>
+      </ul>
+      <button class="btn" onclick="activate('starter')">Activate Starter</button>
+    </div>
+    <div class="card">
+      <h3 class="name">Full AI</h3>
+      <div class="price">$99 <span class="muted">/mo</span></div>
+      <div class="muted">AI summaries + next steps + action plans.</div>
+      <ul>
+        <li>Everything in Pro</li>
+        <li>Generate AI report</li>
+        <li>Generate AI action plan</li>
+      </ul>
+      <button class="btn btnGreen" onclick="activate('full_ai')">Activate Full AI</button>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>Note:</b> These buttons call a demo activation endpoint. Later, Stripe will call the real webhook after payment.
+  </div>
+
+  <div class="note" id="status">Status: idle</div>
+</div>
+
+<script>
+  const token = new URLSearchParams(location.search).get("token");
+  const statusEl = document.getElementById("status");
+
+  async function activate(plan){
+    try{
+      statusEl.textContent = "Status: activating " + plan + "...";
+      const r = await fetch("/demo/activate-plan", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ token, plan })
+      });
+      const data = await r.json().catch(()=> ({}));
+      if(!data.ok){
+        statusEl.textContent = "Status: " + (data.error || "activation failed");
+        return;
+      }
+      statusEl.textContent = "Status: activated ✅ redirecting...";
+      setTimeout(() => location.href = "/dashboard?token=" + encodeURIComponent(token), 600);
+    }catch(e){
+      statusEl.textContent = "Status: error " + (e && e.message ? e.message : "unknown");
+    }
+  }
+</script>
+</body>
+</html>`);
   })
 );
 
 /* ---------------------------
-   Dashboard UI
+   Dashboard UI (RESTORED)
    GET /dashboard?token=...
 ----------------------------*/
-// Same note as storefront: keeping backend stable. Serve your full dashboard HTML here if desired.
 app.get(
   "/dashboard",
   asyncHandler(async (req, res) => {
@@ -1445,16 +1627,1241 @@ app.get(
     const plan = site.plan || "unpaid";
     if (plan === "unpaid") return res.redirect("/storefront?token=" + encodeURIComponent(token));
 
+    const TOKEN_JS = JSON.stringify(String(token || ""));
+    const PLAN_JS = JSON.stringify(String(plan || ""));
+    const SITEID_JS = JSON.stringify(String(site.site_id || ""));
+
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.send(`<!doctype html><html><body style="font-family:system-ui">
-      <h2>Dashboard temporarily minimized in this fixed backend build.</h2>
-      <p>Backend routes are working. You can paste your full dashboard HTML back in here if you want it served inline.</p>
-      <p><b>Site:</b> ${site.site_id} • <b>Plan:</b> ${plan}</p>
-      <ul>
-        <li><a href="/metrics?token=${encodeURIComponent(token)}&days=7">/metrics</a></li>
-        <li><a href="/reports/latest?token=${encodeURIComponent(token)}">/reports/latest</a></li>
-      </ul>
-    </body></html>`);
+
+    // NOTE: This is your full working dashboard HTML restored.
+    res.send(`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Constrava Dashboard</title>
+<style>
+  :root{
+    --bg:#0b0f19;
+    --panel: rgba(255,255,255,.06);
+    --panel2: rgba(255,255,255,.04);
+    --text:#e5e7eb;
+    --muted:#9ca3af;
+    --border: rgba(255,255,255,.12);
+    --accent:#60a5fa;
+    --accent2:#34d399;
+    --danger:#fb7185;
+    --shadow: 0 14px 40px rgba(0,0,0,.35);
+    --radius: 16px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial;
+    background:
+      radial-gradient(1100px 720px at 20% -10%, rgba(96,165,250,.20), transparent 60%),
+      radial-gradient(900px 620px at 90% 0%, rgba(52,211,153,.14), transparent 55%),
+      var(--bg);
+    color: var(--text);
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 16px 60px}
+  .top{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    padding:16px;
+    border:1px solid var(--border);
+    border-radius: var(--radius);
+    background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
+    box-shadow: var(--shadow);
+  }
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg, rgba(96,165,250,.95), rgba(52,211,153,.88));}
+  h1{margin:0;font-size:18px;font-weight:950}
+  .sub{margin-top:3px;font-size:12px;color:var(--muted)}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+  .pill{
+    display:inline-block;
+    padding:7px 10px;
+    border:1px solid var(--border);
+    border-radius:999px;
+    background: rgba(15,23,42,.55);
+    font-size:12px;
+    color: var(--muted);
+    white-space:nowrap;
+  }
+  .grid{margin-top:14px;display:grid;grid-template-columns:repeat(12,1fr);gap:12px;}
+  .card{
+    border:1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--panel2);
+    box-shadow: var(--shadow);
+    padding:14px;
+    min-width:0;
+  }
+  .kpi{font-size:28px;font-weight:1000;letter-spacing:-0.5px}
+  .kpiSmall{font-size:18px;font-weight:950}
+  .muted{color:var(--muted);font-size:12px;line-height:1.5}
+  button,select,a,input{
+    border-radius:12px;border:1px solid var(--border);
+    background: rgba(15,23,42,.55);
+    color: var(--text);
+    padding:10px 12px;
+    font-weight:900;
+    cursor:pointer;
+    text-decoration:none;
+    outline:none;
+  }
+  button:hover,a:hover,select:hover{border-color: rgba(96,165,250,.55)}
+  .btn{background: rgba(96,165,250,.14)}
+  .btnGreen{background: rgba(52,211,153,.14)}
+  .btnDanger{background: rgba(251,113,133,.10)}
+  .btnGhost{background: rgba(255,255,255,.04)}
+  .divider{height:1px;background: rgba(255,255,255,.10);margin:12px 0;}
+  .span12{grid-column:1 / -1}
+  .span8{grid-column: span 8}
+  .span6{grid-column: span 6}
+  .span5{grid-column: span 5}
+  .span4{grid-column: span 4}
+  .span3{grid-column: span 3}
+  @media (max-width: 980px){
+    .span8,.span6,.span5,.span4,.span3{grid-column:1 / -1}
+  }
+  .chartBox{padding:10px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background: rgba(15,23,42,.35)}
+  svg{display:block;width:100%;height:auto}
+  .list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+  .item{
+    display:flex;justify-content:space-between;gap:10px;align-items:center;
+    padding:10px 10px;border:1px solid rgba(255,255,255,.10);
+    border-radius:14px;background: rgba(15,23,42,.35);
+  }
+  .barWrap{flex:1;min-width:0}
+  .bar{
+    height:10px;border-radius:999px;background: rgba(96,165,250,.20);
+    border:1px solid rgba(255,255,255,.10);
+    overflow:hidden;
+  }
+  .bar > div{height:100%;background: rgba(96,165,250,.70)}
+  .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace}
+  pre{
+    margin:10px 0 0 0;
+    white-space:pre-wrap;
+    background: rgba(15,23,42,.55);
+    border:1px solid rgba(255,255,255,.12);
+    padding:12px;border-radius:14px;
+  }
+  .rightBtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand">
+      <div class="logo"></div>
+      <div>
+        <h1>Constrava Dashboard</h1>
+        <div class="sub">Site: <b id="siteId"></b> • Plan: <b id="plan"></b></div>
+      </div>
+    </div>
+
+    <div class="row">
+     <select id="days">
+  <option value="1">1 day</option>
+  <option value="7" selected>7 days</option>
+  <option value="30">30 days</option>
+  <option value="365">1 year</option>
+</select>
+<button class="btnDanger" id="seedBtn">Seed demo data</button>
+<button class="btnAi" id="aiReportTop">
+  ✨ AI Report
+</button>
+
+<button class="btn" id="refresh">Refresh</button>
+<a class="btnGhost" id="plansLink" href="#">Plans</a>
+<span class="pill" id="status">Status: idle</span>
+</div>
+
+  </div>
+
+  <div class="grid">
+  <div class="card span12" id="aiAssistantCard">
+  <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+    <div>
+      <div style="font-weight:950">AI Assistant</div>
+      <div class="muted">Ask questions about your traffic, conversions, and next steps.</div>
+    </div>
+    <span class="pill">AI tier required</span>
+  </div>
+
+  <div class="divider"></div>
+
+  <div id="aiChat" style="height:220px;overflow:auto;padding:10px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(15,23,42,.35)"></div>
+
+  <div class="row" style="margin-top:10px">
+    <input id="aiInput" placeholder="Ask: What should I fix first?" style="flex:1;min-width:220px" />
+    <button class="btnGreen" id="aiSend">Send</button>
+  </div>
+
+  <div class="row" style="margin-top:10px">
+    <button class="btnGhost" id="qp1">What changed this week?</button>
+    <button class="btnGhost" id="qp2">Where are users dropping off?</button>
+    <button class="btnGhost" id="qp3">Give me 3 next steps</button>
+  </div>
+</div>
+ <!-- LATEST AI REPORT (TOP CARD) -->
+  <div class="card span12" id="latestReportTop">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:950">Latest AI Report</div>
+        <div class="muted">Your most recent AI-generated insights</div>
+      </div>
+
+      <button class="btnGreen" id="aiReportTopBtn">Generate new AI report</button>
+    </div>
+
+    <div class="divider"></div>
+    <pre id="latestAiReport">Loading latest report...</pre>
+
+  </div>
+    <!-- KPIs -->
+    <div class="card span3">
+      <div class="muted">Visits today</div>
+      <div class="kpi" id="kpiToday">—</div>
+      <div class="muted" id="kpiTodaySub"></div>
+    </div>
+    <div class="card span3">
+      <div class="muted">Visits in range</div>
+      <div class="kpi" id="kpiRange">—</div>
+      <div class="muted" id="kpiRangeSub"></div>
+    </div>
+    <div class="card span3">
+      <div class="muted">Lead rate (leads/visits)</div>
+      <div class="kpi" id="kpiLeadRate">—</div>
+      <div class="muted">Goal: increase with better CTA + forms</div>
+    </div>
+    <div class="card span3">
+      <div class="muted">Purchase rate</div>
+      <div class="kpi" id="kpiPurchaseRate">—</div>
+      <div class="muted" id="kpiGoalSub">Leads / Purchases / CTA</div>
+    </div>
+
+    <!-- Trend -->
+    <div class="card span8">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Traffic trend</div>
+          <div class="muted">Visits per day (selected window)</div>
+        </div>
+        <div class="row">
+          <span class="pill">Max/day: <b id="maxDay">—</b></span>
+          <span class="pill">Avg/day: <b id="avgDay">—</b></span>
+        </div>
+      </div>
+
+      <div class="chartBox" style="margin-top:10px">
+        <svg id="trendSvg" viewBox="0 0 900 260" role="img" aria-label="Traffic trend chart"></svg>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="row">
+        <button class="btnGhost" id="simView">Sim page_view</button>
+        <button class="btnGhost" id="simLead">Sim lead</button>
+        <button class="btnGhost" id="simPurchase">Sim purchase</button>
+        <button class="btnGhost" id="simCta">Sim cta_click</button>
+        <button class="btn" id="share">Copy share link</button>
+      </div>
+      <div class="muted" style="margin-top:10px">Seeder requires <span class="mono">ENABLE_DEMO_SEED=true</span>. Sim buttons work any time.</div>
+    </div>
+
+    <!-- Live -->
+    <div class="card span4">
+      <div style="font-weight:950">Live</div>
+      <div class="muted">Polls every few seconds for new page_views</div>
+      <div class="divider"></div>
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <div class="muted">New page_views (since last check)</div>
+          <div class="kpiSmall" id="liveNew">—</div>
+        </div>
+        <div>
+          <div class="muted">Last event</div>
+          <div class="kpiSmall" id="liveLast">—</div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="muted">Details</div>
+      <pre id="liveJson">Loading…</pre>
+      <div class="row" style="margin-top:10px">
+        <button class="btnGhost" id="liveToggle">Pause</button>
+        <button class="btnGhost" id="liveNow">Check now</button>
+      </div>
+    </div>
+
+    <!-- Top Pages -->
+    <div class="card span6">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Top pages</div>
+          <div class="muted">Most viewed pages in range</div>
+        </div>
+        <span class="pill">Showing top 10</span>
+      </div>
+      <div class="list" id="topPages">Loading…</div>
+    </div>
+
+    <!-- Device Mix + Goals -->
+    <div class="card span6">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Device mix & goals</div>
+          <div class="muted">Breakdown + conversions</div>
+        </div>
+        <span class="pill">Visits → Leads → Purchases</span>
+      </div>
+
+      <div class="grid" style="margin-top:10px;gap:10px">
+        <div class="card" style="grid-column: span 6; background: rgba(15,23,42,.35); box-shadow:none">
+          <div class="muted">Device donut</div>
+          <div class="chartBox" style="margin-top:8px">
+            <svg id="deviceSvg" viewBox="0 0 240 160" role="img" aria-label="Device mix chart"></svg>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <span class="pill">Mobile: <b id="mob">—</b></span>
+            <span class="pill">Desktop: <b id="desk">—</b></span>
+          </div>
+        </div>
+
+        <div class="card" style="grid-column: span 6; background: rgba(15,23,42,.35); box-shadow:none">
+          <div class="muted">Goals in range</div>
+          <div class="row" style="margin-top:6px">
+            <span class="pill">Leads: <b id="leads">—</b></span>
+            <span class="pill">Purchases: <b id="purchases">—</b></span>
+            <span class="pill">CTA: <b id="cta">—</b></span>
+          </div>
+          <div class="divider"></div>
+          <div class="muted">Rates</div>
+          <div class="row" style="margin-top:6px">
+            <span class="pill">Lead rate: <b id="leadRate2">—</b></span>
+            <span class="pill">Purchase rate: <b id="purchaseRate2">—</b></span>
+          </div>
+          <div class="divider"></div>
+          <div class="muted">Last event</div>
+          <pre id="lastEvent">Loading…</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reports -->
+    <div class="card span12">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Reports</div>
+          <div class="muted">Latest report + history</div>
+        </div>
+        <div class="rightBtns">
+          <button class="btnGreen" id="aiReportBtn" style="display:none">Generate AI report</button>
+          <button class="btnGreen" id="aiPlanBtn" style="display:none">AI action plan</button>
+          <button class="btnGhost" id="loadReports">Refresh list</button>
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top:10px;gap:12px">
+        <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
+          <div class="muted">Latest</div>
+          <pre id="report">Loading…</pre>
+        </div>
+        <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
+          <div class="muted">History (click to open)</div>
+          <div class="list" id="reportsList">Loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Popup modal -->
+<div id="modalBg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;padding:18px;">
+  <div style="max-width:900px;margin:40px auto;background:rgba(15,23,42,.95);border:1px solid rgba(255,255,255,.16);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.45);overflow:hidden;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.12);">
+      <div style="font-weight:950" id="modalTitle">Done</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button id="modalCopy" class="btnGhost">Copy</button>
+        <button id="modalClose" class="btn">Close</button>
+      </div>
+    </div>
+    <div style="padding:14px;">
+      <div class="muted" id="modalSub" style="margin-bottom:10px;">Report generated.</div>
+      <pre id="modalBody" style="max-height:60vh;overflow:auto;margin:0;"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+  const TOKEN = ${TOKEN_JS};
+  const PLAN = ${PLAN_JS};
+  const SITE_ID = ${SITEID_JS};
+
+  const $ = (id) => document.getElementById(id);
+  /* ===== REPORT PARSER ===== */
+
+function splitLines(text){
+  return String(text||"")
+    .replace(/\\r\\n/g,"\\n")
+    .split("\\n")
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
+function parseReport(text){
+  const lines = splitLines(text);
+  const out = { what:"", trend:"", steps:[], metric:"", full:text||"" };
+  let mode = "";
+
+  for (const raw of lines){
+    const l = raw.replace(/\\*\\*/g,"");
+
+    if (/^1\\)|^what happened/i.test(l)){ mode="what"; continue; }
+    if (/^2\\)|^trend/i.test(l)){ mode="trend"; continue; }
+    if (/^3\\)|^next steps/i.test(l)){ mode="steps"; continue; }
+    if (/^4\\)|^metric/i.test(l)){ mode="metric"; continue; }
+
+    if (mode === "steps"){
+      const cleaned = l.replace(/^[-•]\\s*/,"");
+      if (cleaned) out.steps.push(cleaned);
+    } else if (mode === "what"){
+      out.what += " " + l;
+    } else if (mode === "trend"){
+      out.trend += " " + l;
+    } else if (mode === "metric"){
+      out.metric += " " + l;
+    }
+  }
+
+  return out;
+}
+  const chatEl = $("aiChat");
+const inputEl = $("aiInput");
+const history = [];
+
+function addMsg(role, text){
+  const wrap = document.createElement("div");
+  wrap.style.margin = "8px 0";
+wrap.innerHTML =
+  '<div class="pill" style="display:inline-block;margin-bottom:6px">' + role + '</div>' +
+  '<div style="white-space:pre-wrap;line-height:1.55">' + esc(text) + '</div>';
+  chatEl.appendChild(wrap);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+async function sendToAI(text){
+  if (PLAN !== "full_ai"){
+    addMsg("assistant", "AI Assistant requires the full_ai plan.");
+    return;
+  }
+
+  addMsg("you", text);
+  history.push({ role: "user", content: text });
+
+  addMsg("assistant", "Typing…");
+  const typingNode = chatEl.lastChild;
+
+  const r = await fetch("/api/ai/chat?token=" + encodeURIComponent(TOKEN), {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ message: text, history })
+  });
+
+  const j = await r.json().catch(()=> ({}));
+  if (!j.ok){
+    typingNode.querySelector("div:nth-child(2)").textContent = j.error || "AI error";
+    return;
+  }
+
+  const reply = j.reply || "";
+  typingNode.querySelector("div:nth-child(2)").textContent = reply;
+  history.push({ role: "assistant", content: reply });
+}
+
+$("aiSend").addEventListener("click", () => {
+  const t = inputEl.value.trim();
+  if (!t) return;
+  inputEl.value = "";
+  sendToAI(t);
+});
+inputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") $("aiSend").click();
+});
+
+$("qp1").addEventListener("click", () => sendToAI("What changed this week? Summarize the main trends and why they might be happening."));
+$("qp2").addEventListener("click", () => sendToAI("Where are users likely dropping off? Use the top pages and goals to infer the biggest friction points."));
+$("qp3").addEventListener("click", () => sendToAI("Give me 3 next steps to improve lead rate and one metric to watch."));
+
+  const statusEl = $("status");
+  function openModal(title, sub, body){
+  $("modalTitle").textContent = title || "Done";
+  $("modalSub").textContent = sub || "";
+  $("modalBody").textContent = body || "";
+  $("modalBg").style.display = "block";
+}
+
+function closeModal(){
+  $("modalBg").style.display = "none";
+}
+
+$("modalClose").addEventListener("click", closeModal);
+$("modalBg").addEventListener("click", (e) => { if (e.target === $("modalBg")) closeModal(); });
+$("modalCopy").addEventListener("click", async () => {
+  const text = $("modalBody").textContent || "";
+  try { await navigator.clipboard.writeText(text); setStatus("copied ✅"); }
+  catch { setStatus("copy failed"); }
+});
+
+
+  function setStatus(t){ statusEl.textContent = "Status: " + t; }
+  function pct(n){ return (Math.round((Number(n)||0) * 10000) / 100).toFixed(2) + "%"; }
+  function clamp(n,min,max){ n=Number(n)||0; return Math.max(min, Math.min(max, n)); }
+
+  $("siteId").textContent = SITE_ID;
+  $("plan").textContent = PLAN;
+  $("plansLink").href = "/storefront?token=" + encodeURIComponent(TOKEN);
+
+  // Show AI buttons only if allowed by plan
+  if (PLAN === "full_ai"){
+    $("aiReportBtn").style.display = "inline-block";
+    $("aiPlanBtn").style.display = "inline-block";
+  }
+
+ function esc(s){
+  return String(s || "").replace(/[&<>\"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;"
+  })[c]);
+}
+
+
+  function renderTrend(svgEl, trend){
+    // trend = [{day, visits}]
+    const W = 900, H = 260, p = 18;
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+    // background grid
+    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bg.setAttribute("x","0"); bg.setAttribute("y","0");
+    bg.setAttribute("width", String(W)); bg.setAttribute("height", String(H));
+    bg.setAttribute("rx","14");
+    bg.setAttribute("fill","rgba(15,23,42,.25)");
+    bg.setAttribute("stroke","rgba(255,255,255,.10)");
+    svgEl.appendChild(bg);
+
+    const n = trend.length || 0;
+    if (!n){
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      t.setAttribute("x", String(p));
+      t.setAttribute("y", String(p+22));
+      t.setAttribute("fill","rgba(229,231,235,.75)");
+      t.setAttribute("font-size","14");
+      t.textContent = "No data yet.";
+      svgEl.appendChild(t);
+      return;
+    }
+
+    let maxV = 0, sumV = 0;
+    for (let i=0;i<n;i++){ maxV = Math.max(maxV, trend[i].visits||0); sumV += (trend[i].visits||0); }
+    const avg = n ? (sumV / n) : 0;
+    $("maxDay").textContent = String(maxV);
+    $("avgDay").textContent = String(Math.round(avg*10)/10);
+
+    const innerW = W - p*2;
+    const innerH = H - p*2;
+
+    function x(i){
+      if (n === 1) return p + innerW/2;
+      return p + (i * innerW) / (n - 1);
+    }
+    function y(v){
+      const m = Math.max(1, maxV);
+      const t = clamp(v / m, 0, 1);
+      return p + (1 - t) * innerH;
+    }
+
+    // baseline
+    const base = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    base.setAttribute("d", "M " + p + " " + (H-p) + " L " + (W-p) + " " + (H-p));
+    base.setAttribute("stroke","rgba(255,255,255,.10)");
+    base.setAttribute("fill","none");
+    svgEl.appendChild(base);
+
+    // path
+    let d = "";
+    for (let i=0;i<n;i++){
+      const xi = x(i);
+      const yi = y(trend[i].visits||0);
+      d += (i===0 ? "M " : " L ") + xi + " " + yi;
+    }
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    path.setAttribute("stroke","rgba(96,165,250,.90)");
+    path.setAttribute("stroke-width","3");
+    path.setAttribute("fill","none");
+    path.setAttribute("stroke-linecap","round");
+    path.setAttribute("stroke-linejoin","round");
+    svgEl.appendChild(path);
+
+    // dots + labels (sparse)
+    for (let i=0;i<n;i++){
+      const xi = x(i);
+      const yi = y(trend[i].visits||0);
+
+      const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      c.setAttribute("cx", String(xi));
+      c.setAttribute("cy", String(yi));
+      c.setAttribute("r","3.5");
+      c.setAttribute("fill","rgba(96,165,250,.95)");
+      c.setAttribute("stroke","rgba(255,255,255,.20)");
+      svgEl.appendChild(c);
+
+      // label every ~5 points or ends
+      const show = (i===0 || i===n-1 || (n>=10 && i % Math.ceil(n/6) === 0));
+      if (show){
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("x", String(xi));
+        t.setAttribute("y", String(H - 6));
+        t.setAttribute("fill","rgba(229,231,235,.65)");
+        t.setAttribute("font-size","11");
+        t.setAttribute("text-anchor","middle");
+        const day = String(trend[i].day||"").slice(5); // MM-DD
+        t.textContent = day;
+        svgEl.appendChild(t);
+      }
+    }
+  }
+
+  function renderDevice(svgEl, mobile, desktop){
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+    const W=240, H=160;
+    const cx=80, cy=80;
+    const r=50, w=16;
+    const total = (mobile||0) + (desktop||0);
+    const m = total ? (mobile/total) : 0.5;
+    const start = -Math.PI/2;
+    const mid = start + (Math.PI*2*m);
+
+    function arc(a0,a1,color){
+      const x0 = cx + r*Math.cos(a0), y0 = cy + r*Math.sin(a0);
+      const x1 = cx + r*Math.cos(a1), y1 = cy + r*Math.sin(a1);
+      const large = (a1-a0) > Math.PI ? 1 : 0;
+      const p = document.createElementNS("http://www.w3.org/2000/svg","path");
+      p.setAttribute("d",
+        "M " + x0 + " " + y0 +
+        " A " + r + " " + r + " 0 " + large + " 1 " + x1 + " " + y1
+      );
+      p.setAttribute("stroke", color);
+      p.setAttribute("stroke-width", String(w));
+      p.setAttribute("fill","none");
+      p.setAttribute("stroke-linecap","round");
+      svgEl.appendChild(p);
+    }
+
+    const ring = document.createElementNS("http://www.w3.org/2000/svg","circle");
+    ring.setAttribute("cx", String(cx));
+    ring.setAttribute("cy", String(cy));
+    ring.setAttribute("r", String(r));
+    ring.setAttribute("stroke","rgba(255,255,255,.12)");
+    ring.setAttribute("stroke-width", String(w));
+    ring.setAttribute("fill","none");
+    svgEl.appendChild(ring);
+
+    arc(start, mid, "rgba(52,211,153,.90)");      // mobile
+    arc(mid, start + Math.PI*2, "rgba(96,165,250,.90)"); // desktop
+
+    const label = document.createElementNS("http://www.w3.org/2000/svg","text");
+    label.setAttribute("x", String(cx));
+    label.setAttribute("y", String(cy+6));
+    label.setAttribute("text-anchor","middle");
+    label.setAttribute("fill","rgba(229,231,235,.90)");
+    label.setAttribute("font-size","14");
+    label.textContent = total ? (Math.round(m*100) + "% mobile") : "No data";
+    svgEl.appendChild(label);
+
+    // legend
+    const t1 = document.createElementNS("http://www.w3.org/2000/svg","text");
+    t1.setAttribute("x","150"); t1.setAttribute("y","72");
+    t1.setAttribute("fill","rgba(229,231,235,.75)"); t1.setAttribute("font-size","12");
+    t1.textContent = "Mobile";
+    svgEl.appendChild(t1);
+
+    const s1 = document.createElementNS("http://www.w3.org/2000/svg","rect");
+    s1.setAttribute("x","132"); s1.setAttribute("y","62"); s1.setAttribute("width","12"); s1.setAttribute("height","12");
+    s1.setAttribute("rx","3"); s1.setAttribute("fill","rgba(52,211,153,.90)");
+    svgEl.appendChild(s1);
+
+    const t2 = document.createElementNS("http://www.w3.org/2000/svg","text");
+    t2.setAttribute("x","150"); t2.setAttribute("y","102");
+    t2.setAttribute("fill","rgba(229,231,235,.75)"); t2.setAttribute("font-size","12");
+    t2.textContent = "Desktop";
+    svgEl.appendChild(t2);
+
+    const s2 = document.createElementNS("http://www.w3.org/2000/svg","rect");
+    s2.setAttribute("x","132"); s2.setAttribute("y","92"); s2.setAttribute("width","12"); s2.setAttribute("height","12");
+    s2.setAttribute("rx","3"); s2.setAttribute("fill","rgba(96,165,250,.90)");
+    svgEl.appendChild(s2);
+  }
+
+  function renderTopPages(container, rows){
+    container.innerHTML = "";
+    if (!rows || !rows.length){
+      container.textContent = "No page data yet.";
+      return;
+    }
+    // rows from API: top_pages_range [{page_type, views, share}]
+    for (let i=0;i<rows.length;i++){
+      const r = rows[i];
+      const page = r.page_type || "/";
+      const views = r.views || 0;
+      const share = r.share || 0;
+
+      const item = document.createElement("div");
+      item.className = "item";
+
+      const left = document.createElement("div");
+      left.style.minWidth = "160px";
+      left.style.maxWidth = "50%";
+      left.style.overflow = "hidden";
+      left.style.textOverflow = "ellipsis";
+      left.style.whiteSpace = "nowrap";
+      left.innerHTML = "<b>" + esc(page) + "</b><div class='muted'>" + views + " views • " + share + "%</div>";
+
+      const barWrap = document.createElement("div");
+      barWrap.className = "barWrap";
+
+      const bar = document.createElement("div");
+      bar.className = "bar";
+
+      const fill = document.createElement("div");
+      fill.style.width = clamp(share, 0, 100) + "%";
+
+      bar.appendChild(fill);
+      barWrap.appendChild(bar);
+
+      item.appendChild(left);
+      item.appendChild(barWrap);
+      container.appendChild(item);
+    }
+  }
+
+  async function refresh(){
+    try{
+      const days = $("days").value;
+      setStatus("loading metrics…");
+
+      const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
+      const j = await r.json().catch(()=> ({}));
+      if(!j.ok){ setStatus(j.error || "error"); return; }
+
+      $("kpiToday").textContent = j.visits_today;
+      $("kpiTodaySub").textContent = j.last_event ? ("Last event: " + (j.last_event.event_name || "—")) : "";
+      $("kpiRange").textContent = j.visits_range;
+      $("kpiRangeSub").textContent = "Window: " + j.days + " day(s)";
+      $("kpiLeadRate").textContent = pct(j.conversion_rate || 0);
+      $("kpiPurchaseRate").textContent = pct(j.purchase_rate || 0);
+
+      $("leads").textContent = j.leads || 0;
+      $("purchases").textContent = j.purchases || 0;
+      $("cta").textContent = j.cta_clicks || 0;
+      $("leadRate2").textContent = pct(j.conversion_rate || 0);
+      $("purchaseRate2").textContent = pct(j.purchase_rate || 0);
+
+      const mob = (j.device_mix && j.device_mix.mobile) ? j.device_mix.mobile : 0;
+      const desk = (j.device_mix && j.device_mix.desktop) ? j.device_mix.desktop : 0;
+      $("mob").textContent = mob;
+      $("desk").textContent = desk;
+
+      $("lastEvent").textContent = j.last_event ? JSON.stringify(j.last_event, null, 2) : "No events yet.";
+
+      renderTrend($("trendSvg"), j.trend || []);
+      renderDevice($("deviceSvg"), mob, desk);
+      renderTopPages($("topPages"), j.top_pages_range || []);
+
+      await loadLatestReport();
+      await loadReportsList();
+
+      setStatus("ready");
+    }catch(e){
+      setStatus("error: " + (e && e.message ? e.message : "unknown"));
+    }
+  }
+
+async function loadLatestReport(){
+  const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
+  const jj = await rr.json().catch(()=> ({}));
+
+  const text = (jj.ok && jj.report && jj.report.report_text) ? jj.report.report_text : "";
+
+  // Update the top card pre
+  if ($("latestAiReport")) $("latestAiReport").textContent = text || "No report yet.";
+
+  // Update the "Latest" report area
+  if ($("report")) $("report").textContent = text || "No report yet.";
+
+  if (!text){
+    if ($("reportEmpty")) $("reportEmpty").textContent = "No report yet.";
+    return;
+  }
+
+  const parsed = parseReport(text);
+
+  if ($("repWhat")) $("repWhat").textContent = parsed.what || "";
+  if ($("repTrend")) $("repTrend").textContent = parsed.trend || "";
+
+  const stepsEl = $("repSteps");
+  if (stepsEl){
+    stepsEl.innerHTML = "";
+    (parsed.steps || []).forEach(s => {
+      const li = document.createElement("li");
+      li.textContent = s;
+      stepsEl.appendChild(li);
+    });
+  }
+
+  if ($("repMetric")) $("repMetric").textContent = parsed.metric || "—";
+  if ($("repFull")) $("repFull").textContent = text;
+}
+
+  async function loadReportsList(){
+    const r = await fetch("/reports?token=" + encodeURIComponent(TOKEN) + "&limit=30");
+    const j = await r.json().catch(()=> ({}));
+    const list = $("reportsList");
+    list.innerHTML = "";
+
+    if(!j.ok){
+      list.textContent = j.error || "Failed to load reports";
+      return;
+    }
+    if(!j.reports || !j.reports.length){
+      list.textContent = "No reports yet.";
+      return;
+    }
+
+    for (let i=0;i<j.reports.length;i++){
+      const rep = j.reports[i];
+      const item = document.createElement("div");
+      item.className = "item";
+      item.style.cursor = "pointer";
+
+      const left = document.createElement("div");
+      left.innerHTML = "<b>" + esc(rep.report_date) + "</b><div class='muted'>" + esc(rep.preview || "") + "</div>";
+
+      const right = document.createElement("div");
+      right.className = "pill";
+      right.textContent = "Open";
+
+      item.appendChild(left);
+      item.appendChild(right);
+
+      item.addEventListener("click", async () => {
+        $("report").textContent = "Tip: add a report-by-date endpoint to open older reports precisely.";
+      });
+
+      list.appendChild(item);
+    }
+  }
+
+  async function fire(eventName){
+    setStatus("sending " + eventName + "…");
+    const r = await fetch("/demo/fire-event", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ token: TOKEN, event_name: eventName, page_type: location.pathname, device: "desktop" })
+    });
+    const d = await r.json().catch(()=> ({}));
+    if(!d.ok){ setStatus(d.error || "error"); return; }
+    setStatus("sent ✅ refreshing…");
+    setTimeout(refresh, 350);
+  }
+
+  async function seed(){
+    setStatus("seeding…");
+    const r = await fetch("/demo/seed?token=" + encodeURIComponent(TOKEN), { method:"POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ days: 14, events_per_day: 60 })});
+    const j = await r.json().catch(()=> ({}));
+    if(!j.ok){ setStatus(j.error || "seed failed"); return; }
+    setStatus("seeded ✅ refreshing…");
+    setTimeout(refresh, 450);
+  }
+
+  async function share(){
+    setStatus("creating share link…");
+    const r = await fetch("/demo/link", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ token: TOKEN })
+    });
+    const d = await r.json().catch(()=> ({}));
+    if(!d.ok){ setStatus(d.error || "error"); return; }
+    try{ await navigator.clipboard.writeText(d.url); setStatus("copied ✅"); }
+    catch{ setStatus("share link: " + d.url); }
+  }
+
+async function aiReport(){
+  setStatus("generating AI report…");
+
+  const r = await fetch("/generate-report?token=" + encodeURIComponent(TOKEN), {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ token: TOKEN })
+  });
+
+  const j = await r.json().catch(()=> ({}));
+  if(!j.ok){ setStatus(j.error || "AI report failed"); return; }
+
+  const text = (j.report && j.report.report_text) ? j.report.report_text : "";
+
+  openModal(
+    "AI report complete ✅",
+    "Saved to reports. You can copy it below.",
+    text
+  );
+
+  setStatus("AI report saved ✅");
+  await loadLatestReport();
+  await loadReportsList();
+}
+
+async function aiPlan(){
+  setStatus("generating AI action plan…");
+
+  const r = await fetch("/generate-action-plan?token=" + encodeURIComponent(TOKEN), {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ token: TOKEN })
+  });
+
+  const j = await r.json().catch(()=> ({}));
+  if(!j.ok){ setStatus(j.error || "AI action plan failed"); return; }
+
+  const text = (j.report && j.report.report_text) ? j.report.report_text : "";
+
+  openModal(
+    "AI action plan ✅",
+    "Saved to reports. You can copy it below.",
+    text
+  );
+
+  setStatus("action plan saved ✅");
+  await loadLatestReport();
+  await loadReportsList();
+}
+
+
+  // Live polling
+  let liveSince = new Date().toISOString();
+  let liveOn = true;
+  let liveTimer = null;
+
+  async function liveCheck(){
+    try{
+      const url = "/live?token=" + encodeURIComponent(TOKEN) + "&since=" + encodeURIComponent(liveSince);
+      const r = await fetch(url);
+      const j = await r.json().catch(()=> ({}));
+      if(!j.ok){ return; }
+      $("liveNew").textContent = String(j.new_page_views || 0);
+      $("liveLast").textContent = j.last_event ? (j.last_event.event_name || "—") : "—";
+      $("liveJson").textContent = JSON.stringify(j, null, 2);
+      liveSince = j.now || new Date().toISOString();
+    }catch(e){}
+  }
+
+  function startLive(){
+    if (liveTimer) clearInterval(liveTimer);
+    liveTimer = setInterval(() => { if(liveOn) liveCheck(); }, 3500);
+  }
+
+  $("refresh").addEventListener("click", refresh);
+  $("days").addEventListener("change", refresh);
+  $("aiReportTop").addEventListener("click", aiReport);
+if ($("aiReportTopBtn")){
+  $("aiReportTopBtn").addEventListener("click", aiReport);
+}
+
+
+  $("simView").addEventListener("click", () => fire("page_view"));
+  $("simLead").addEventListener("click", () => fire("lead"));
+  $("simPurchase").addEventListener("click", () => fire("purchase"));
+  $("simCta").addEventListener("click", () => fire("cta_click"));
+
+  $("share").addEventListener("click", share);
+  if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
+
+
+  $("loadReports").addEventListener("click", loadReportsList);
+  $("aiReportBtn").addEventListener("click", aiReport);
+  if ($("aiPlanBtn")) $("aiPlanBtn").addEventListener("click", aiPlan);
+
+  $("liveToggle").addEventListener("click", () => {
+    liveOn = !liveOn;
+    $("liveToggle").textContent = liveOn ? "Pause" : "Resume";
+    if (liveOn) liveCheck();
+  });
+  $("liveNow").addEventListener("click", liveCheck);
+
+  startLive();
+  liveCheck();
+  refresh();
+</script>
+</body>
+</html>`);
+  })
+);
+
+/* ---------------------------
+   PUBLIC Store page (no token)
+   GET /store
+----------------------------*/
+app.get(
+  "/store",
+  asyncHandler(async (req, res) => {
+    setNoStore(res);
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+
+    const base = publicBaseUrl(req);
+    const BASE_JS = JSON.stringify(base);
+
+    res.send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Constrava — Store</title>
+  <style>
+    :root{
+      --bg:#0b0f19;
+      --panel: rgba(255,255,255,.06);
+      --text:#e5e7eb;
+      --muted:#9ca3af;
+      --border:rgba(255,255,255,.12);
+      --accent:#60a5fa;
+      --accent2:#34d399;
+      --danger:#fb7185;
+      --shadow: 0 14px 40px rgba(0,0,0,.35);
+      --radius:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background:
+        radial-gradient(1100px 720px at 20% -10%, rgba(96,165,250,.25), transparent 60%),
+        radial-gradient(900px 620px at 90% 0%, rgba(52,211,153,.18), transparent 55%),
+        var(--bg);
+      color:var(--text);
+    }
+    .wrap{max-width:1100px;margin:0 auto;padding:28px 18px 70px;}
+    .top{
+      display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+      padding:18px 18px;
+      border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .brand{display:flex;align-items:center;gap:12px;}
+    .logo{
+      width:44px;height:44px;border-radius:14px;
+      background: linear-gradient(135deg, rgba(96,165,250,.95), rgba(52,211,153,.88));
+    }
+    h1{margin:0;font-size:18px;}
+    .sub{margin-top:3px;font-size:12px;color:var(--muted);}
+    .pill{
+      font-size:12px;color:var(--muted);
+      border:1px solid var(--border);
+      padding:7px 10px;border-radius:999px;
+      background: rgba(15,23,42,.55);
+      white-space:nowrap;
+    }
+    .grid{margin-top:16px;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
+    .span8{grid-column: span 8;}
+    .span4{grid-column: span 4;}
+    @media (max-width: 980px){ .span8,.span4{grid-column: 1 / -1;} }
+    .card{
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      padding:16px;
+    }
+    label{display:block;font-size:12px;color:var(--muted);font-weight:900;margin:10px 0 6px;}
+    input{
+      width:100%;
+      border-radius:14px;
+      border:1px solid var(--border);
+      background: rgba(15,23,42,.60);
+      color: var(--text);
+      padding:12px 12px;
+      outline:none;
+      font-weight:800;
+    }
+    .row{display:flex;gap:12px;flex-wrap:wrap;}
+    .row > div{flex:1; min-width: 240px;}
+    .btn{
+      width:100%;
+      margin-top:14px;
+      padding:12px 14px;
+      border-radius: 14px;
+      border:1px solid var(--border);
+      background: rgba(96,165,250,.16);
+      color: var(--text);
+      font-weight:1000;
+      cursor:pointer;
+    }
+    .muted{color:var(--muted);font-size:12px;line-height:1.55;}
+    .out{
+      margin-top:12px;
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(15,23,42,.55);
+      padding:14px;
+      display:none;
+    }
+    pre{
+      margin:10px 0 0 0;
+      white-space:pre-wrap;
+      word-break:break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+      font-size:12px;
+    }
+    .ok{color: var(--accent2); font-weight:1000}
+    .err{color: var(--danger); font-weight:1000}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <h1>Constrava</h1>
+          <div class="sub">Tracking + plain-English insights for small business sites</div>
+        </div>
+      </div>
+      <div class="pill">Backend: <b>${base}</b></div>
+    </div>
+
+    <div class="grid">
+      <div class="card span8">
+        <h2 style="margin:0;font-size:16px;font-weight:1000;">Create a site</h2>
+        <div class="muted" style="margin-top:6px;">
+          Choose your own <b>site_id</b> (your “username”). Optionally set your own token, or leave it blank to auto-generate.
+        </div>
+
+        <form id="createForm">
+          <div class="row">
+            <div>
+              <label for="site_id">site_id (username)</label>
+              <input id="site_id" name="site_id" placeholder="example: my-business" required />
+              <div class="muted">Lowercase letters, numbers, hyphens. 4–24 chars.</div>
+            </div>
+            <div>
+              <label for="site_name">site_name</label>
+              <input id="site_name" name="site_name" placeholder="My Business" required />
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label for="owner_email">owner_email</label>
+              <input id="owner_email" name="owner_email" placeholder="you@domain.com" required />
+            </div>
+            <div>
+              <label for="custom_token">custom token (optional)</label>
+              <input id="custom_token" name="custom_token" placeholder="Leave blank to auto-generate" />
+              <div class="muted">If you set one, it must be strong (20+ chars, mixed types).</div>
+            </div>
+          </div>
+
+          <button class="btn" type="submit">Create site →</button>
+
+          <div id="msg" class="muted" style="margin-top:10px;"></div>
+
+          <div id="out" class="out">
+            <div id="outStatus" class="ok">Created ✅</div>
+            <div class="muted" style="margin-top:6px;">Save these:</div>
+            <pre id="outPre"></pre>
+          </div>
+        </form>
+      </div>
+
+      <div class="card span4">
+        <h2 style="margin:0;font-size:16px;font-weight:1000;">Next steps</h2>
+        <div class="muted" style="margin-top:10px;line-height:1.6;">
+          1) Copy the <b>tracking snippet</b> into your website.<br/>
+          2) Visit the <b>dashboard link</b>.<br/>
+          3) If your plan is <b>unpaid</b>, you’ll be redirected to activate.
+        </div>
+        <div class="muted" style="margin-top:12px;">
+          Demo data: <span class="pill">POST /demo/seed?token=YOUR_TOKEN</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  const base = ${BASE_JS};
+  const form = document.getElementById("createForm");
+  const msg = document.getElementById("msg");
+  const out = document.getElementById("out");
+  const outPre = document.getElementById("outPre");
+  const outStatus = document.getElementById("outStatus");
+
+  function setMsg(text, isErr){
+    msg.innerHTML = isErr ? "<span class='err'>" + text + "</span>" : "<span class='ok'>" + text + "</span>";
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    out.style.display = "none";
+    setMsg("Creating site...", false);
+
+    const payload = {
+      site_id: document.getElementById("site_id").value,
+      site_name: document.getElementById("site_name").value,
+      owner_email: document.getElementById("owner_email").value,
+      custom_token: document.getElementById("custom_token").value || undefined
+    };
+
+    try{
+      const r = await fetch(base + "/sites", {
+        method: "POST",
+        headers: { "Content-Type":"application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await r.json().catch(() => ({}));
+      if(!r.ok || !data.ok){
+        setMsg(data.error || ("Create failed (" + r.status + ")"), true);
+        return;
+      }
+
+      setMsg("Created ✅ Scroll down for your links.", false);
+
+      const dashboard = data.client_dashboard_url || (base + "/dashboard?token=" + encodeURIComponent(data.access_token));
+      const storefront = base + "/storefront?token=" + encodeURIComponent(data.access_token);
+
+      outStatus.textContent = "Created ✅ Save this info:";
+      outPre.textContent =
+        "site_id: " + data.site_id + "\\n" +
+        "access_token: " + data.access_token + "\\n" +
+        "dashboard_url: " + dashboard + "\\n" +
+        "activation_storefront_url: " + storefront + "\\n\\n" +
+        "install_snippet:\\n" + data.install_snippet;
+
+      out.style.display = "block";
+    }catch(err){
+      setMsg("Network error: " + (err && err.message ? err.message : "unknown"), true);
+    }
+  });
+</script>
+</body>
+</html>`);
   })
 );
 
@@ -1566,3 +2973,5 @@ app.use((err, req, res, next) => {
     process.exit(1);
   }
 })();
+
+               
