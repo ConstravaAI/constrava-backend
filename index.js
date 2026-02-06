@@ -2368,35 +2368,6 @@ async function loadLatestReport(){
   if ($("repFull")) $("repFull").textContent = text;
 }
 
-
-  const parsed = parseReport(text);
-
-  if ($("repWhat")) $("repWhat").textContent = parsed.what;
-  if ($("repTrend")) $("repTrend").textContent = parsed.trend;
-
-  const stepsEl = $("repSteps");
-  if (stepsEl){
-    stepsEl.innerHTML = "";
-    parsed.steps.forEach(s => {
-      const li = document.createElement("li");
-      li.textContent = s;
-      stepsEl.appendChild(li);
-    });
-  }
-
-  if ($("repMetric")) $("repMetric").textContent = parsed.metric;
-  if ($("repFull")) $("repFull").textContent = text;
-}
-
-
-  if ($("repMetric")) $("repMetric").textContent = parsed.metric;
-  if ($("repFull")) $("repFull").textContent = text;
-
-  if ($("report")) $("report").textContent = text;
-}
-
-
-
   async function loadReportsList(){
     const r = await fetch("/reports?token=" + encodeURIComponent(TOKEN) + "&limit=30");
     const j = await r.json().catch(()=> ({}));
@@ -2519,33 +2490,6 @@ async function aiPlan(){
   );
 
   setStatus("action plan saved ✅");
-  await loadLatestReport();
-  await loadReportsList();
-}
-
-
-  const j = await r.json().catch(()=> ({}));
-  if(!j.ok){ setStatus(j.error || "AI action plan failed"); return; }
-
-  const text = (j.report && j.report.report_text) ? j.report.report_text : "";
-  openModal(
-    "AI action plan ✅",
-    "Saved to reports. You can copy it below.",
-    text
-  );
-
-  setStatus("action plan saved ✅");
-  await loadLatestReport();
-  await loadReportsList();
-}
-
-
-  setStatus("action plan saved ✅");
-  await loadLatestReport();
-  await loadReportsList();
-}
-
-  setStatus("AI report saved ✅");
   await loadLatestReport();
   await loadReportsList();
 }
