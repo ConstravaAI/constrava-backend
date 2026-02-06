@@ -1403,16 +1403,6 @@ app.get(
   border-color: rgba(52,211,153,.35);
   box-shadow: 0 0 0 1px rgba(52,211,153,.10), 0 14px 40px rgba(52,211,153,.12);
 }
-.btnAi{
-  background: linear-gradient(135deg, rgba(52,211,153,.22), rgba(96,165,250,.22));
-  border-color: rgba(52,211,153,.35);
-  box-shadow: 0 0 0 1px rgba(52,211,153,.10), 0 14px 40px rgba(52,211,153,.12);
-}
-.btnAi:hover{
-  border-color: rgba(52,211,153,.65);
-  box-shadow: 0 0 0 1px rgba(52,211,153,.18), 0 18px 52px rgba(96,165,250,.18);
-}
-
 .btnAi:hover{
   border-color: rgba(52,211,153,.65);
   box-shadow: 0 0 0 1px rgba(52,211,153,.18), 0 18px 52px rgba(96,165,250,.18);
@@ -2346,18 +2336,38 @@ async function loadLatestReport(){
   const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
   const jj = await rr.json().catch(()=> ({}));
 
-  const text = jj.ok ? (jj.report.report_text || "") : "";
+  const text = (jj.ok && jj.report && jj.report.report_text) ? jj.report.report_text : "";
 
-  // ✅ Update the top card pre
+  // Update the top card pre
   if ($("latestAiReport")) $("latestAiReport").textContent = text || "No report yet.";
 
-  // Keep your other area updated too
+  // Update the "Latest" report area
   if ($("report")) $("report").textContent = text || "No report yet.";
 
   if (!text){
     if ($("reportEmpty")) $("reportEmpty").textContent = "No report yet.";
     return;
   }
+
+  const parsed = parseReport(text);
+
+  if ($("repWhat")) $("repWhat").textContent = parsed.what || "";
+  if ($("repTrend")) $("repTrend").textContent = parsed.trend || "";
+
+  const stepsEl = $("repSteps");
+  if (stepsEl){
+    stepsEl.innerHTML = "";
+    (parsed.steps || []).forEach(s => {
+      const li = document.createElement("li");
+      li.textContent = s;
+      stepsEl.appendChild(li);
+    });
+  }
+
+  if ($("repMetric")) $("repMetric").textContent = parsed.metric || "—";
+  if ($("repFull")) $("repFull").textContent = text;
+}
+
 
   const parsed = parseReport(text);
 
@@ -2465,15 +2475,18 @@ async function loadLatestReport(){
 
 async function aiReport(){
   setStatus("generating AI report…");
+
   const r = await fetch("/generate-report?token=" + encodeURIComponent(TOKEN), {
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body: JSON.stringify({ token: TOKEN })
   });
+
   const j = await r.json().catch(()=> ({}));
   if(!j.ok){ setStatus(j.error || "AI report failed"); return; }
 
   const text = (j.report && j.report.report_text) ? j.report.report_text : "";
+
   openModal(
     "AI report complete ✅",
     "Saved to reports. You can copy it below.",
@@ -2487,11 +2500,29 @@ async function aiReport(){
 
 async function aiPlan(){
   setStatus("generating AI action plan…");
+
   const r = await fetch("/generate-action-plan?token=" + encodeURIComponent(TOKEN), {
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body: JSON.stringify({ token: TOKEN })
   });
+
+  const j = await r.json().catch(()=> ({}));
+  if(!j.ok){ setStatus(j.error || "AI action plan failed"); return; }
+
+  const text = (j.report && j.report.report_text) ? j.report.report_text : "";
+
+  openModal(
+    "AI action plan ✅",
+    "Saved to reports. You can copy it below.",
+    text
+  );
+
+  setStatus("action plan saved ✅");
+  await loadLatestReport();
+  await loadReportsList();
+}
+
 
   const j = await r.json().catch(()=> ({}));
   if(!j.ok){ setStatus(j.error || "AI action plan failed"); return; }
