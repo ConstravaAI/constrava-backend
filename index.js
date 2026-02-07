@@ -163,6 +163,611 @@ function verifyPassword(password, saltHex, hashHex) {
   const test = crypto.scryptSync(String(password), salt, 64);
   return crypto.timingSafeEqual(hash, test);
 }
+app.get("/dashboard.js", asyncHandler(async (req, res) => {
+  setNoStore(res);
+
+  const token = String(req.query.token || "");
+  const site = await getSiteByToken(token);
+  if (!site) {
+    res.setHeader("Content-Type", "application/javascript");
+    return res.send(`console.error("Unauthorized dashboard.js (missing/invalid token)");`);
+  }
+
+  const plan = site.plan || "unpaid";
+  const siteId = site.site_id;
+
+  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+
+  // IMPORTANT: embed values safely using JSON.stringify
+  res.send(`
+const TOKEN = ${JSON.stringify(token)};
+const PLAN = ${JSON.stringify(plan)};
+const SITE_ID = ${JSON.stringify(siteId)};
+
+const $ = (id) => document.getElementById(id);
+
+function esc(s){
+  return String(s || "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[c]);
+}
+
+function setStatus(t){
+  const el = $("status");
+  if (el) el.textContent = "Status: " + t;
+}
+
+// dashboard.js (plain JS) — Constrava Dashboard client
+// Loads metrics + reports, wires all buttons, and supports AI + seeding.
+// IMPORTANT: your /dashboard HTML must include:
+//   <script src="/dashboard.js?token=YOUR_TOKEN"></script>
+
+(function () {
+  "use strict";
+
+  const qs = new URLSearchParams(location.search);
+  const TOKEN = qs.get("token") || "";
+
+  // If you inject these in HTML you can override, but token in URL is simplest.
+  // const PLAN = window.__PLAN__ || "starter";
+  // const SITE_ID = window.__SITE_ID__ || "";
+
+  const $ = (id) => document.getElementById(id);
+
+  function esc(s) {
+    return String(s || "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[c]));
+  }
+
+  function setStatus(t) {
+    const el = $("status");
+    if (el) el.textContent = "Status: " + t;
+  }
+
+  function setNoTokenUI() {
+    setStatus("missing token");
+    const pre = $("latestAiReport") || $("report");
+    if (pre) pre.textContent = "Missing ?token=... in URL.";
+  }
+
+  function pct(n) {
+    return (Math.round((Number(n) || 0) * 10000) / 100).toFixed(2) + "%";
+  }
+
+  function clamp(n, min, max) {
+    n = Number(n) || 0;
+    return Math.max(min, Math.min(max, n));
+  }
+
+  /* ===== REPORT PARSER (for the fancy top card, if present) ===== */
+  function splitLines(text) {
+    return String(text || "")
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  function parseReport(text) {
+    const lines = splitLines(text);
+    const out = { what: "", trend: "", steps: [], metric: "", full: text || "" };
+    let mode = "";
+
+    for (const raw of lines) {
+      const l = raw.replace(/\*\*/g, "");
+
+      if (/^1\)|^what happened/i.test(l)) { mode = "what"; continue; }
+      if (/^2\)|^trend/i.test(l)) { mode = "trend"; continue; }
+      if (/^3\)|^next steps/i.test(l)) { mode = "steps"; continue; }
+      if (/^4\)|^metric/i.test(l)) { mode = "metric"; continue; }
+
+      if (mode === "steps") {
+        const cleaned = l.replace(/^[-•]\s*/, "");
+        if (cleaned) out.steps.push(cleaned);
+      } else if (mode === "what") {
+        out.what += (out.what ? " " : "") + l;
+      } else if (mode === "trend") {
+        out.trend += (out.trend ? " " : "") + l;
+      } else if (mode === "metric") {
+        out.metric += (out.metric ? " " : "") + l;
+      }
+    }
+    return out;
+  }
+
+  /* ===== Charts ===== */
+  function renderTrend(svgEl, trend) {
+    const W = 900, H = 260, p = 18;
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bg.setAttribute("x", "0");
+    bg.setAttribute("y", "0");
+    bg.setAttribute("width", String(W));
+    bg.setAttribute("height", String(H));
+    bg.setAttribute("rx", "14");
+    bg.setAttribute("fill", "rgba(15,23,42,.25)");
+    bg.setAttribute("stroke", "rgba(255,255,255,.10)");
+    svgEl.appendChild(bg);
+
+    const n = (trend && trend.length) ? trend.length : 0;
+    if (!n) {
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      t.setAttribute("x", String(p));
+      t.setAttribute("y", String(p + 22));
+      t.setAttribute("fill", "rgba(229,231,235,.75)");
+      t.setAttribute("font-size", "14");
+      t.textContent = "No data yet.";
+      svgEl.appendChild(t);
+      return;
+    }
+
+    let maxV = 0, sumV = 0;
+    for (let i = 0; i < n; i++) {
+      maxV = Math.max(maxV, trend[i].visits || 0);
+      sumV += (trend[i].visits || 0);
+    }
+    const avg = n ? (sumV / n) : 0;
+    if ($("maxDay")) $("maxDay").textContent = String(maxV);
+    if ($("avgDay")) $("avgDay").textContent = String(Math.round(avg * 10) / 10);
+
+    const innerW = W - p * 2;
+    const innerH = H - p * 2;
+
+    function x(i) {
+      if (n === 1) return p + innerW / 2;
+      return p + (i * innerW) / (n - 1);
+    }
+    function y(v) {
+      const m = Math.max(1, maxV);
+      const t = clamp(v / m, 0, 1);
+      return p + (1 - t) * innerH;
+    }
+
+    const base = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    base.setAttribute("d", "M " + p + " " + (H - p) + " L " + (W - p) + " " + (H - p));
+    base.setAttribute("stroke", "rgba(255,255,255,.10)");
+    base.setAttribute("fill", "none");
+    svgEl.appendChild(base);
+
+    let d = "";
+    for (let i = 0; i < n; i++) {
+      const xi = x(i);
+      const yi = y(trend[i].visits || 0);
+      d += (i === 0 ? "M " : " L ") + xi + " " + yi;
+    }
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    path.setAttribute("stroke", "rgba(96,165,250,.90)");
+    path.setAttribute("stroke-width", "3");
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    svgEl.appendChild(path);
+
+    for (let i = 0; i < n; i++) {
+      const xi = x(i);
+      const yi = y(trend[i].visits || 0);
+
+      const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      c.setAttribute("cx", String(xi));
+      c.setAttribute("cy", String(yi));
+      c.setAttribute("r", "3.5");
+      c.setAttribute("fill", "rgba(96,165,250,.95)");
+      c.setAttribute("stroke", "rgba(255,255,255,.20)");
+      svgEl.appendChild(c);
+
+      const show = (i === 0 || i === n - 1 || (n >= 10 && i % Math.ceil(n / 6) === 0));
+      if (show) {
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("x", String(xi));
+        t.setAttribute("y", String(H - 6));
+        t.setAttribute("fill", "rgba(229,231,235,.65)");
+        t.setAttribute("font-size", "11");
+        t.setAttribute("text-anchor", "middle");
+        const day = String(trend[i].day || "").slice(5);
+        t.textContent = day;
+        svgEl.appendChild(t);
+      }
+    }
+  }
+
+  function renderDevice(svgEl, mobile, desktop) {
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+    const W = 240, H = 160;
+    const cx = 80, cy = 80;
+    const r = 50, w = 16;
+    const total = (mobile || 0) + (desktop || 0);
+    const m = total ? (mobile / total) : 0.5;
+    const start = -Math.PI / 2;
+    const mid = start + (Math.PI * 2 * m);
+
+    function arc(a0, a1, color) {
+      const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+      const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+      const large = (a1 - a0) > Math.PI ? 1 : 0;
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      p.setAttribute("d",
+        "M " + x0 + " " + y0 +
+        " A " + r + " " + r + " 0 " + large + " 1 " + x1 + " " + y1
+      );
+      p.setAttribute("stroke", color);
+      p.setAttribute("stroke-width", String(w));
+      p.setAttribute("fill", "none");
+      p.setAttribute("stroke-linecap", "round");
+      svgEl.appendChild(p);
+    }
+
+    const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    ring.setAttribute("cx", String(cx));
+    ring.setAttribute("cy", String(cy));
+    ring.setAttribute("r", String(r));
+    ring.setAttribute("stroke", "rgba(255,255,255,.12)");
+    ring.setAttribute("stroke-width", String(w));
+    ring.setAttribute("fill", "none");
+    svgEl.appendChild(ring);
+
+    arc(start, mid, "rgba(52,211,153,.90)");
+    arc(mid, start + Math.PI * 2, "rgba(96,165,250,.90)");
+
+    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    label.setAttribute("x", String(cx));
+    label.setAttribute("y", String(cy + 6));
+    label.setAttribute("text-anchor", "middle");
+    label.setAttribute("fill", "rgba(229,231,235,.90)");
+    label.setAttribute("font-size", "14");
+    label.textContent = total ? (Math.round(m * 100) + "% mobile") : "No data";
+    svgEl.appendChild(label);
+  }
+
+  function renderTopPages(container, rows) {
+    container.innerHTML = "";
+    if (!rows || !rows.length) {
+      container.textContent = "No page data yet.";
+      return;
+    }
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const page = r.page_type || "/";
+      const views = r.views || 0;
+      const share = r.share || 0;
+
+      const item = document.createElement("div");
+      item.className = "item";
+
+      const left = document.createElement("div");
+      left.style.minWidth = "160px";
+      left.style.maxWidth = "50%";
+      left.style.overflow = "hidden";
+      left.style.textOverflow = "ellipsis";
+      left.style.whiteSpace = "nowrap";
+      left.innerHTML = "<b>" + esc(page) + "</b><div class='muted'>" + views + " views • " + share + "%</div>";
+
+      const barWrap = document.createElement("div");
+      barWrap.className = "barWrap";
+
+      const bar = document.createElement("div");
+      bar.className = "bar";
+
+      const fill = document.createElement("div");
+      fill.style.width = clamp(share, 0, 100) + "%";
+
+      bar.appendChild(fill);
+      barWrap.appendChild(bar);
+
+      item.appendChild(left);
+      item.appendChild(barWrap);
+      container.appendChild(item);
+    }
+  }
+
+  /* ===== API Calls ===== */
+  async function loadLatestReport() {
+    const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
+    const jj = await rr.json().catch(() => ({}));
+    const text = (jj.ok && jj.report && jj.report.report_text) ? jj.report.report_text : "";
+
+    if ($("latestAiReport")) $("latestAiReport").textContent = text || "No report yet.";
+    if ($("report")) $("report").textContent = text || "No report yet.";
+
+    // Optional fancy cards (if you included those ids)
+    if (!text) {
+      if ($("reportEmpty")) $("reportEmpty").textContent = "No report yet.";
+      return;
+    }
+
+    const parsed = parseReport(text);
+    if ($("repWhat")) $("repWhat").textContent = parsed.what || "";
+    if ($("repTrend")) $("repTrend").textContent = parsed.trend || "";
+
+    const stepsEl = $("repSteps");
+    if (stepsEl) {
+      stepsEl.innerHTML = "";
+      (parsed.steps || []).forEach((s) => {
+        const li = document.createElement("li");
+        li.textContent = s;
+        stepsEl.appendChild(li);
+      });
+    }
+
+    if ($("repMetric")) $("repMetric").textContent = parsed.metric || "—";
+    if ($("repFull")) $("repFull").textContent = text;
+  }
+
+  async function loadReportsList() {
+    const r = await fetch("/reports?token=" + encodeURIComponent(TOKEN) + "&limit=30");
+    const j = await r.json().catch(() => ({}));
+    const list = $("reportsList");
+    if (!list) return;
+
+    list.innerHTML = "";
+
+    if (!j.ok) {
+      list.textContent = j.error || "Failed to load reports";
+      return;
+    }
+    if (!j.reports || !j.reports.length) {
+      list.textContent = "No reports yet.";
+      return;
+    }
+
+    for (let i = 0; i < j.reports.length; i++) {
+      const rep = j.reports[i];
+      const item = document.createElement("div");
+      item.className = "item";
+      item.style.cursor = "pointer";
+
+      const left = document.createElement("div");
+      left.innerHTML =
+        "<b>" + esc(rep.report_date) + "</b>" +
+        "<div class='muted'>" + esc(rep.preview || "") + "</div>";
+
+      const right = document.createElement("div");
+      right.className = "pill";
+      right.textContent = "Open";
+
+      item.appendChild(left);
+      item.appendChild(right);
+
+      item.addEventListener("click", () => {
+        const pre = $("report");
+        if (pre) pre.textContent =
+          "Tip: add a report-by-date endpoint to open older reports precisely.";
+      });
+
+      list.appendChild(item);
+    }
+  }
+
+  async function refresh() {
+    try {
+      const daysEl = $("days");
+      const days = daysEl ? daysEl.value : "7";
+      setStatus("loading metrics…");
+
+      const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) { setStatus(j.error || "error"); return; }
+
+      if ($("kpiToday")) $("kpiToday").textContent = j.visits_today;
+      if ($("kpiTodaySub")) $("kpiTodaySub").textContent = j.last_event ? ("Last event: " + (j.last_event.event_name || "—")) : "";
+      if ($("kpiRange")) $("kpiRange").textContent = j.visits_range;
+      if ($("kpiRangeSub")) $("kpiRangeSub").textContent = "Window: " + j.days + " day(s)";
+      if ($("kpiLeadRate")) $("kpiLeadRate").textContent = pct(j.conversion_rate || 0);
+      if ($("kpiPurchaseRate")) $("kpiPurchaseRate").textContent = pct(j.purchase_rate || 0);
+
+      if ($("leads")) $("leads").textContent = j.leads || 0;
+      if ($("purchases")) $("purchases").textContent = j.purchases || 0;
+      if ($("cta")) $("cta").textContent = j.cta_clicks || 0;
+      if ($("leadRate2")) $("leadRate2").textContent = pct(j.conversion_rate || 0);
+      if ($("purchaseRate2")) $("purchaseRate2").textContent = pct(j.purchase_rate || 0);
+
+      const mob = (j.device_mix && j.device_mix.mobile) ? j.device_mix.mobile : 0;
+      const desk = (j.device_mix && j.device_mix.desktop) ? j.device_mix.desktop : 0;
+      if ($("mob")) $("mob").textContent = mob;
+      if ($("desk")) $("desk").textContent = desk;
+
+      if ($("lastEvent")) $("lastEvent").textContent = j.last_event ? JSON.stringify(j.last_event, null, 2) : "No events yet.";
+
+      if ($("trendSvg")) renderTrend($("trendSvg"), j.trend || []);
+      if ($("deviceSvg")) renderDevice($("deviceSvg"), mob, desk);
+      if ($("topPages")) renderTopPages($("topPages"), j.top_pages_range || []);
+
+      await loadLatestReport();
+      await loadReportsList();
+
+      setStatus("ready");
+    } catch (e) {
+      setStatus("error: " + (e && e.message ? e.message : "unknown"));
+    }
+  }
+
+  async function fire(eventName) {
+    setStatus("sending " + eventName + "…");
+    const r = await fetch("/demo/fire-event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: TOKEN, event_name: eventName, page_type: location.pathname, device: "desktop" }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { setStatus(d.error || "error"); return; }
+    setStatus("sent ✅ refreshing…");
+    setTimeout(refresh, 350);
+  }
+
+  async function seed() {
+    setStatus("seeding…");
+    const r = await fetch("/demo/seed?token=" + encodeURIComponent(TOKEN), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ days: 14, events_per_day: 60 }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) { setStatus(j.error || "seed failed"); console.error(j); return; }
+    setStatus("seeded ✅ refreshing…");
+    setTimeout(refresh, 450);
+  }
+
+  async function share() {
+    setStatus("creating share link…");
+    const r = await fetch("/demo/link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: TOKEN }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { setStatus(d.error || "error"); return; }
+    try { await navigator.clipboard.writeText(d.url); setStatus("copied ✅"); }
+    catch { setStatus("share link: " + d.url); }
+  }
+
+  function openModal(title, sub, body) {
+    if (!$("modalBg")) return;
+    $("modalTitle").textContent = title || "Done";
+    $("modalSub").textContent = sub || "";
+    $("modalBody").textContent = body || "";
+    $("modalBg").style.display = "block";
+  }
+  function closeModal() {
+    if ($("modalBg")) $("modalBg").style.display = "none";
+  }
+
+  async function aiReport() {
+    setStatus("generating AI report…");
+    const r = await fetch("/generate-report?token=" + encodeURIComponent(TOKEN), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: TOKEN }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) { setStatus(j.error || "AI report failed"); return; }
+
+    const text = (j.report && j.report.report_text) ? j.report.report_text : "";
+    openModal("AI report complete ✅", "Saved to reports. You can copy it below.", text);
+    setStatus("AI report saved ✅");
+    await loadLatestReport();
+    await loadReportsList();
+  }
+
+  async function aiPlan() {
+    setStatus("generating AI action plan…");
+    const r = await fetch("/generate-action-plan?token=" + encodeURIComponent(TOKEN), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: TOKEN }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) { setStatus(j.error || "AI action plan failed"); return; }
+
+    const text = (j.report && j.report.report_text) ? j.report.report_text : "";
+    openModal("AI action plan ✅", "Saved to reports. You can copy it below.", text);
+    setStatus("action plan saved ✅");
+    await loadLatestReport();
+    await loadReportsList();
+  }
+
+  /* ===== Live polling ===== */
+  let liveSince = new Date().toISOString();
+  let liveOn = true;
+  let liveTimer = null;
+
+  async function liveCheck() {
+    try {
+      const url = "/live?token=" + encodeURIComponent(TOKEN) + "&since=" + encodeURIComponent(liveSince);
+      const r = await fetch(url);
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) return;
+      if ($("liveNew")) $("liveNew").textContent = String(j.new_page_views || 0);
+      if ($("liveLast")) $("liveLast").textContent = j.last_event ? (j.last_event.event_name || "—") : "—";
+      if ($("liveJson")) $("liveJson").textContent = JSON.stringify(j, null, 2);
+      liveSince = j.now || new Date().toISOString();
+    } catch (e) {}
+  }
+
+  function startLive() {
+    if (liveTimer) clearInterval(liveTimer);
+    liveTimer = setInterval(() => { if (liveOn) liveCheck(); }, 3500);
+  }
+
+  /* ===== Init ===== */
+  window.addEventListener("DOMContentLoaded", () => {
+    if (!TOKEN) { setNoTokenUI(); return; }
+
+    // Wire buttons safely (only if element exists)
+    if ($("refresh")) $("refresh").addEventListener("click", refresh);
+    if ($("days")) $("days").addEventListener("change", refresh);
+
+    if ($("simView")) $("simView").addEventListener("click", () => fire("page_view"));
+    if ($("simLead")) $("simLead").addEventListener("click", () => fire("lead"));
+    if ($("simPurchase")) $("simPurchase").addEventListener("click", () => fire("purchase"));
+    if ($("simCta")) $("simCta").addEventListener("click", () => fire("cta_click"));
+
+    if ($("share")) $("share").addEventListener("click", share);
+    if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
+
+    if ($("aiReportTopBtn")) $("aiReportTopBtn").addEventListener("click", aiReport);
+    if ($("aiReportBtn")) $("aiReportBtn").addEventListener("click", aiReport);
+    if ($("aiPlanBtn")) $("aiPlanBtn").addEventListener("click", aiPlan);
+
+    if ($("modalClose")) $("modalClose").addEventListener("click", closeModal);
+    if ($("modalBg")) $("modalBg").addEventListener("click", (e) => { if (e.target === $("modalBg")) closeModal(); });
+    if ($("modalCopy")) $("modalCopy").addEventListener("click", async () => {
+      const text = ($("modalBody") && $("modalBody").textContent) ? $("modalBody").textContent : "";
+      try { await navigator.clipboard.writeText(text); setStatus("copied ✅"); }
+      catch { setStatus("copy failed"); }
+    });
+
+    startLive();
+    liveCheck();
+    refresh();
+  });
+})();
+
+
+/* ====== Minimal working seed example (keep even if you paste full JS) ====== */
+async function seed(){
+  try{
+    setStatus("seeding…");
+    const r = await fetch("/demo/seed?token=" + encodeURIComponent(TOKEN), {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ days: 14, events_per_day: 60 })
+    });
+    const j = await r.json().catch(()=> ({}));
+    if (!j.ok){
+      setStatus(j.error || "seed failed");
+      console.error("Seed failed:", j);
+      return;
+    }
+    setStatus("seeded ✅ refreshing…");
+    // call your refresh() if you have it
+  } catch(e){
+    setStatus("seed error");
+    console.error(e);
+  }
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  // attach handlers after DOM is ready
+  if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
+
+  // attach your other handlers too:
+  // if ($("refresh")) $("refresh").addEventListener("click", refresh);
+  // if ($("share")) $("share").addEventListener("click", share);
+
+  setStatus("ready");
+});
+`);
+}));
 
 /* ---------------------------
    Cookie helpers (no cookie-parser)
