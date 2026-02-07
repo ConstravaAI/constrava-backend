@@ -1,7 +1,7 @@
-// index.js (ESM) — Constrava MVP+ backend (FULL + WORKING HTML RESTORED)
+// index.js (ESM) — Constrava MVP+ backend (SINGLE FILE, FULLY WORKING, GOOD-LOOKING DASHBOARD + EXTERNAL JS)
 // Node 18+ recommended (Render supports Node 18/20+). Uses global fetch.
 //
-// ENV REQUIRED:
+// REQUIRED ENV:
 // - DATABASE_URL
 //
 // OPTIONAL ENV:
@@ -9,7 +9,7 @@
 // - PUBLIC_EVENTS_URL       (defaults to PUBLIC_BASE_URL or request host)
 // - ENABLE_DEMO_SEED=true   (enables POST /demo/seed)
 // - ENABLE_DEMO_ACTIVATE=false (disables POST /demo/activate-plan)
-// - OPENAI_API_KEY (+ optional OPENAI_MODEL) (for FULL AI endpoints)
+// - OPENAI_API_KEY (+ optional OPENAI_MODEL) (for AI endpoints)
 // - RESEND_API_KEY + FROM_EMAIL (for email endpoint)
 // - ENABLE_SCHEDULER=true   (in-process scheduler every 6h)
 // - COOKIE_SECURE=true      (sets Secure on session cookie)
@@ -24,20 +24,14 @@ import crypto from "crypto";
 const { Pool } = pkg;
 
 const app = express();
-
-// ✅ IMPORTANT for Render / reverse proxies (req.protocol + secure cookies)
 app.set("trust proxy", 1);
 
-// CORS: default allow all; if CORS_ORIGIN is set, lock it down.
-// Note: cookie auth only works cross-origin if you also use credentials:true on both sides.
+// CORS (optional lock-down)
 const CORS_ORIGIN = process.env.CORS_ORIGIN;
 app.use(
   cors(
     CORS_ORIGIN
-      ? {
-          origin: CORS_ORIGIN,
-          credentials: true
-        }
+      ? { origin: CORS_ORIGIN, credentials: true }
       : undefined
   )
 );
@@ -50,7 +44,7 @@ const DATABASE_URL = process.env.DATABASE_URL;
 
 if (!DATABASE_URL) {
   console.error("❌ Missing DATABASE_URL env var");
-  process.exit(1); // ✅ FIX: fail fast instead of running with a broken Pool
+  process.exit(1);
 }
 
 const pool = new Pool({
@@ -61,6 +55,10 @@ const pool = new Pool({
 /* ---------------------------
    Helpers
 ----------------------------*/
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
 function setNoStore(res) {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.setHeader("Pragma", "no-cache");
@@ -70,7 +68,6 @@ function setNoStore(res) {
 function publicBaseUrl(req) {
   if (process.env.PUBLIC_BASE_URL) return process.env.PUBLIC_BASE_URL;
 
-  // ✅ FIX: honor proxy headers so Render shows https
   const xfProto = req.get("x-forwarded-proto");
   const proto = xfProto ? xfProto.split(",")[0].trim() : req.protocol;
   const host = req.get("x-forwarded-host") || req.get("host");
@@ -82,12 +79,6 @@ function publicBaseUrl(req) {
 function publicEventsUrl(req) {
   if (process.env.PUBLIC_EVENTS_URL) return process.env.PUBLIC_EVENTS_URL;
   return publicBaseUrl(req);
-}
-
-function requireEnv(name) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing ${name} env var`);
-  return v;
 }
 
 function normalizeDays(input) {
@@ -144,8 +135,10 @@ function planGate(site, allowedPlans) {
   };
 }
 
-function asyncHandler(fn) {
-  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+function requireEnv(name) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing ${name} env var`);
+  return v;
 }
 
 /* ---------------------------
@@ -163,611 +156,6 @@ function verifyPassword(password, saltHex, hashHex) {
   const test = crypto.scryptSync(String(password), salt, 64);
   return crypto.timingSafeEqual(hash, test);
 }
-app.get("/dashboard.js", asyncHandler(async (req, res) => {
-  setNoStore(res);
-
-  const token = String(req.query.token || "");
-  const site = await getSiteByToken(token);
-  if (!site) {
-    res.setHeader("Content-Type", "application/javascript");
-    return res.send(`console.error("Unauthorized dashboard.js (missing/invalid token)");`);
-  }
-
-  const plan = site.plan || "unpaid";
-  const siteId = site.site_id;
-
-  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-
-  // IMPORTANT: embed values safely using JSON.stringify
-  res.send(`
-const TOKEN = ${JSON.stringify(token)};
-const PLAN = ${JSON.stringify(plan)};
-const SITE_ID = ${JSON.stringify(siteId)};
-
-const $ = (id) => document.getElementById(id);
-
-function esc(s){
-  return String(s || "").replace(/[&<>"']/g, (c) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;"
-  })[c]);
-}
-
-function setStatus(t){
-  const el = $("status");
-  if (el) el.textContent = "Status: " + t;
-}
-
-// dashboard.js (plain JS) — Constrava Dashboard client
-// Loads metrics + reports, wires all buttons, and supports AI + seeding.
-// IMPORTANT: your /dashboard HTML must include:
-//   <script src="/dashboard.js?token=YOUR_TOKEN"></script>
-
-(function () {
-  "use strict";
-
-  const qs = new URLSearchParams(location.search);
-  const TOKEN = qs.get("token") || "";
-
-  // If you inject these in HTML you can override, but token in URL is simplest.
-  // const PLAN = window.__PLAN__ || "starter";
-  // const SITE_ID = window.__SITE_ID__ || "";
-
-  const $ = (id) => document.getElementById(id);
-
-  function esc(s) {
-    return String(s || "").replace(/[&<>"']/g, (c) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
-    }[c]));
-  }
-
-  function setStatus(t) {
-    const el = $("status");
-    if (el) el.textContent = "Status: " + t;
-  }
-
-  function setNoTokenUI() {
-    setStatus("missing token");
-    const pre = $("latestAiReport") || $("report");
-    if (pre) pre.textContent = "Missing ?token=... in URL.";
-  }
-
-  function pct(n) {
-    return (Math.round((Number(n) || 0) * 10000) / 100).toFixed(2) + "%";
-  }
-
-  function clamp(n, min, max) {
-    n = Number(n) || 0;
-    return Math.max(min, Math.min(max, n));
-  }
-
-  /* ===== REPORT PARSER (for the fancy top card, if present) ===== */
-  function splitLines(text) {
-    return String(text || "")
-      .replace(/\r\n/g, "\n")
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-
-  function parseReport(text) {
-    const lines = splitLines(text);
-    const out = { what: "", trend: "", steps: [], metric: "", full: text || "" };
-    let mode = "";
-
-    for (const raw of lines) {
-      const l = raw.replace(/\*\*/g, "");
-
-      if (/^1\)|^what happened/i.test(l)) { mode = "what"; continue; }
-      if (/^2\)|^trend/i.test(l)) { mode = "trend"; continue; }
-      if (/^3\)|^next steps/i.test(l)) { mode = "steps"; continue; }
-      if (/^4\)|^metric/i.test(l)) { mode = "metric"; continue; }
-
-      if (mode === "steps") {
-        const cleaned = l.replace(/^[-•]\s*/, "");
-        if (cleaned) out.steps.push(cleaned);
-      } else if (mode === "what") {
-        out.what += (out.what ? " " : "") + l;
-      } else if (mode === "trend") {
-        out.trend += (out.trend ? " " : "") + l;
-      } else if (mode === "metric") {
-        out.metric += (out.metric ? " " : "") + l;
-      }
-    }
-    return out;
-  }
-
-  /* ===== Charts ===== */
-  function renderTrend(svgEl, trend) {
-    const W = 900, H = 260, p = 18;
-    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
-
-    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("x", "0");
-    bg.setAttribute("y", "0");
-    bg.setAttribute("width", String(W));
-    bg.setAttribute("height", String(H));
-    bg.setAttribute("rx", "14");
-    bg.setAttribute("fill", "rgba(15,23,42,.25)");
-    bg.setAttribute("stroke", "rgba(255,255,255,.10)");
-    svgEl.appendChild(bg);
-
-    const n = (trend && trend.length) ? trend.length : 0;
-    if (!n) {
-      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      t.setAttribute("x", String(p));
-      t.setAttribute("y", String(p + 22));
-      t.setAttribute("fill", "rgba(229,231,235,.75)");
-      t.setAttribute("font-size", "14");
-      t.textContent = "No data yet.";
-      svgEl.appendChild(t);
-      return;
-    }
-
-    let maxV = 0, sumV = 0;
-    for (let i = 0; i < n; i++) {
-      maxV = Math.max(maxV, trend[i].visits || 0);
-      sumV += (trend[i].visits || 0);
-    }
-    const avg = n ? (sumV / n) : 0;
-    if ($("maxDay")) $("maxDay").textContent = String(maxV);
-    if ($("avgDay")) $("avgDay").textContent = String(Math.round(avg * 10) / 10);
-
-    const innerW = W - p * 2;
-    const innerH = H - p * 2;
-
-    function x(i) {
-      if (n === 1) return p + innerW / 2;
-      return p + (i * innerW) / (n - 1);
-    }
-    function y(v) {
-      const m = Math.max(1, maxV);
-      const t = clamp(v / m, 0, 1);
-      return p + (1 - t) * innerH;
-    }
-
-    const base = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    base.setAttribute("d", "M " + p + " " + (H - p) + " L " + (W - p) + " " + (H - p));
-    base.setAttribute("stroke", "rgba(255,255,255,.10)");
-    base.setAttribute("fill", "none");
-    svgEl.appendChild(base);
-
-    let d = "";
-    for (let i = 0; i < n; i++) {
-      const xi = x(i);
-      const yi = y(trend[i].visits || 0);
-      d += (i === 0 ? "M " : " L ") + xi + " " + yi;
-    }
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", d);
-    path.setAttribute("stroke", "rgba(96,165,250,.90)");
-    path.setAttribute("stroke-width", "3");
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke-linecap", "round");
-    path.setAttribute("stroke-linejoin", "round");
-    svgEl.appendChild(path);
-
-    for (let i = 0; i < n; i++) {
-      const xi = x(i);
-      const yi = y(trend[i].visits || 0);
-
-      const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      c.setAttribute("cx", String(xi));
-      c.setAttribute("cy", String(yi));
-      c.setAttribute("r", "3.5");
-      c.setAttribute("fill", "rgba(96,165,250,.95)");
-      c.setAttribute("stroke", "rgba(255,255,255,.20)");
-      svgEl.appendChild(c);
-
-      const show = (i === 0 || i === n - 1 || (n >= 10 && i % Math.ceil(n / 6) === 0));
-      if (show) {
-        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        t.setAttribute("x", String(xi));
-        t.setAttribute("y", String(H - 6));
-        t.setAttribute("fill", "rgba(229,231,235,.65)");
-        t.setAttribute("font-size", "11");
-        t.setAttribute("text-anchor", "middle");
-        const day = String(trend[i].day || "").slice(5);
-        t.textContent = day;
-        svgEl.appendChild(t);
-      }
-    }
-  }
-
-  function renderDevice(svgEl, mobile, desktop) {
-    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
-    const W = 240, H = 160;
-    const cx = 80, cy = 80;
-    const r = 50, w = 16;
-    const total = (mobile || 0) + (desktop || 0);
-    const m = total ? (mobile / total) : 0.5;
-    const start = -Math.PI / 2;
-    const mid = start + (Math.PI * 2 * m);
-
-    function arc(a0, a1, color) {
-      const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
-      const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
-      const large = (a1 - a0) > Math.PI ? 1 : 0;
-      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      p.setAttribute("d",
-        "M " + x0 + " " + y0 +
-        " A " + r + " " + r + " 0 " + large + " 1 " + x1 + " " + y1
-      );
-      p.setAttribute("stroke", color);
-      p.setAttribute("stroke-width", String(w));
-      p.setAttribute("fill", "none");
-      p.setAttribute("stroke-linecap", "round");
-      svgEl.appendChild(p);
-    }
-
-    const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    ring.setAttribute("cx", String(cx));
-    ring.setAttribute("cy", String(cy));
-    ring.setAttribute("r", String(r));
-    ring.setAttribute("stroke", "rgba(255,255,255,.12)");
-    ring.setAttribute("stroke-width", String(w));
-    ring.setAttribute("fill", "none");
-    svgEl.appendChild(ring);
-
-    arc(start, mid, "rgba(52,211,153,.90)");
-    arc(mid, start + Math.PI * 2, "rgba(96,165,250,.90)");
-
-    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    label.setAttribute("x", String(cx));
-    label.setAttribute("y", String(cy + 6));
-    label.setAttribute("text-anchor", "middle");
-    label.setAttribute("fill", "rgba(229,231,235,.90)");
-    label.setAttribute("font-size", "14");
-    label.textContent = total ? (Math.round(m * 100) + "% mobile") : "No data";
-    svgEl.appendChild(label);
-  }
-
-  function renderTopPages(container, rows) {
-    container.innerHTML = "";
-    if (!rows || !rows.length) {
-      container.textContent = "No page data yet.";
-      return;
-    }
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i];
-      const page = r.page_type || "/";
-      const views = r.views || 0;
-      const share = r.share || 0;
-
-      const item = document.createElement("div");
-      item.className = "item";
-
-      const left = document.createElement("div");
-      left.style.minWidth = "160px";
-      left.style.maxWidth = "50%";
-      left.style.overflow = "hidden";
-      left.style.textOverflow = "ellipsis";
-      left.style.whiteSpace = "nowrap";
-      left.innerHTML = "<b>" + esc(page) + "</b><div class='muted'>" + views + " views • " + share + "%</div>";
-
-      const barWrap = document.createElement("div");
-      barWrap.className = "barWrap";
-
-      const bar = document.createElement("div");
-      bar.className = "bar";
-
-      const fill = document.createElement("div");
-      fill.style.width = clamp(share, 0, 100) + "%";
-
-      bar.appendChild(fill);
-      barWrap.appendChild(bar);
-
-      item.appendChild(left);
-      item.appendChild(barWrap);
-      container.appendChild(item);
-    }
-  }
-
-  /* ===== API Calls ===== */
-  async function loadLatestReport() {
-    const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
-    const jj = await rr.json().catch(() => ({}));
-    const text = (jj.ok && jj.report && jj.report.report_text) ? jj.report.report_text : "";
-
-    if ($("latestAiReport")) $("latestAiReport").textContent = text || "No report yet.";
-    if ($("report")) $("report").textContent = text || "No report yet.";
-
-    // Optional fancy cards (if you included those ids)
-    if (!text) {
-      if ($("reportEmpty")) $("reportEmpty").textContent = "No report yet.";
-      return;
-    }
-
-    const parsed = parseReport(text);
-    if ($("repWhat")) $("repWhat").textContent = parsed.what || "";
-    if ($("repTrend")) $("repTrend").textContent = parsed.trend || "";
-
-    const stepsEl = $("repSteps");
-    if (stepsEl) {
-      stepsEl.innerHTML = "";
-      (parsed.steps || []).forEach((s) => {
-        const li = document.createElement("li");
-        li.textContent = s;
-        stepsEl.appendChild(li);
-      });
-    }
-
-    if ($("repMetric")) $("repMetric").textContent = parsed.metric || "—";
-    if ($("repFull")) $("repFull").textContent = text;
-  }
-
-  async function loadReportsList() {
-    const r = await fetch("/reports?token=" + encodeURIComponent(TOKEN) + "&limit=30");
-    const j = await r.json().catch(() => ({}));
-    const list = $("reportsList");
-    if (!list) return;
-
-    list.innerHTML = "";
-
-    if (!j.ok) {
-      list.textContent = j.error || "Failed to load reports";
-      return;
-    }
-    if (!j.reports || !j.reports.length) {
-      list.textContent = "No reports yet.";
-      return;
-    }
-
-    for (let i = 0; i < j.reports.length; i++) {
-      const rep = j.reports[i];
-      const item = document.createElement("div");
-      item.className = "item";
-      item.style.cursor = "pointer";
-
-      const left = document.createElement("div");
-      left.innerHTML =
-        "<b>" + esc(rep.report_date) + "</b>" +
-        "<div class='muted'>" + esc(rep.preview || "") + "</div>";
-
-      const right = document.createElement("div");
-      right.className = "pill";
-      right.textContent = "Open";
-
-      item.appendChild(left);
-      item.appendChild(right);
-
-      item.addEventListener("click", () => {
-        const pre = $("report");
-        if (pre) pre.textContent =
-          "Tip: add a report-by-date endpoint to open older reports precisely.";
-      });
-
-      list.appendChild(item);
-    }
-  }
-
-  async function refresh() {
-    try {
-      const daysEl = $("days");
-      const days = daysEl ? daysEl.value : "7";
-      setStatus("loading metrics…");
-
-      const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
-      const j = await r.json().catch(() => ({}));
-      if (!j.ok) { setStatus(j.error || "error"); return; }
-
-      if ($("kpiToday")) $("kpiToday").textContent = j.visits_today;
-      if ($("kpiTodaySub")) $("kpiTodaySub").textContent = j.last_event ? ("Last event: " + (j.last_event.event_name || "—")) : "";
-      if ($("kpiRange")) $("kpiRange").textContent = j.visits_range;
-      if ($("kpiRangeSub")) $("kpiRangeSub").textContent = "Window: " + j.days + " day(s)";
-      if ($("kpiLeadRate")) $("kpiLeadRate").textContent = pct(j.conversion_rate || 0);
-      if ($("kpiPurchaseRate")) $("kpiPurchaseRate").textContent = pct(j.purchase_rate || 0);
-
-      if ($("leads")) $("leads").textContent = j.leads || 0;
-      if ($("purchases")) $("purchases").textContent = j.purchases || 0;
-      if ($("cta")) $("cta").textContent = j.cta_clicks || 0;
-      if ($("leadRate2")) $("leadRate2").textContent = pct(j.conversion_rate || 0);
-      if ($("purchaseRate2")) $("purchaseRate2").textContent = pct(j.purchase_rate || 0);
-
-      const mob = (j.device_mix && j.device_mix.mobile) ? j.device_mix.mobile : 0;
-      const desk = (j.device_mix && j.device_mix.desktop) ? j.device_mix.desktop : 0;
-      if ($("mob")) $("mob").textContent = mob;
-      if ($("desk")) $("desk").textContent = desk;
-
-      if ($("lastEvent")) $("lastEvent").textContent = j.last_event ? JSON.stringify(j.last_event, null, 2) : "No events yet.";
-
-      if ($("trendSvg")) renderTrend($("trendSvg"), j.trend || []);
-      if ($("deviceSvg")) renderDevice($("deviceSvg"), mob, desk);
-      if ($("topPages")) renderTopPages($("topPages"), j.top_pages_range || []);
-
-      await loadLatestReport();
-      await loadReportsList();
-
-      setStatus("ready");
-    } catch (e) {
-      setStatus("error: " + (e && e.message ? e.message : "unknown"));
-    }
-  }
-
-  async function fire(eventName) {
-    setStatus("sending " + eventName + "…");
-    const r = await fetch("/demo/fire-event", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: TOKEN, event_name: eventName, page_type: location.pathname, device: "desktop" }),
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!d.ok) { setStatus(d.error || "error"); return; }
-    setStatus("sent ✅ refreshing…");
-    setTimeout(refresh, 350);
-  }
-
-  async function seed() {
-    setStatus("seeding…");
-    const r = await fetch("/demo/seed?token=" + encodeURIComponent(TOKEN), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ days: 14, events_per_day: 60 }),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!j.ok) { setStatus(j.error || "seed failed"); console.error(j); return; }
-    setStatus("seeded ✅ refreshing…");
-    setTimeout(refresh, 450);
-  }
-
-  async function share() {
-    setStatus("creating share link…");
-    const r = await fetch("/demo/link", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: TOKEN }),
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!d.ok) { setStatus(d.error || "error"); return; }
-    try { await navigator.clipboard.writeText(d.url); setStatus("copied ✅"); }
-    catch { setStatus("share link: " + d.url); }
-  }
-
-  function openModal(title, sub, body) {
-    if (!$("modalBg")) return;
-    $("modalTitle").textContent = title || "Done";
-    $("modalSub").textContent = sub || "";
-    $("modalBody").textContent = body || "";
-    $("modalBg").style.display = "block";
-  }
-  function closeModal() {
-    if ($("modalBg")) $("modalBg").style.display = "none";
-  }
-
-  async function aiReport() {
-    setStatus("generating AI report…");
-    const r = await fetch("/generate-report?token=" + encodeURIComponent(TOKEN), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: TOKEN }),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!j.ok) { setStatus(j.error || "AI report failed"); return; }
-
-    const text = (j.report && j.report.report_text) ? j.report.report_text : "";
-    openModal("AI report complete ✅", "Saved to reports. You can copy it below.", text);
-    setStatus("AI report saved ✅");
-    await loadLatestReport();
-    await loadReportsList();
-  }
-
-  async function aiPlan() {
-    setStatus("generating AI action plan…");
-    const r = await fetch("/generate-action-plan?token=" + encodeURIComponent(TOKEN), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: TOKEN }),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!j.ok) { setStatus(j.error || "AI action plan failed"); return; }
-
-    const text = (j.report && j.report.report_text) ? j.report.report_text : "";
-    openModal("AI action plan ✅", "Saved to reports. You can copy it below.", text);
-    setStatus("action plan saved ✅");
-    await loadLatestReport();
-    await loadReportsList();
-  }
-
-  /* ===== Live polling ===== */
-  let liveSince = new Date().toISOString();
-  let liveOn = true;
-  let liveTimer = null;
-
-  async function liveCheck() {
-    try {
-      const url = "/live?token=" + encodeURIComponent(TOKEN) + "&since=" + encodeURIComponent(liveSince);
-      const r = await fetch(url);
-      const j = await r.json().catch(() => ({}));
-      if (!j.ok) return;
-      if ($("liveNew")) $("liveNew").textContent = String(j.new_page_views || 0);
-      if ($("liveLast")) $("liveLast").textContent = j.last_event ? (j.last_event.event_name || "—") : "—";
-      if ($("liveJson")) $("liveJson").textContent = JSON.stringify(j, null, 2);
-      liveSince = j.now || new Date().toISOString();
-    } catch (e) {}
-  }
-
-  function startLive() {
-    if (liveTimer) clearInterval(liveTimer);
-    liveTimer = setInterval(() => { if (liveOn) liveCheck(); }, 3500);
-  }
-
-  /* ===== Init ===== */
-  window.addEventListener("DOMContentLoaded", () => {
-    if (!TOKEN) { setNoTokenUI(); return; }
-
-    // Wire buttons safely (only if element exists)
-    if ($("refresh")) $("refresh").addEventListener("click", refresh);
-    if ($("days")) $("days").addEventListener("change", refresh);
-
-    if ($("simView")) $("simView").addEventListener("click", () => fire("page_view"));
-    if ($("simLead")) $("simLead").addEventListener("click", () => fire("lead"));
-    if ($("simPurchase")) $("simPurchase").addEventListener("click", () => fire("purchase"));
-    if ($("simCta")) $("simCta").addEventListener("click", () => fire("cta_click"));
-
-    if ($("share")) $("share").addEventListener("click", share);
-    if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
-
-    if ($("aiReportTopBtn")) $("aiReportTopBtn").addEventListener("click", aiReport);
-    if ($("aiReportBtn")) $("aiReportBtn").addEventListener("click", aiReport);
-    if ($("aiPlanBtn")) $("aiPlanBtn").addEventListener("click", aiPlan);
-
-    if ($("modalClose")) $("modalClose").addEventListener("click", closeModal);
-    if ($("modalBg")) $("modalBg").addEventListener("click", (e) => { if (e.target === $("modalBg")) closeModal(); });
-    if ($("modalCopy")) $("modalCopy").addEventListener("click", async () => {
-      const text = ($("modalBody") && $("modalBody").textContent) ? $("modalBody").textContent : "";
-      try { await navigator.clipboard.writeText(text); setStatus("copied ✅"); }
-      catch { setStatus("copy failed"); }
-    });
-
-    startLive();
-    liveCheck();
-    refresh();
-  });
-})();
-
-
-/* ====== Minimal working seed example (keep even if you paste full JS) ====== */
-async function seed(){
-  try{
-    setStatus("seeding…");
-    const r = await fetch("/demo/seed?token=" + encodeURIComponent(TOKEN), {
-      method:"POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ days: 14, events_per_day: 60 })
-    });
-    const j = await r.json().catch(()=> ({}));
-    if (!j.ok){
-      setStatus(j.error || "seed failed");
-      console.error("Seed failed:", j);
-      return;
-    }
-    setStatus("seeded ✅ refreshing…");
-    // call your refresh() if you have it
-  } catch(e){
-    setStatus("seed error");
-    console.error(e);
-  }
-}
-
-window.addEventListener("DOMContentLoaded", () => {
-  // attach handlers after DOM is ready
-  if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
-
-  // attach your other handlers too:
-  // if ($("refresh")) $("refresh").addEventListener("click", refresh);
-  // if ($("share")) $("share").addEventListener("click", share);
-
-  setStatus("ready");
-});
-`);
-}));
 
 /* ---------------------------
    Cookie helpers (no cookie-parser)
@@ -950,7 +338,7 @@ app.get(
 app.get(
   "/debug/site",
   asyncHandler(async (req, res) => {
-    const token = req.query.token;
+    const token = String(req.query.token || "");
     const site = await getSiteByToken(token);
     res.json({ ok: true, site });
   })
@@ -1045,7 +433,7 @@ app.post(
       ok: true,
       user: { email: u.email, site_id: u.site_id },
       site: { site_id: site?.site_id, plan: site?.plan || "unpaid" },
-      hint: "You are logged in (cookie). Dashboard still uses ?token=... for now."
+      hint: "You are logged in (cookie). Dashboard uses ?token=... for now."
     });
   })
 );
@@ -1129,7 +517,7 @@ app.post(
    GET /tracker.js
 ----------------------------*/
 app.get("/tracker.js", (req, res) => {
-  res.setHeader("Content-Type", "application/javascript");
+  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
   const endpoint = publicEventsUrl(req) + "/events";
 
   res.send(`
@@ -1217,14 +605,14 @@ app.get(
   asyncHandler(async (req, res) => {
     setNoStore(res);
 
-    const token = req.query.token;
-    const since = req.query.since;
+    const token = String(req.query.token || "");
+    const since = String(req.query.since || "");
     if (!token) return res.status(400).json({ ok: false, error: "token required" });
 
     const site = await getSiteByToken(token);
     if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
-    const sinceDate = since ? new Date(String(since)) : null;
+    const sinceDate = since ? new Date(since) : null;
     if (since && isNaN(sinceDate.getTime())) {
       return res.status(400).json({ ok: false, error: "Invalid since timestamp" });
     }
@@ -1312,7 +700,7 @@ app.get(
   asyncHandler(async (req, res) => {
     setNoStore(res);
 
-    const token = req.query.token;
+    const token = String(req.query.token || "");
     const site = await getSiteByToken(token);
     if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
@@ -1347,21 +735,6 @@ app.get(
     );
 
     const visits_range = trendRes.rows.reduce((sum, r) => sum + (r.visits || 0), 0);
-
-    const topPagesRes = await pool.query(
-      `
-      SELECT page_type, COUNT(*)::int AS views
-      FROM events_raw
-      WHERE site_id = $1
-        AND event_name = 'page_view'
-        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
-        AND page_type IS NOT NULL
-      GROUP BY page_type
-      ORDER BY views DESC
-      LIMIT 5
-      `,
-      [site_id, days]
-    );
 
     const topPagesRangeRes = await pool.query(
       `
@@ -1437,7 +810,6 @@ app.get(
       visits_today: todayRes.rows[0]?.visits_today || 0,
       visits_range,
       trend: trendRes.rows.map((r) => ({ day: String(r.day), visits: r.visits })),
-      top_pages: topPagesRes.rows || [],
       device_mix: deviceRes.rows[0] || { mobile: 0, desktop: 0 },
       last_event: lastEventRes.rows[0] || null,
       leads,
@@ -1451,113 +823,6 @@ app.get(
 );
 
 /* ---------------------------
-   Ai Assistant Dashboard (FULL AI only)
-----------------------------*/
-app.post(
-  "/api/ai/chat",
-  asyncHandler(async (req, res) => {
-    setNoStore(res);
-
-    const token = req.query.token || req.body?.token;
-    const site = await getSiteByToken(token);
-    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
-
-    const gate = planGate(site, ["full_ai"]);
-    if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
-
-    const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
-    const message = String(req.body?.message || "").trim();
-    const history = Array.isArray(req.body?.history) ? req.body.history.slice(-12) : [];
-    if (!message) return res.status(400).json({ ok: false, error: "message required" });
-
-    const days = 30;
-
-    const metricsRes = await pool.query(
-      `
-      SELECT
-        COUNT(*)::int AS total_events,
-        SUM(CASE WHEN event_name='page_view' THEN 1 ELSE 0 END)::int AS page_views,
-        SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
-        SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases,
-        SUM(CASE WHEN event_name='cta_click' THEN 1 ELSE 0 END)::int AS cta_clicks
-      FROM events_raw
-      WHERE site_id=$1 AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
-      `,
-      [site.site_id, days]
-    );
-
-    const topPagesRes = await pool.query(
-      `
-      SELECT page_type, COUNT(*)::int AS views
-      FROM events_raw
-      WHERE site_id=$1 AND event_name='page_view'
-        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
-        AND page_type IS NOT NULL
-      GROUP BY 1
-      ORDER BY views DESC
-      LIMIT 8
-      `,
-      [site.site_id, days]
-    );
-
-    const lastReportRes = await pool.query(
-      `
-      SELECT report_date, report_text
-      FROM daily_reports
-      WHERE site_id=$1
-      ORDER BY report_date DESC, created_at DESC
-      LIMIT 1
-      `,
-      [site.site_id]
-    );
-
-    const context = {
-      site_id: site.site_id,
-      plan: site.plan,
-      window_days: days,
-      metrics_30d: metricsRes.rows[0],
-      top_pages_30d: topPagesRes.rows,
-      latest_report: lastReportRes.rows[0] || null
-    };
-
-    const system = `
-You are Constrava's on-dashboard analytics assistant.
-- Be plain-English, specific, and actionable.
-- Use the provided site context.
-- If data is insufficient, say what’s missing and suggest what to track.
-- Avoid guarantees. If forecasting, use probabilistic language and label it as an estimate.
-- Prefer: (1) what’s happening, (2) why it might be happening, (3) next best actions, (4) a metric to watch.
-`;
-
-    const messages = [
-      { role: "system", content: system.trim() },
-      { role: "user", content: "Site context JSON:\n" + JSON.stringify(context) },
-      ...history.map((h) => ({ role: h.role, content: String(h.content || "") })),
-      { role: "user", content: message }
-    ];
-
-    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-        messages,
-        temperature: 0.4
-      })
-    });
-
-    const aiData = await aiRes.json();
-    const reply = aiData?.choices?.[0]?.message?.content;
-    if (!reply) return res.status(500).json({ ok: false, error: "AI response missing" });
-
-    res.json({ ok: true, reply });
-  })
-);
-
-/* ---------------------------
    Reports
 ----------------------------*/
 app.get(
@@ -1565,7 +830,8 @@ app.get(
   asyncHandler(async (req, res) => {
     setNoStore(res);
 
-    const site = await getSiteByToken(req.query.token);
+    const token = String(req.query.token || "");
+    const site = await getSiteByToken(token);
     if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
     const limit = Math.min(parseInt(req.query.limit || "30", 10), 100);
@@ -1588,7 +854,8 @@ app.get(
   asyncHandler(async (req, res) => {
     setNoStore(res);
 
-    const site = await getSiteByToken(req.query.token);
+    const token = String(req.query.token || "");
+    const site = await getSiteByToken(token);
     if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
     const r = await pool.query(
@@ -1605,34 +872,6 @@ app.get(
   })
 );
 
-// ✅ Added: open a report by date (optional but makes “history click” possible)
-app.get(
-  "/reports/by-date",
-  asyncHandler(async (req, res) => {
-    setNoStore(res);
-
-    const site = await getSiteByToken(req.query.token);
-    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
-
-    const date = String(req.query.date || "").trim(); // YYYY-MM-DD
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).json({ ok: false, error: "date must be YYYY-MM-DD" });
-    }
-
-    const r = await pool.query(
-      `SELECT site_id, report_date, report_text, created_at
-       FROM daily_reports
-       WHERE site_id=$1 AND report_date=$2
-       ORDER BY created_at DESC
-       LIMIT 1`,
-      [site.site_id, date]
-    );
-
-    if (!r.rows.length) return res.status(404).json({ ok: false, error: "Report not found for that date" });
-    res.json({ ok: true, report: r.rows[0] });
-  })
-);
-
 /* ---------------------------
    Demo seeder
    POST /demo/seed?token=...
@@ -1644,12 +883,13 @@ app.post(
       return res.status(403).json({ ok: false, error: "Seeder disabled. Set ENABLE_DEMO_SEED=true" });
     }
 
-    const site = await getSiteByToken(req.query.token || req.body?.token);
+    const token = String(req.query.token || req.body?.token || "");
+    const site = await getSiteByToken(token);
     if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Provide ?token=..." });
 
     const site_id = site.site_id;
-    const days = Math.max(1, Math.min(parseInt(req.body?.days || "7", 10), 3650));
-    const eventsPerDay = Math.max(5, Math.min(parseInt(req.body?.events_per_day || "40", 10), 500));
+    const days = Math.max(1, Math.min(parseInt(req.body?.days || "14", 10), 3650));
+    const eventsPerDay = Math.max(5, Math.min(parseInt(req.body?.events_per_day || "60", 10), 500));
 
     const leadRate = clamp01(req.body?.lead_rate ?? 0.02);
     const purchaseRate = clamp01(req.body?.purchase_rate ?? 0.004);
@@ -1711,16 +951,16 @@ app.post(
     }
 
     const sample1 =
-      "Summary:\nTraffic is concentrating on Pricing and Services.\n\n" +
-      "Trend:\nVisitors are exploring multiple pages.\n\n" +
-      "Next steps:\n1) Add a clear primary CTA on Pricing\n2) Add proof (logos/testimonials)\n3) Track a lead event\n\n" +
-      "Metric to watch:\nPricing → Contact rate";
+      "1) What happened\nTraffic concentrated on /pricing and /services.\n\n" +
+      "2) Trend + what it means\nVisitors are exploring multiple pages — offer clarity should help.\n\n" +
+      "3) Next steps\n- Add a single primary CTA on /pricing\n- Add proof (logos/testimonials)\n- Track a lead event on forms\n\n" +
+      "4) Metric to watch\nPricing → Lead rate";
 
     const sample2 =
-      "Summary:\nYou’re getting steady visits and people are checking Pricing.\n\n" +
-      "Trend:\nInterest is consistent — conversion work likely helps.\n\n" +
-      "Next steps:\n1) Strongest offer at top of Pricing\n2) Add a 3-step “what happens next”\n3) Shorten forms + speed up pages\n\n" +
-      "Metric to watch:\nCTA clicks";
+      "1) What happened\nSteady visits with meaningful interest on /pricing.\n\n" +
+      "2) Trend + what it means\nConsistency suggests conversion tweaks can compound.\n\n" +
+      "3) Next steps\n- Put best offer at top of /pricing\n- Add a 3-step “what happens next” section\n- Shorten forms + speed up load time\n\n" +
+      "4) Metric to watch\nCTA clicks / visits";
 
     await pool.query(
       `INSERT INTO daily_reports (site_id, report_date, report_text)
@@ -1745,229 +985,6 @@ app.post(
       cta_rate: ctaRate,
       inserted
     });
-  })
-);
-
-/* ---------------------------
-   AI report generator (FULL AI only)
-   POST /generate-report?token=...
-----------------------------*/
-app.post(
-  "/generate-report",
-  asyncHandler(async (req, res) => {
-    const site = await getSiteByToken(req.query.token || req.body?.token);
-    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
-
-    const gate = planGate(site, ["full_ai"]);
-    if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
-
-    const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
-
-    const metricsRes = await pool.query(
-      `
-      SELECT
-        $1::text as site_id,
-        COUNT(*)::int AS total_events,
-        SUM(CASE WHEN event_name='page_view' THEN 1 ELSE 0 END)::int AS page_views,
-        SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
-        SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases
-      FROM events_raw
-      WHERE site_id=$1 AND created_at >= NOW() - INTERVAL '7 days'
-      `,
-      [site.site_id]
-    );
-
-    const metrics = metricsRes.rows[0];
-
-    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4o",
-        messages: [
-          { role: "system", content: "You are a helpful business analytics assistant. Be plain-English, actionable, and concise." },
-          {
-            role: "user",
-            content:
-              "Here are metrics for the last 7 days (JSON): " +
-              JSON.stringify(metrics) +
-              "\nWrite:\n1) What happened\n2) Trend + what it means\n3) 3 next steps\n4) One metric to watch"
-          }
-        ]
-      })
-    });
-
-    const aiData = await aiRes.json();
-    const reportText = aiData?.choices?.[0]?.message?.content;
-    if (!reportText) return res.status(500).json({ ok: false, error: "AI response missing" });
-
-    const saved = await pool.query(
-      `INSERT INTO daily_reports (site_id, report_date, report_text)
-       VALUES ($1, CURRENT_DATE, $2)
-       ON CONFLICT (site_id, report_date)
-       DO UPDATE SET report_text = EXCLUDED.report_text
-       RETURNING site_id, report_date, report_text, created_at`,
-      [site.site_id, reportText]
-    );
-
-    res.json({ ok: true, report: saved.rows[0] });
-  })
-);
-
-/* ---------------------------
-   AI action plan (FULL AI only)
-   POST /generate-action-plan?token=...
-----------------------------*/
-app.post(
-  "/generate-action-plan",
-  asyncHandler(async (req, res) => {
-    setNoStore(res);
-
-    const token = req.query.token || req.body?.token;
-    const site = await getSiteByToken(token);
-    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
-
-    const gate = planGate(site, ["full_ai"]);
-    if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
-
-    const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
-    const days = 30;
-
-    const trendRes = await pool.query(
-      `
-      SELECT created_at::date AS day, COUNT(*)::int AS visits
-      FROM events_raw
-      WHERE site_id=$1
-        AND event_name='page_view'
-        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
-      GROUP BY 1
-      ORDER BY 1
-      `,
-      [site.site_id, days]
-    );
-
-    const topPagesRes = await pool.query(
-      `
-      SELECT page_type, COUNT(*)::int AS views
-      FROM events_raw
-      WHERE site_id=$1
-        AND event_name='page_view'
-        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
-        AND page_type IS NOT NULL
-      GROUP BY 1
-      ORDER BY views DESC
-      LIMIT 10
-      `,
-      [site.site_id, days]
-    );
-
-    const goalsRes = await pool.query(
-      `
-      SELECT
-        SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
-        SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases,
-        SUM(CASE WHEN event_name='cta_click' THEN 1 ELSE 0 END)::int AS cta_clicks
-      FROM events_raw
-      WHERE site_id=$1
-        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
-      `,
-      [site.site_id, days]
-    );
-
-    const payload = {
-      site_id: site.site_id,
-      window_days: days,
-      trend: trendRes.rows,
-      top_pages: topPagesRes.rows,
-      goals: goalsRes.rows[0] || { leads: 0, purchases: 0, cta_clicks: 0 }
-    };
-
-    const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || "gpt-4o",
-        messages: [
-          { role: "system", content: "You are an analytics + conversion expert. Be plain-English, specific, and actionable." },
-          {
-            role: "user",
-            content:
-              "Analyze this site data JSON and write a short action plan.\n\n" +
-              JSON.stringify(payload) +
-              "\n\nFormat:\n1) What's happening (3 bullets)\n2) Biggest opportunity\n3) 5-step action plan\n4) One KPI to watch\n5) A one-sentence executive summary"
-          }
-        ]
-      })
-    });
-
-    const aiData = await aiRes.json();
-    const text = aiData?.choices?.[0]?.message?.content;
-    if (!text) return res.status(500).json({ ok: false, error: "AI response missing" });
-
-    const saved = await pool.query(
-      `INSERT INTO daily_reports (site_id, report_date, report_text)
-       VALUES ($1, CURRENT_DATE, $2)
-       ON CONFLICT (site_id, report_date)
-       DO UPDATE SET report_text = EXCLUDED.report_text
-       RETURNING site_id, report_date, report_text, created_at`,
-      [site.site_id, text]
-    );
-
-    res.json({ ok: true, report: saved.rows[0] });
-  })
-);
-
-/* ---------------------------
-   Email latest report (PRO + FULL AI)
-   POST /email-latest { token, to_email }
-----------------------------*/
-app.post(
-  "/email-latest",
-  asyncHandler(async (req, res) => {
-    const { token, to_email } = req.body || {};
-    if (!to_email) return res.status(400).json({ ok: false, error: "to_email required" });
-
-    const site = await getSiteByToken(token);
-    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Invalid token" });
-
-    const gate = planGate(site, ["pro", "full_ai"]);
-    if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
-
-    const r = await pool.query(
-      `SELECT report_text, report_date
-       FROM daily_reports
-       WHERE site_id=$1
-       ORDER BY report_date DESC, created_at DESC
-       LIMIT 1`,
-      [site.site_id]
-    );
-    if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
-
-    const RESEND_API_KEY = requireEnv("RESEND_API_KEY");
-    const from = requireEnv("FROM_EMAIL");
-
-    const emailRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        from,
-        to: [String(to_email).trim()],
-        subject: `Constrava Daily Report (${site.site_id})`,
-        html: `<pre style="white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;">${r.rows[0].report_text}</pre>`
-      })
-    });
-
-    const emailData = await emailRes.json();
-    res.json({ ok: true, resend: emailData });
   })
 );
 
@@ -2009,7 +1026,7 @@ app.get(
   asyncHandler(async (req, res) => {
     setNoStore(res);
 
-    const token = req.query.token;
+    const token = String(req.query.token || "");
     const site = await getSiteByToken(token);
     if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
 
@@ -2026,7 +1043,7 @@ app.get(
 <style>
   :root{
     --bg:#0b0f19; --panel:#111827; --text:#e5e7eb; --muted:#9ca3af;
-    --border:rgba(255,255,255,.10); --accent:#60a5fa; --accent2:#34d399; --danger:#fb7185;
+    --border:rgba(255,255,255,.10); --accent:#60a5fa; --accent2:#34d399;
     --shadow:0 10px 30px rgba(0,0,0,.35); --radius:16px;
   }
   *{box-sizing:border-box}
@@ -2066,20 +1083,6 @@ app.get(
     background: rgba(96,165,250,.14); color:var(--text);
     cursor:pointer; font-weight:950;
   }
-  .btnAi{
-  background: linear-gradient(135deg, rgba(52,211,153,.22), rgba(96,165,250,.22));
-  border-color: rgba(52,211,153,.35);
-  box-shadow: 0 0 0 1px rgba(52,211,153,.10), 0 14px 40px rgba(52,211,153,.12);
-}
-.btnAi:hover{
-  border-color: rgba(52,211,153,.65);
-  box-shadow: 0 0 0 1px rgba(52,211,153,.18), 0 18px 52px rgba(96,165,250,.18);
-}
-.spark{
-  display:inline-block;
-  margin-right:8px;
-  transform: translateY(1px);
-}
   .btn:hover{border-color: rgba(96,165,250,.5)}
   .btnGreen{background: rgba(52,211,153,.14)}
   .btnGreen:hover{border-color: rgba(52,211,153,.5)}
@@ -2096,7 +1099,7 @@ app.get(
       <div class="logo"></div>
       <div>
         <h1>Constrava Plans</h1>
-        <div class="sub">Activate your dashboard. Stripe comes later — demo activation for now.</div>
+        <div class="sub">Demo activation for now. Stripe later.</div>
       </div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -2106,56 +1109,6 @@ app.get(
   </div>
 
   <div class="grid">
-  <!-- LATEST AI REPORT (TOP CARD) -->
-<div class="card span12" id="latestReportTop">
-  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-    <div>
-      <div style="font-weight:950">Latest AI Report</div>
-      <div class="muted">Your most recent AI-generated insights</div>
-    </div>
-
-    <button class="btnGreen" id="aiReportTopBtn">
-      Generate new AI report
-    </button>
-  </div>
-
-  <div class="divider"></div>
-
-  <div id="reportEmpty" class="muted">Loading latest report...</div>
-
-<div id="reportView" style="display:none">
-  <div class="grid" style="margin-top:10px;gap:10px">
-    <div class="card" style="grid-column: span 6; background: rgba(15,23,42,.35); box-shadow:none">
-      <div style="font-weight:950">What happened</div>
-      <div class="muted" id="repWhat" style="margin-top:6px"></div>
-    </div>
-
-    <div class="card" style="grid-column: span 6; background: rgba(15,23,42,.35); box-shadow:none">
-      <div style="font-weight:950">Trend + what it means</div>
-      <div class="muted" id="repTrend" style="margin-top:6px"></div>
-    </div>
-
-    <div class="card" style="grid-column: span 8; background: rgba(15,23,42,.35); box-shadow:none">
-      <div style="font-weight:950">Next steps</div>
-      <ul id="repSteps" style="margin:10px 0 0 18px;line-height:1.7;color:var(--text)"></ul>
-    </div>
-
-    <div class="card" style="grid-column: span 4; background: rgba(15,23,42,.35); box-shadow:none">
-      <div style="font-weight:950">Metric to watch</div>
-      <div class="kpiSmall" id="repMetric" style="margin-top:8px">—</div>
-      <div class="muted" style="margin-top:6px">Track this weekly.</div>
-      <div class="divider"></div>
-      <button class="btnGhost" id="copyFullReport">Copy full report</button>
-    </div>
-  </div>
-
-  <details style="margin-top:10px">
-    <summary class="muted" style="cursor:pointer">Show full report</summary>
-    <pre id="repFull" style="margin-top:10px;max-height:320px;overflow:auto"></pre>
-  </details>
-</div>
-
-</div>
     <div class="card">
       <h3 class="name">Starter</h3>
       <div class="price">$29 <span class="muted">/mo</span></div>
@@ -2167,21 +1120,34 @@ app.get(
       </ul>
       <button class="btn" onclick="activate('starter')">Activate Starter</button>
     </div>
+
+    <div class="card">
+      <h3 class="name">Pro</h3>
+      <div class="price">$59 <span class="muted">/mo</span></div>
+      <div class="muted">Includes daily report generation (non-AI).</div>
+      <ul>
+        <li>Everything in Starter</li>
+        <li>Daily report job</li>
+        <li>Email latest report (optional)</li>
+      </ul>
+      <button class="btn" onclick="activate('pro')">Activate Pro</button>
+    </div>
+
     <div class="card">
       <h3 class="name">Full AI</h3>
       <div class="price">$99 <span class="muted">/mo</span></div>
-      <div class="muted">AI summaries + next steps + action plans.</div>
+      <div class="muted">AI summaries + action plans.</div>
       <ul>
         <li>Everything in Pro</li>
-        <li>Generate AI report</li>
-        <li>Generate AI action plan</li>
+        <li>AI report + action plan</li>
+        <li>AI assistant chat (optional)</li>
       </ul>
       <button class="btn btnGreen" onclick="activate('full_ai')">Activate Full AI</button>
     </div>
   </div>
 
   <div class="note">
-    <b>Note:</b> These buttons call a demo activation endpoint. Later, Stripe will call the real webhook after payment.
+    <b>Note:</b> These buttons call a demo activation endpoint. Later Stripe will do this via webhooks.
   </div>
 
   <div class="note" id="status">Status: idle</div>
@@ -2217,7 +1183,7 @@ app.get(
 );
 
 /* ---------------------------
-   Dashboard UI (RESTORED)
+   Dashboard UI (NO INLINE JS)
    GET /dashboard?token=...
 ----------------------------*/
 app.get(
@@ -2225,20 +1191,15 @@ app.get(
   asyncHandler(async (req, res) => {
     setNoStore(res);
 
-    const token = req.query.token;
+    const token = String(req.query.token || "");
     const site = await getSiteByToken(token);
     if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
 
     const plan = site.plan || "unpaid";
     if (plan === "unpaid") return res.redirect("/storefront?token=" + encodeURIComponent(token));
 
-    const TOKEN_JS = JSON.stringify(String(token || ""));
-    const PLAN_JS = JSON.stringify(String(plan || ""));
-    const SITEID_JS = JSON.stringify(String(site.site_id || ""));
-
     res.setHeader("Content-Type", "text/html; charset=utf-8");
 
-    // NOTE: This is your full working dashboard HTML restored.
     res.send(`<!doctype html>
 <html lang="en">
 <head>
@@ -2324,11 +1285,10 @@ app.get(
   .span12{grid-column:1 / -1}
   .span8{grid-column: span 8}
   .span6{grid-column: span 6}
-  .span5{grid-column: span 5}
   .span4{grid-column: span 4}
   .span3{grid-column: span 3}
   @media (max-width: 980px){
-    .span8,.span6,.span5,.span4,.span3{grid-column:1 / -1}
+    .span8,.span6,.span4,.span3{grid-column:1 / -1}
   }
   .chartBox{padding:10px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background: rgba(15,23,42,.35)}
   svg{display:block;width:100%;height:auto}
@@ -2363,97 +1323,66 @@ app.get(
       <div class="logo"></div>
       <div>
         <h1>Constrava Dashboard</h1>
-        <div class="sub">Site: <b id="siteId"></b> • Plan: <b id="plan"></b></div>
+        <div class="sub">Site: <b id="siteId">—</b> • Plan: <b id="plan">—</b></div>
       </div>
     </div>
 
     <div class="row">
-     <select id="days">
-  <option value="1">1 day</option>
-  <option value="7" selected>7 days</option>
-  <option value="30">30 days</option>
-  <option value="365">1 year</option>
-</select>
-<button class="btnDanger" id="seedBtn">Seed demo data</button>
-<button class="btnAi" id="aiReportTop">
-  ✨ AI Report
-</button>
-
-<button class="btn" id="refresh">Refresh</button>
-<a class="btnGhost" id="plansLink" href="#">Plans</a>
-<span class="pill" id="status">Status: idle</span>
-</div>
-
+      <select id="days">
+        <option value="1">1 day</option>
+        <option value="7" selected>7 days</option>
+        <option value="30">30 days</option>
+        <option value="365">1 year</option>
+      </select>
+      <button class="btnDanger" id="seedBtn">Seed demo data</button>
+      <button class="btn" id="refresh">Refresh</button>
+      <a class="btnGhost" id="plansLink" href="#">Plans</a>
+      <span class="pill" id="status">Status: idle</span>
+    </div>
   </div>
 
   <div class="grid">
-  <div class="card span12" id="aiAssistantCard">
-  <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
-    <div>
-      <div style="font-weight:950">AI Assistant</div>
-      <div class="muted">Ask questions about your traffic, conversions, and next steps.</div>
-    </div>
-    <span class="pill">AI tier required</span>
-  </div>
-
-  <div class="divider"></div>
-
-  <div id="aiChat" style="height:220px;overflow:auto;padding:10px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background:rgba(15,23,42,.35)"></div>
-
-  <div class="row" style="margin-top:10px">
-    <input id="aiInput" placeholder="Ask: What should I fix first?" style="flex:1;min-width:220px" />
-    <button class="btnGreen" id="aiSend">Send</button>
-  </div>
-
-  <div class="row" style="margin-top:10px">
-    <button class="btnGhost" id="qp1">What changed this week?</button>
-    <button class="btnGhost" id="qp2">Where are users dropping off?</button>
-    <button class="btnGhost" id="qp3">Give me 3 next steps</button>
-  </div>
-</div>
- <!-- LATEST AI REPORT (TOP CARD) -->
-  <div class="card span12" id="latestReportTop">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-      <div>
-        <div style="font-weight:950">Latest AI Report</div>
-        <div class="muted">Your most recent AI-generated insights</div>
+    <div class="card span12">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Latest report</div>
+          <div class="muted">Shows the most recent report saved in the database</div>
+        </div>
+        <span class="pill">Reports</span>
       </div>
-
-      <button class="btnGreen" id="aiReportTopBtn">Generate new AI report</button>
+      <div class="divider"></div>
+      <pre id="latestAiReport">Loading…</pre>
     </div>
 
-    <div class="divider"></div>
-    <pre id="latestAiReport">Loading latest report...</pre>
-
-  </div>
-    <!-- KPIs -->
     <div class="card span3">
       <div class="muted">Visits today</div>
       <div class="kpi" id="kpiToday">—</div>
-      <div class="muted" id="kpiTodaySub"></div>
+      <div class="muted">Last event: <span id="kpiTodaySub">—</span></div>
     </div>
+
     <div class="card span3">
       <div class="muted">Visits in range</div>
       <div class="kpi" id="kpiRange">—</div>
-      <div class="muted" id="kpiRangeSub"></div>
+      <div class="muted" id="kpiRangeSub">Window: —</div>
     </div>
+
     <div class="card span3">
-      <div class="muted">Lead rate (leads/visits)</div>
+      <div class="muted">Lead rate</div>
       <div class="kpi" id="kpiLeadRate">—</div>
-      <div class="muted">Goal: increase with better CTA + forms</div>
+      <div class="muted">leads / visits</div>
     </div>
+
     <div class="card span3">
       <div class="muted">Purchase rate</div>
       <div class="kpi" id="kpiPurchaseRate">—</div>
-      <div class="muted" id="kpiGoalSub">Leads / Purchases / CTA</div>
+      <div class="muted">purchases / visits</div>
     </div>
 
-    <!-- Trend -->
     <div class="card span8">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
           <div style="font-weight:950">Traffic trend</div>
-          <div class="muted">Visits per day (selected window)</div>
+          <div class="muted">Visits per day</div>
         </div>
         <div class="row">
           <span class="pill">Max/day: <b id="maxDay">—</b></span>
@@ -2474,17 +1403,20 @@ app.get(
         <button class="btnGhost" id="simCta">Sim cta_click</button>
         <button class="btn" id="share">Copy share link</button>
       </div>
-      <div class="muted" style="margin-top:10px">Seeder requires <span class="mono">ENABLE_DEMO_SEED=true</span>. Sim buttons work any time.</div>
+
+      <div class="muted" style="margin-top:10px">
+        Seeder requires <span class="mono">ENABLE_DEMO_SEED=true</span>. Sim buttons always work.
+      </div>
     </div>
 
-    <!-- Live -->
     <div class="card span4">
       <div style="font-weight:950">Live</div>
       <div class="muted">Polls every few seconds for new page_views</div>
       <div class="divider"></div>
+
       <div class="row" style="justify-content:space-between">
         <div>
-          <div class="muted">New page_views (since last check)</div>
+          <div class="muted">New page_views</div>
           <div class="kpiSmall" id="liveNew">—</div>
         </div>
         <div>
@@ -2492,28 +1424,28 @@ app.get(
           <div class="kpiSmall" id="liveLast">—</div>
         </div>
       </div>
+
       <div class="divider"></div>
       <div class="muted">Details</div>
       <pre id="liveJson">Loading…</pre>
+
       <div class="row" style="margin-top:10px">
         <button class="btnGhost" id="liveToggle">Pause</button>
         <button class="btnGhost" id="liveNow">Check now</button>
       </div>
     </div>
 
-    <!-- Top Pages -->
     <div class="card span6">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
           <div style="font-weight:950">Top pages</div>
           <div class="muted">Most viewed pages in range</div>
         </div>
-        <span class="pill">Showing top 10</span>
+        <span class="pill">Top 10</span>
       </div>
       <div class="list" id="topPages">Loading…</div>
     </div>
 
-    <!-- Device Mix + Goals -->
     <div class="card span6">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
@@ -2524,7 +1456,7 @@ app.get(
       </div>
 
       <div class="grid" style="margin-top:10px;gap:10px">
-        <div class="card" style="grid-column: span 6; background: rgba(15,23,42,.35); box-shadow:none">
+        <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
           <div class="muted">Device donut</div>
           <div class="chartBox" style="margin-top:8px">
             <svg id="deviceSvg" viewBox="0 0 240 160" role="img" aria-label="Device mix chart"></svg>
@@ -2535,7 +1467,7 @@ app.get(
           </div>
         </div>
 
-        <div class="card" style="grid-column: span 6; background: rgba(15,23,42,.35); box-shadow:none">
+        <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
           <div class="muted">Goals in range</div>
           <div class="row" style="margin-top:6px">
             <span class="pill">Leads: <b id="leads">—</b></span>
@@ -2543,65 +1475,34 @@ app.get(
             <span class="pill">CTA: <b id="cta">—</b></span>
           </div>
           <div class="divider"></div>
-          <div class="muted">Rates</div>
-          <div class="row" style="margin-top:6px">
-            <span class="pill">Lead rate: <b id="leadRate2">—</b></span>
-            <span class="pill">Purchase rate: <b id="purchaseRate2">—</b></span>
-          </div>
-          <div class="divider"></div>
           <div class="muted">Last event</div>
           <pre id="lastEvent">Loading…</pre>
         </div>
       </div>
     </div>
-
-    <!-- Reports -->
-    <div class="card span12">
-      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
-        <div>
-          <div style="font-weight:950">Reports</div>
-          <div class="muted">Latest report + history</div>
-        </div>
-        <div class="rightBtns">
-          <button class="btnGreen" id="aiReportBtn" style="display:none">Generate AI report</button>
-          <button class="btnGreen" id="aiPlanBtn" style="display:none">AI action plan</button>
-          <button class="btnGhost" id="loadReports">Refresh list</button>
-        </div>
-      </div>
-
-      <div class="grid" style="margin-top:10px;gap:12px">
-        <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
-          <div class="muted">Latest</div>
-          <pre id="report">Loading…</pre>
-        </div>
-        <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
-          <div class="muted">History (click to open)</div>
-          <div class="list" id="reportsList">Loading…</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-<!-- Popup modal -->
-<div id="modalBg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;padding:18px;">
-  <div style="max-width:900px;margin:40px auto;background:rgba(15,23,42,.95);border:1px solid rgba(255,255,255,.16);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.45);overflow:hidden;">
-    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.12);">
-      <div style="font-weight:950" id="modalTitle">Done</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
-        <button id="modalCopy" class="btnGhost">Copy</button>
-        <button id="modalClose" class="btn">Close</button>
-      </div>
-    </div>
-    <div style="padding:14px;">
-      <div class="muted" id="modalSub" style="margin-bottom:10px;">Report generated.</div>
-      <pre id="modalBody" style="max-height:60vh;overflow:auto;margin:0;"></pre>
-    </div>
   </div>
 </div>
 
-<script>
-// dashboard.js — Constrava Dashboard client (plain JS)
-// Expects you are on /dashboard?token=...
+<!-- ✅ IMPORTANT: External JS file (NO inline script blob) -->
+<script src="/dashboard.js"></script>
+</body>
+</html>`);
+  })
+);
+
+/* ---------------------------
+   Dashboard JS (EXTERNAL)
+   GET /dashboard.js
+   (Reads token from URL: /dashboard?token=...)
+----------------------------*/
+app.get(
+  "/dashboard.js",
+  asyncHandler(async (req, res) => {
+    setNoStore(res);
+    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+
+    res.send(`
+// Constrava dashboard.js (plain JS) — loads metrics + reports, wires buttons, draws charts.
 (() => {
   "use strict";
 
@@ -2610,19 +1511,9 @@ app.get(
 
   const $ = (id) => document.getElementById(id);
 
-  function setStatus(t) {
+  function setStatus(t){
     const el = $("status");
     if (el) el.textContent = "Status: " + t;
-  }
-
-  function esc(s) {
-    return String(s || "").replace(/[&<>"']/g, (c) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
-    }[c]));
   }
 
   function pct(n) {
@@ -2634,7 +1525,7 @@ app.get(
     return Math.max(min, Math.min(max, n));
   }
 
-  // ---------- Charts (safe no-op if elements missing) ----------
+  // ----- Charts -----
   function renderTrend(svgEl, trend) {
     if (!svgEl) return;
 
@@ -2651,7 +1542,7 @@ app.get(
     bg.setAttribute("stroke", "rgba(255,255,255,.10)");
     svgEl.appendChild(bg);
 
-    const n = (trend && trend.length) ? trend.length : 0;
+    const n = Array.isArray(trend) ? trend.length : 0;
     if (!n) return;
 
     let maxV = 0, sumV = 0;
@@ -2706,7 +1597,7 @@ app.get(
       const large = (a1 - a0) > Math.PI ? 1 : 0;
 
       const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      p.setAttribute("d", `M ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1}`);
+      p.setAttribute("d", \`M \${x0} \${y0} A \${r} \${r} 0 \${large} 1 \${x1} \${y1}\`);
       p.setAttribute("stroke", color);
       p.setAttribute("stroke-width", String(w));
       p.setAttribute("fill", "none");
@@ -2723,7 +1614,7 @@ app.get(
     ring.setAttribute("fill", "none");
     svgEl.appendChild(ring);
 
-    arc(start, mid, "rgba(52,211,153,.90)");         // mobile
+    arc(start, mid, "rgba(52,211,153,.90)");              // mobile
     arc(mid, start + Math.PI * 2, "rgba(96,165,250,.90)"); // desktop
   }
 
@@ -2746,7 +1637,7 @@ app.get(
       left.style.overflow = "hidden";
       left.style.textOverflow = "ellipsis";
       left.style.whiteSpace = "nowrap";
-      left.innerHTML = `<b>${esc(r.page_type || "/")}</b><div class="muted">${r.views || 0} views • ${r.share || 0}%</div>`;
+      left.innerHTML = "<b>" + (r.page_type || "/") + "</b><div class='muted'>" + (r.views || 0) + " views • " + (r.share || 0) + "%</div>";
 
       const barWrap = document.createElement("div");
       barWrap.className = "barWrap";
@@ -2766,72 +1657,39 @@ app.get(
     }
   }
 
-  // ---------- API ----------
-  async function loadLatestReport() {
-    const pre1 = $("latestAiReport");
-    const pre2 = $("report");
-    if (pre1) pre1.textContent = "Loading latest report...";
-    if (pre2) pre2.textContent = "Loading latest report...";
-
-    const rr = await fetch(`/reports/latest?token=${encodeURIComponent(TOKEN)}`);
-    const jj = await rr.json().catch(() => ({}));
-
-    const text = (jj.ok && jj.report && jj.report.report_text) ? jj.report.report_text : "";
-    if (pre1) pre1.textContent = text || "No report yet.";
-    if (pre2) pre2.textContent = text || "No report yet.";
-  }
-
-  async function loadReportsList() {
-    const list = $("reportsList");
-    if (!list) return;
-
-    list.textContent = "Loading...";
-    const r = await fetch(`/reports?token=${encodeURIComponent(TOKEN)}&limit=30`);
+  // ----- API -----
+  async function loadLatestReport(){
+    const pre = $("latestAiReport");
+    if (pre) pre.textContent = "Loading…";
+    const r = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
     const j = await r.json().catch(() => ({}));
-
-    list.innerHTML = "";
-    if (!j.ok) {
-      list.textContent = j.error || "Failed to load reports";
-      return;
-    }
-    if (!j.reports || !j.reports.length) {
-      list.textContent = "No reports yet.";
-      return;
-    }
-
-    for (const rep of j.reports) {
-      const item = document.createElement("div");
-      item.className = "item";
-
-      const left = document.createElement("div");
-      left.innerHTML = `<b>${esc(rep.report_date)}</b><div class="muted">${esc(rep.preview || "")}</div>`;
-
-      const right = document.createElement("div");
-      right.className = "pill";
-      right.textContent = "Open";
-
-      item.appendChild(left);
-      item.appendChild(right);
-      list.appendChild(item);
-    }
+    const text = (j.ok && j.report && j.report.report_text) ? j.report.report_text : "";
+    if (pre) pre.textContent = text || "No report yet.";
   }
 
-  async function refresh() {
-    try {
+  async function refresh(){
+    try{
       const days = $("days") ? $("days").value : "7";
       setStatus("loading metrics…");
 
-      const r = await fetch(`/metrics?token=${encodeURIComponent(TOKEN)}&days=${encodeURIComponent(days)}`);
+      const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
       const j = await r.json().catch(() => ({}));
-      if (!j.ok) {
+      if (!j.ok){
         setStatus(j.error || "error");
         return;
       }
+
+      if ($("siteId")) $("siteId").textContent = j.site_id || "—";
+      if ($("plan")) $("plan").textContent = j.plan || "—";
+      if ($("plansLink")) $("plansLink").href = "/storefront?token=" + encodeURIComponent(TOKEN);
 
       if ($("kpiToday")) $("kpiToday").textContent = j.visits_today;
       if ($("kpiRange")) $("kpiRange").textContent = j.visits_range;
       if ($("kpiLeadRate")) $("kpiLeadRate").textContent = pct(j.conversion_rate || 0);
       if ($("kpiPurchaseRate")) $("kpiPurchaseRate").textContent = pct(j.purchase_rate || 0);
+
+      if ($("kpiRangeSub")) $("kpiRangeSub").textContent = "Window: " + j.days + " day(s)";
+      if ($("kpiTodaySub")) $("kpiTodaySub").textContent = (j.last_event && j.last_event.event_name) ? j.last_event.event_name : "—";
 
       if ($("leads")) $("leads").textContent = j.leads || 0;
       if ($("purchases")) $("purchases").textContent = j.purchases || 0;
@@ -2849,71 +1707,92 @@ app.get(
       renderTopPages($("topPages"), j.top_pages_range || []);
 
       await loadLatestReport();
-      await loadReportsList();
 
       setStatus("ready");
-    } catch (e) {
+    }catch(e){
       setStatus("error: " + (e?.message || "unknown"));
     }
   }
 
-  async function fire(eventName) {
+  async function fire(eventName){
     setStatus("sending " + eventName + "…");
     const r = await fetch("/demo/fire-event", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
       body: JSON.stringify({
         token: TOKEN,
         event_name: eventName,
         page_type: location.pathname,
-        device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop",
-      }),
+        device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop"
+      })
     });
-    const d = await r.json().catch(() => ({}));
-    if (!d.ok) return setStatus(d.error || "error");
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) { setStatus(j.error || "error"); return; }
     setStatus("sent ✅");
     setTimeout(refresh, 300);
   }
 
-  async function seed() {
+  async function seed(){
     setStatus("seeding…");
-    const r = await fetch(`/demo/seed?token=${encodeURIComponent(TOKEN)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ days: 14, events_per_day: 60 }),
+    const r = await fetch("/demo/seed?token=" + encodeURIComponent(TOKEN), {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ days: 14, events_per_day: 60 })
     });
     const j = await r.json().catch(() => ({}));
-    if (!j.ok) return setStatus(j.error || "seed failed");
+    if (!j.ok) { setStatus(j.error || "seed failed"); return; }
     setStatus("seeded ✅");
     setTimeout(refresh, 350);
   }
 
-  async function share() {
+  async function share(){
     setStatus("creating share link…");
     const r = await fetch("/demo/link", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: TOKEN }),
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ token: TOKEN })
     });
-    const d = await r.json().catch(() => ({}));
-    if (!d.ok) return setStatus(d.error || "error");
-
-    try {
-      await navigator.clipboard.writeText(d.url);
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) { setStatus(j.error || "error"); return; }
+    try{
+      await navigator.clipboard.writeText(j.url);
       setStatus("copied ✅");
-    } catch {
-      setStatus("share link: " + d.url);
+    }catch{
+      setStatus("share link: " + j.url);
     }
   }
 
-  // ---------- Init ----------
+  // ----- Live polling -----
+  let liveSince = new Date().toISOString();
+  let liveOn = true;
+  let liveTimer = null;
+
+  async function liveCheck(){
+    try{
+      const r = await fetch("/live?token=" + encodeURIComponent(TOKEN) + "&since=" + encodeURIComponent(liveSince));
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) return;
+
+      if ($("liveNew")) $("liveNew").textContent = String(j.new_page_views || 0);
+      if ($("liveLast")) $("liveLast").textContent = j.last_event ? (j.last_event.event_name || "—") : "—";
+      if ($("liveJson")) $("liveJson").textContent = JSON.stringify(j, null, 2);
+
+      liveSince = j.now || new Date().toISOString();
+    }catch{}
+  }
+
+  function startLive(){
+    if (liveTimer) clearInterval(liveTimer);
+    liveTimer = setInterval(() => { if (liveOn) liveCheck(); }, 3500);
+  }
+
+  // ----- Init -----
   window.addEventListener("DOMContentLoaded", () => {
-    if (!TOKEN) {
-      setStatus("missing token");
+    if (!TOKEN){
+      setStatus("missing token (add ?token=...)");
       return;
     }
 
-    // Wire buttons safely (only if elements exist)
     if ($("refresh")) $("refresh").addEventListener("click", refresh);
     if ($("days")) $("days").addEventListener("change", refresh);
 
@@ -2925,77 +1804,25 @@ app.get(
     if ($("simPurchase")) $("simPurchase").addEventListener("click", () => fire("purchase"));
     if ($("simCta")) $("simCta").addEventListener("click", () => fire("cta_click"));
 
-    // If you still have these buttons in your HTML, no problem:
-    if ($("loadReports")) $("loadReports").addEventListener("click", loadReportsList);
+    if ($("liveToggle")) $("liveToggle").addEventListener("click", () => {
+      liveOn = !liveOn;
+      $("liveToggle").textContent = liveOn ? "Pause" : "Resume";
+      if (liveOn) liveCheck();
+    });
 
+    if ($("liveNow")) $("liveNow").addEventListener("click", liveCheck);
+
+    startLive();
+    liveCheck();
     refresh();
   });
 })();
-
-
-<script>
-  const base = ${BASE_JS};
-  const form = document.getElementById("createForm");
-  const msg = document.getElementById("msg");
-  const out = document.getElementById("out");
-  const outPre = document.getElementById("outPre");
-  const outStatus = document.getElementById("outStatus");
-
-  function setMsg(text, isErr){
-    msg.innerHTML = isErr ? "<span class='err'>" + text + "</span>" : "<span class='ok'>" + text + "</span>";
-  }
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    out.style.display = "none";
-    setMsg("Creating site...", false);
-
-    const payload = {
-      site_id: document.getElementById("site_id").value,
-      site_name: document.getElementById("site_name").value,
-      owner_email: document.getElementById("owner_email").value,
-      custom_token: document.getElementById("custom_token").value || undefined
-    };
-
-    try{
-      const r = await fetch(base + "/sites", {
-        method: "POST",
-        headers: { "Content-Type":"application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await r.json().catch(() => ({}));
-      if(!r.ok || !data.ok){
-        setMsg(data.error || ("Create failed (" + r.status + ")"), true);
-        return;
-      }
-
-      setMsg("Created ✅ Scroll down for your links.", false);
-
-      const dashboard = data.client_dashboard_url || (base + "/dashboard?token=" + encodeURIComponent(data.access_token));
-      const storefront = base + "/storefront?token=" + encodeURIComponent(data.access_token);
-
-      outStatus.textContent = "Created ✅ Save this info:";
-      outPre.textContent =
-        "site_id: " + data.site_id + "\\n" +
-        "access_token: " + data.access_token + "\\n" +
-        "dashboard_url: " + dashboard + "\\n" +
-        "activation_storefront_url: " + storefront + "\\n\\n" +
-        "install_snippet:\\n" + data.install_snippet;
-
-      out.style.display = "block";
-    }catch(err){
-      setMsg("Network error: " + (err && err.message ? err.message : "unknown"), true);
-    }
-  });
-</script>
-</body>
-</html>`);
+    `);
   })
 );
 
 /* ---------------------------
-   “Daily job” utilities
+   “Daily job” utilities (non-AI)
 ----------------------------*/
 async function generateNonAiDailyReport(site_id) {
   const metricsRes = await pool.query(
@@ -3026,23 +1853,23 @@ async function generateNonAiDailyReport(site_id) {
   );
 
   const lines = [];
-  lines.push("Summary:");
-  lines.push(`In the last 24 hours you recorded ${m.page_views || 0} page views.`);
-  lines.push(`Leads: ${m.leads || 0} • Purchases: ${m.purchases || 0}`);
+  lines.push("1) What happened");
+  lines.push(\`In the last 24 hours you recorded \${m.page_views || 0} page views.\`);
+  lines.push(\`Leads: \${m.leads || 0} • Purchases: \${m.purchases || 0}\`);
   lines.push("");
-  lines.push("Top pages (7d):");
+  lines.push("2) Top pages (7d)");
   if (!topRes.rows.length) lines.push("- (no data yet)");
-  for (const r of topRes.rows) lines.push(`- ${r.page_type || "/"}: ${r.views}`);
+  for (const r of topRes.rows) lines.push(\`- \${r.page_type || "/"}: \${r.views}\`);
   lines.push("");
-  lines.push("Next steps:");
-  lines.push("1) Put your strongest CTA on the top page");
-  lines.push("2) Add a lead capture (form / booking / email)");
-  lines.push("3) Track a conversion event next");
+  lines.push("3) Next steps");
+  lines.push("- Put your strongest CTA on the top page");
+  lines.push("- Add a lead capture (form / booking / email)");
+  lines.push("- Track a conversion event next");
   lines.push("");
-  lines.push("Metric to watch:");
+  lines.push("4) Metric to watch");
   lines.push("Lead rate (leads / visits)");
 
-  return lines.join("\n");
+  return lines.join("\\n");
 }
 
 async function runDailyForAllSites() {
@@ -3077,7 +1904,7 @@ app.post(
 );
 
 if (process.env.ENABLE_SCHEDULER === "true") {
-  console.log("⏱️ In-process scheduler enabled (not a real cron).");
+  console.log("⏱️ In-process scheduler enabled (every 6h).");
   runDailyForAllSites().catch(() => {});
   setInterval(() => runDailyForAllSites().catch(() => {}), 6 * 60 * 60 * 1000);
 }
@@ -3102,5 +1929,3 @@ app.use((err, req, res, next) => {
     process.exit(1);
   }
 })();
-
-               
