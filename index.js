@@ -1,20 +1,20 @@
-// index.js (ESM) — Constrava MVP+ backend (SINGLE FILE, FULLY WORKING, GOOD-LOOKING DASHBOARD + EXTERNAL JS)
-// Node 18+ recommended (Render supports Node 18/20+). Uses global fetch.
+// index.js (ESM) — Constrava MVP+ backend (FULL + WORKING, HTML RESTORED + FIXED)
+// Node 18+ recommended. Uses global fetch.
 //
-// REQUIRED ENV:
+// ENV REQUIRED:
 // - DATABASE_URL
 //
 // OPTIONAL ENV:
-// - PUBLIC_BASE_URL         (e.g. https://your-service.onrender.com)
-// - PUBLIC_EVENTS_URL       (defaults to PUBLIC_BASE_URL or request host)
-// - ENABLE_DEMO_SEED=true   (enables POST /demo/seed)
-// - ENABLE_DEMO_ACTIVATE=false (disables POST /demo/activate-plan)
-// - OPENAI_API_KEY (+ optional OPENAI_MODEL) (for AI endpoints)
+// - PUBLIC_BASE_URL
+// - PUBLIC_EVENTS_URL
+// - ENABLE_DEMO_SEED=true
+// - ENABLE_DEMO_ACTIVATE=false
+// - OPENAI_API_KEY (+ optional OPENAI_MODEL) (for FULL AI endpoints)
 // - RESEND_API_KEY + FROM_EMAIL (for email endpoint)
-// - ENABLE_SCHEDULER=true   (in-process scheduler every 6h)
-// - COOKIE_SECURE=true      (sets Secure on session cookie)
-// - CORS_ORIGIN             (optional; if set, restrict CORS to this origin)
-// - PGSSL=true              (optional; if set, enables ssl { rejectUnauthorized:false } for pg)
+// - ENABLE_SCHEDULER=true
+// - COOKIE_SECURE=true
+// - CORS_ORIGIN
+// - PGSSL=true
 
 import express from "express";
 import cors from "cors";
@@ -22,11 +22,12 @@ import pkg from "pg";
 import crypto from "crypto";
 
 const { Pool } = pkg;
-
 const app = express();
+
+// IMPORTANT for Render / reverse proxies (req.protocol + secure cookies)
 app.set("trust proxy", 1);
 
-// CORS (optional lock-down)
+// CORS
 const CORS_ORIGIN = process.env.CORS_ORIGIN;
 app.use(
   cors(
@@ -79,6 +80,12 @@ function publicBaseUrl(req) {
 function publicEventsUrl(req) {
   if (process.env.PUBLIC_EVENTS_URL) return process.env.PUBLIC_EVENTS_URL;
   return publicBaseUrl(req);
+}
+
+function requireEnv(name) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing ${name} env var`);
+  return v;
 }
 
 function normalizeDays(input) {
@@ -135,12 +142,6 @@ function planGate(site, allowedPlans) {
   };
 }
 
-function requireEnv(name) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing ${name} env var`);
-  return v;
-}
-
 /* ---------------------------
    Password hashing (no bcrypt)
 ----------------------------*/
@@ -180,7 +181,7 @@ function setCookie(res, name, value, opts = {}) {
     sameSite = "Lax",
     secure = false,
     path = "/",
-    maxAgeSeconds = 60 * 60 * 24 * 14 // 14 days
+    maxAgeSeconds = 60 * 60 * 24 * 14
   } = opts;
 
   const parts = [
@@ -319,198 +320,169 @@ async function ensureTables() {
 ----------------------------*/
 app.get("/", (req, res) => res.send("Backend is running ✅"));
 
-app.get(
-  "/health",
-  asyncHandler(async (req, res) => {
-    const r = await pool.query("SELECT 1 as ok");
-    res.json({ ok: true, db: r.rows[0]?.ok === 1 });
-  })
-);
+app.get("/health", asyncHandler(async (req, res) => {
+  const r = await pool.query("SELECT 1 as ok");
+  res.json({ ok: true, db: r.rows[0]?.ok === 1 });
+}));
 
-app.get(
-  "/db-test",
-  asyncHandler(async (req, res) => {
-    const r = await pool.query("SELECT NOW() as now");
-    res.json({ ok: true, now: r.rows[0].now });
-  })
-);
+app.get("/db-test", asyncHandler(async (req, res) => {
+  const r = await pool.query("SELECT NOW() as now");
+  res.json({ ok: true, now: r.rows[0].now });
+}));
 
-app.get(
-  "/debug/site",
-  asyncHandler(async (req, res) => {
-    const token = String(req.query.token || "");
-    const site = await getSiteByToken(token);
-    res.json({ ok: true, site });
-  })
-);
+app.get("/debug/site", asyncHandler(async (req, res) => {
+  const token = req.query.token;
+  const site = await getSiteByToken(token);
+  res.json({ ok: true, site });
+}));
 
 /* ---------------------------
    Auth (user accounts)
 ----------------------------*/
-app.post(
-  "/auth/register",
-  asyncHandler(async (req, res) => {
-    const { site_id: rawSiteId, email, password, token } = req.body || {};
-    const site_id = normalizeSiteId(rawSiteId);
+app.post("/auth/register", asyncHandler(async (req, res) => {
+  const { site_id: rawSiteId, email, password, token } = req.body || {};
+  const site_id = normalizeSiteId(rawSiteId);
 
-    if (!site_id || !email || !password || !token) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "site_id, email, password, and token are required" });
-    }
+  if (!site_id || !email || !password || !token) {
+    return res.status(400).json({ ok: false, error: "site_id, email, password, and token are required" });
+  }
 
-    const site = await getSiteById(site_id);
-    if (!site) return res.status(404).json({ ok: false, error: "site_id not found" });
-    if (site.dashboard_token !== token)
-      return res.status(401).json({ ok: false, error: "Invalid site token" });
+  const site = await getSiteById(site_id);
+  if (!site) return res.status(404).json({ ok: false, error: "site_id not found" });
+  if (site.dashboard_token !== token) return res.status(401).json({ ok: false, error: "Invalid site token" });
 
-    const e = safeEmail(email);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))
-      return res.status(400).json({ ok: false, error: "Invalid email" });
-    if (String(password).length < 8)
-      return res.status(400).json({ ok: false, error: "Password must be at least 8 characters" });
+  const e = safeEmail(email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return res.status(400).json({ ok: false, error: "Invalid email" });
+  if (String(password).length < 8) return res.status(400).json({ ok: false, error: "Password must be at least 8 characters" });
 
-    const { salt, hash } = hashPassword(password);
+  const { salt, hash } = hashPassword(password);
 
-    try {
-      const r = await pool.query(
-        `INSERT INTO users (site_id, email, password_salt, password_hash)
-         VALUES ($1,$2,$3,$4)
-         RETURNING id, email, site_id`,
-        [site_id, e, salt, hash]
-      );
-      res.json({ ok: true, user: r.rows[0] });
-    } catch (err) {
-      const msg = String(err.message || "");
-      if (msg.toLowerCase().includes("unique")) {
-        return res.status(409).json({ ok: false, error: "Email already registered" });
-      }
-      res.status(500).json({ ok: false, error: msg });
-    }
-  })
-);
-
-app.post(
-  "/auth/login",
-  asyncHandler(async (req, res) => {
-    const { email, password } = req.body || {};
-    const e = safeEmail(email);
-
-    if (!e || !password) return res.status(400).json({ ok: false, error: "email and password required" });
-
+  try {
     const r = await pool.query(
-      `SELECT id, site_id, email, password_salt, password_hash
-       FROM users
-       WHERE email=$1
-       LIMIT 1`,
-      [e]
+      `INSERT INTO users (site_id, email, password_salt, password_hash)
+       VALUES ($1,$2,$3,$4)
+       RETURNING id, email, site_id`,
+      [site_id, e, salt, hash]
     );
-    if (r.rows.length === 0) return res.status(401).json({ ok: false, error: "Invalid login" });
-
-    const u = r.rows[0];
-    if (!verifyPassword(password, u.password_salt, u.password_hash)) {
-      return res.status(401).json({ ok: false, error: "Invalid login" });
+    res.json({ ok: true, user: r.rows[0] });
+  } catch (err) {
+    const msg = String(err.message || "");
+    if (msg.toLowerCase().includes("unique")) {
+      return res.status(409).json({ ok: false, error: "Email already registered" });
     }
+    res.status(500).json({ ok: false, error: msg });
+  }
+}));
 
-    const session_id = crypto.randomUUID();
-    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+app.post("/auth/login", asyncHandler(async (req, res) => {
+  const { email, password } = req.body || {};
+  const e = safeEmail(email);
 
-    await pool.query(`INSERT INTO sessions (session_id, user_id, expires_at) VALUES ($1,$2,$3)`, [
-      session_id,
-      u.id,
-      expiresAt.toISOString()
-    ]);
+  if (!e || !password) return res.status(400).json({ ok: false, error: "email and password required" });
 
-    setCookie(res, "constrava_session", session_id, {
-      httpOnly: true,
-      sameSite: "Lax",
-      secure: String(process.env.COOKIE_SECURE || "false") === "true"
-    });
+  const r = await pool.query(
+    `SELECT id, site_id, email, password_salt, password_hash
+     FROM users
+     WHERE email=$1
+     LIMIT 1`,
+    [e]
+  );
+  if (r.rows.length === 0) return res.status(401).json({ ok: false, error: "Invalid login" });
 
-    const site = await getSiteById(u.site_id);
+  const u = r.rows[0];
+  if (!verifyPassword(password, u.password_salt, u.password_hash)) {
+    return res.status(401).json({ ok: false, error: "Invalid login" });
+  }
 
-    res.json({
-      ok: true,
-      user: { email: u.email, site_id: u.site_id },
-      site: { site_id: site?.site_id, plan: site?.plan || "unpaid" },
-      hint: "You are logged in (cookie). Dashboard uses ?token=... for now."
-    });
-  })
-);
+  const session_id = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
 
-app.post(
-  "/auth/logout",
-  asyncHandler(async (req, res) => {
-    const sid = getCookie(req, "constrava_session");
-    if (sid) await pool.query(`DELETE FROM sessions WHERE session_id=$1`, [sid]);
-    clearCookie(res, "constrava_session");
-    res.json({ ok: true });
-  })
-);
+  await pool.query(`INSERT INTO sessions (session_id, user_id, expires_at) VALUES ($1,$2,$3)`, [
+    session_id,
+    u.id,
+    expiresAt.toISOString()
+  ]);
 
-app.get(
-  "/me",
-  asyncHandler(async (req, res) => {
-    const sess = await getSession(req);
-    if (!sess) return res.json({ ok: true, logged_in: false });
-    res.json({
-      ok: true,
-      logged_in: true,
-      user: { email: sess.email, site_id: sess.site_id },
-      expires_at: sess.expires_at
-    });
-  })
-);
+  setCookie(res, "constrava_session", session_id, {
+    httpOnly: true,
+    sameSite: "Lax",
+    secure: String(process.env.COOKIE_SECURE || "false") === "true"
+  });
+
+  const site = await getSiteById(u.site_id);
+
+  res.json({
+    ok: true,
+    user: { email: u.email, site_id: u.site_id },
+    site: { site_id: site?.site_id, plan: site?.plan || "unpaid" },
+    hint: "Logged in (cookie). Dashboard still uses ?token=... for now."
+  });
+}));
+
+app.post("/auth/logout", asyncHandler(async (req, res) => {
+  const sid = getCookie(req, "constrava_session");
+  if (sid) await pool.query(`DELETE FROM sessions WHERE session_id=$1`, [sid]);
+  clearCookie(res, "constrava_session");
+  res.json({ ok: true });
+}));
+
+app.get("/me", asyncHandler(async (req, res) => {
+  const sess = await getSession(req);
+  if (!sess) return res.json({ ok: true, logged_in: false });
+  res.json({
+    ok: true,
+    logged_in: true,
+    user: { email: sess.email, site_id: sess.site_id },
+    expires_at: sess.expires_at
+  });
+}));
 
 /* ---------------------------
    Onboarding: create a site
    POST /sites { site_id, site_name, owner_email, custom_token? }
 ----------------------------*/
-app.post(
-  "/sites",
-  asyncHandler(async (req, res) => {
-    const { site_id: rawSiteId, site_name, owner_email, custom_token } = req.body || {};
+app.post("/sites", asyncHandler(async (req, res) => {
+  const { site_id: rawSiteId, site_name, owner_email, custom_token } = req.body || {};
 
-    if (!rawSiteId || !site_name || !owner_email) {
-      return res.status(400).json({ ok: false, error: "site_id, site_name, and owner_email are required" });
+  if (!rawSiteId || !site_name || !owner_email) {
+    return res.status(400).json({ ok: false, error: "site_id, site_name, and owner_email are required" });
+  }
+
+  const site_id = normalizeSiteId(rawSiteId);
+  const siteIdErr = validateSiteId(site_id);
+  if (siteIdErr) return res.status(400).json({ ok: false, error: siteIdErr });
+
+  let token = crypto.randomUUID();
+  if (custom_token) {
+    const tokErr = validateCustomToken(custom_token);
+    if (tokErr) return res.status(400).json({ ok: false, error: tokErr });
+    token = custom_token;
+  }
+
+  try {
+    await pool.query(
+      `INSERT INTO sites (site_id, site_name, owner_email, dashboard_token, plan)
+       VALUES ($1,$2,$3,$4,'unpaid')`,
+      [site_id, String(site_name).trim(), safeEmail(owner_email), token]
+    );
+  } catch (err) {
+    const msg = String(err.message || "");
+    if (msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
+      return res.status(409).json({ ok: false, error: "That site_id is already taken. Choose another." });
     }
+    throw err;
+  }
 
-    const site_id = normalizeSiteId(rawSiteId);
-    const siteIdErr = validateSiteId(site_id);
-    if (siteIdErr) return res.status(400).json({ ok: false, error: siteIdErr });
+  const base = publicBaseUrl(req);
 
-    let token = crypto.randomUUID();
-    if (custom_token) {
-      const tokErr = validateCustomToken(custom_token);
-      if (tokErr) return res.status(400).json({ ok: false, error: tokErr });
-      token = custom_token;
-    }
-
-    try {
-      await pool.query(
-        `INSERT INTO sites (site_id, site_name, owner_email, dashboard_token, plan)
-         VALUES ($1,$2,$3,$4,'unpaid')`,
-        [site_id, String(site_name).trim(), safeEmail(owner_email), token]
-      );
-    } catch (err) {
-      const msg = String(err.message || "");
-      if (msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
-        return res.status(409).json({ ok: false, error: "That site_id is already taken. Choose another." });
-      }
-      throw err;
-    }
-
-    const base = publicBaseUrl(req);
-
-    res.json({
-      ok: true,
-      site_id,
-      access_token: token,
-      install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
-      client_dashboard_url: `${base}/dashboard?token=${encodeURIComponent(token)}`
-    });
-  })
-);
+  res.json({
+    ok: true,
+    site_id,
+    access_token: token,
+    install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
+    client_dashboard_url: `${base}/dashboard?token=${encodeURIComponent(token)}`
+  });
+}));
 
 /* ---------------------------
    Tracker script
@@ -540,556 +512,853 @@ app.get("/tracker.js", (req, res) => {
       })
     }).catch(function(){});
   } catch (e) {}
-})();
-  `);
+})();`.trim());
 });
 
 /* ---------------------------
    Receive events
    POST /events
 ----------------------------*/
-app.post(
-  "/events",
-  asyncHandler(async (req, res) => {
-    const { site_id, event_name, page_type, device } = req.body || {};
-    if (!site_id || !event_name) return res.status(400).json({ ok: false, error: "site_id and event_name required" });
+app.post("/events", asyncHandler(async (req, res) => {
+  const { site_id, event_name, page_type, device } = req.body || {};
+  if (!site_id || !event_name) return res.status(400).json({ ok: false, error: "site_id and event_name required" });
 
-    const site = await pool.query("SELECT 1 FROM sites WHERE site_id=$1", [site_id]);
-    if (site.rows.length === 0) return res.status(403).json({ ok: false, error: "Invalid site_id" });
+  const site = await pool.query("SELECT 1 FROM sites WHERE site_id=$1", [site_id]);
+  if (site.rows.length === 0) return res.status(403).json({ ok: false, error: "Invalid site_id" });
 
-    await pool.query(
-      `INSERT INTO events_raw (site_id, event_name, page_type, device)
-       VALUES ($1,$2,$3,$4)`,
-      [site_id, String(event_name), page_type || null, device || null]
-    );
+  await pool.query(
+    `INSERT INTO events_raw (site_id, event_name, page_type, device)
+     VALUES ($1,$2,$3,$4)`,
+    [site_id, String(event_name), page_type || null, device || null]
+  );
 
-    res.json({ ok: true });
-  })
-);
+  res.json({ ok: true });
+}));
 
 /* ---------------------------
    DEMO: fire events
    POST /demo/fire-event { token, event_name, page_type?, device? }
 ----------------------------*/
-app.post(
-  "/demo/fire-event",
-  asyncHandler(async (req, res) => {
-    const { token, event_name, page_type, device } = req.body || {};
-    if (!token) return res.status(400).json({ ok: false, error: "token required" });
-    if (!event_name) return res.status(400).json({ ok: false, error: "event_name required" });
+app.post("/demo/fire-event", asyncHandler(async (req, res) => {
+  const { token, event_name, page_type, device } = req.body || {};
+  if (!token) return res.status(400).json({ ok: false, error: "token required" });
+  if (!event_name) return res.status(400).json({ ok: false, error: "event_name required" });
 
-    const site = await getSiteByToken(token);
-    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
-    const allowed = new Set(["page_view", "lead", "purchase", "cta_click"]);
-    if (!allowed.has(event_name)) {
-      return res.status(400).json({ ok: false, error: "Invalid event_name. Use page_view, lead, purchase, cta_click" });
-    }
+  const allowed = new Set(["page_view", "lead", "purchase", "cta_click"]);
+  if (!allowed.has(event_name)) {
+    return res.status(400).json({ ok: false, error: "Invalid event_name. Use page_view, lead, purchase, cta_click" });
+  }
 
-    await pool.query(
-      `INSERT INTO events_raw (site_id, event_name, page_type, device)
-       VALUES ($1,$2,$3,$4)`,
-      [site.site_id, event_name, page_type || "/", device || "desktop"]
-    );
+  await pool.query(
+    `INSERT INTO events_raw (site_id, event_name, page_type, device)
+     VALUES ($1,$2,$3,$4)`,
+    [site.site_id, event_name, page_type || "/", device || "desktop"]
+  );
 
-    res.json({ ok: true });
-  })
-);
+  res.json({ ok: true });
+}));
 
 /* ---------------------------
    LIVE: new page_views since timestamp
    GET /live?token=...&since=ISO
 ----------------------------*/
-app.get(
-  "/live",
-  asyncHandler(async (req, res) => {
-    setNoStore(res);
+app.get("/live", asyncHandler(async (req, res) => {
+  setNoStore(res);
 
-    const token = String(req.query.token || "");
-    const since = String(req.query.since || "");
-    if (!token) return res.status(400).json({ ok: false, error: "token required" });
+  const token = req.query.token;
+  const since = req.query.since;
+  if (!token) return res.status(400).json({ ok: false, error: "token required" });
 
-    const site = await getSiteByToken(token);
-    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
-    const sinceDate = since ? new Date(since) : null;
-    if (since && isNaN(sinceDate.getTime())) {
-      return res.status(400).json({ ok: false, error: "Invalid since timestamp" });
-    }
+  const sinceDate = since ? new Date(String(since)) : null;
+  if (since && isNaN(sinceDate.getTime())) {
+    return res.status(400).json({ ok: false, error: "Invalid since timestamp" });
+  }
 
-    const params = [site.site_id];
-    let whereSince = "";
-    if (sinceDate) {
-      params.push(sinceDate.toISOString());
-      whereSince = ` AND created_at > $2`;
-    }
+  const params = [site.site_id];
+  let whereSince = "";
+  if (sinceDate) {
+    params.push(sinceDate.toISOString());
+    whereSince = " AND created_at > $2";
+  }
 
-    const newViewsRes = await pool.query(
-      `
-      SELECT COUNT(*)::int AS new_page_views
-      FROM events_raw
-      WHERE site_id=$1
-        AND event_name='page_view'
-        ${whereSince}
-      `,
-      params
-    );
+  const newViewsRes = await pool.query(
+    `
+    SELECT COUNT(*)::int AS new_page_views
+    FROM events_raw
+    WHERE site_id=$1
+      AND event_name='page_view'
+      ${whereSince}
+    `,
+    params
+  );
 
-    const lastEventRes = await pool.query(
-      `
-      SELECT event_name, page_type, device, created_at
-      FROM events_raw
-      WHERE site_id=$1
-      ORDER BY created_at DESC
-      LIMIT 1
-      `,
-      [site.site_id]
-    );
+  const lastEventRes = await pool.query(
+    `
+    SELECT event_name, page_type, device, created_at
+    FROM events_raw
+    WHERE site_id=$1
+    ORDER BY created_at DESC
+    LIMIT 1
+    `,
+    [site.site_id]
+  );
 
-    res.json({
-      ok: true,
-      site_id: site.site_id,
-      since: sinceDate ? sinceDate.toISOString() : null,
-      new_page_views: newViewsRes.rows[0]?.new_page_views || 0,
-      last_event: lastEventRes.rows[0] || null,
-      now: new Date().toISOString()
-    });
-  })
-);
+  res.json({
+    ok: true,
+    site_id: site.site_id,
+    since: sinceDate ? sinceDate.toISOString() : null,
+    new_page_views: newViewsRes.rows[0]?.new_page_views || 0,
+    last_event: lastEventRes.rows[0] || null,
+    now: new Date().toISOString()
+  });
+}));
 
 /* ---------------------------
    DEMO: shareable link
    POST /demo/link { token } -> { url }
    GET /d/:code -> redirect to /dashboard?token=...
 ----------------------------*/
-app.post(
-  "/demo/link",
-  asyncHandler(async (req, res) => {
-    const { token } = req.body || {};
-    if (!token) return res.status(400).json({ ok: false, error: "token required" });
+app.post("/demo/link", asyncHandler(async (req, res) => {
+  const { token } = req.body || {};
+  if (!token) return res.status(400).json({ ok: false, error: "token required" });
 
-    const site = await getSiteByToken(token);
-    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
-    const code = crypto.randomBytes(4).toString("hex");
-    await pool.query(`INSERT INTO demo_links (code, token) VALUES ($1,$2)`, [code, token]);
+  const code = crypto.randomBytes(4).toString("hex");
+  await pool.query(`INSERT INTO demo_links (code, token) VALUES ($1,$2)`, [code, token]);
 
-    const base = process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
-    res.json({ ok: true, code, url: `${base}/d/${code}` });
-  })
-);
+  const base = process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
+  res.json({ ok: true, code, url: `${base}/d/${code}` });
+}));
 
-app.get(
-  "/d/:code",
-  asyncHandler(async (req, res) => {
-    setNoStore(res);
-    const code = String(req.params.code || "").trim();
-    const r = await pool.query(`SELECT token FROM demo_links WHERE code=$1 LIMIT 1`, [code]);
-    if (r.rows.length === 0) return res.status(404).send("Demo link not found");
-    const token = r.rows[0].token;
-    return res.redirect("/dashboard?token=" + encodeURIComponent(token));
-  })
-);
+app.get("/d/:code", asyncHandler(async (req, res) => {
+  setNoStore(res);
+  const code = String(req.params.code || "").trim();
+  const r = await pool.query(`SELECT token FROM demo_links WHERE code=$1 LIMIT 1`, [code]);
+  if (r.rows.length === 0) return res.status(404).send("Demo link not found");
+  return res.redirect("/dashboard?token=" + encodeURIComponent(r.rows[0].token));
+}));
 
 /* ---------------------------
    Metrics
    GET /metrics?token=...&days=7
 ----------------------------*/
-app.get(
-  "/metrics",
-  asyncHandler(async (req, res) => {
-    setNoStore(res);
+app.get("/metrics", asyncHandler(async (req, res) => {
+  setNoStore(res);
 
-    const token = String(req.query.token || "");
-    const site = await getSiteByToken(token);
-    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+  const token = req.query.token;
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
-    const site_id = site.site_id;
-    const days = normalizeDays(req.query.days);
+  const site_id = site.site_id;
+  const days = normalizeDays(req.query.days);
 
-    const todayRes = await pool.query(
-      `
-      SELECT COUNT(*)::int AS visits_today
-      FROM events_raw
-      WHERE site_id = $1
-        AND event_name = 'page_view'
-        AND created_at::date = CURRENT_DATE
-      `,
-      [site_id]
-    );
+  const todayRes = await pool.query(
+    `
+    SELECT COUNT(*)::int AS visits_today
+    FROM events_raw
+    WHERE site_id = $1
+      AND event_name = 'page_view'
+      AND created_at::date = CURRENT_DATE
+    `,
+    [site_id]
+  );
 
-    const startDateInterval = `${days - 1} days`;
+  const startDateInterval = `${days - 1} days`;
 
-    const trendRes = await pool.query(
-      `
-      SELECT d::date AS day, COALESCE(COUNT(e.*),0)::int AS visits
-      FROM generate_series(CURRENT_DATE - $2::interval, CURRENT_DATE, INTERVAL '1 day') d
-      LEFT JOIN events_raw e
-        ON e.site_id = $1
-       AND e.event_name = 'page_view'
-       AND e.created_at::date = d::date
-      GROUP BY d
-      ORDER BY d
-      `,
-      [site_id, startDateInterval]
-    );
+  const trendRes = await pool.query(
+    `
+    SELECT d::date AS day, COALESCE(COUNT(e.*),0)::int AS visits
+    FROM generate_series(CURRENT_DATE - $2::interval, CURRENT_DATE, INTERVAL '1 day') d
+    LEFT JOIN events_raw e
+      ON e.site_id = $1
+     AND e.event_name = 'page_view'
+     AND e.created_at::date = d::date
+    GROUP BY d
+    ORDER BY d
+    `,
+    [site_id, startDateInterval]
+  );
 
-    const visits_range = trendRes.rows.reduce((sum, r) => sum + (r.visits || 0), 0);
+  const visits_range = trendRes.rows.reduce((sum, r) => sum + (r.visits || 0), 0);
 
-    const topPagesRangeRes = await pool.query(
-      `
-      SELECT page_type, COUNT(*)::int AS views
-      FROM events_raw
-      WHERE site_id = $1
-        AND event_name = 'page_view'
-        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
-        AND page_type IS NOT NULL
-      GROUP BY page_type
-      ORDER BY views DESC
-      LIMIT 10
-      `,
-      [site_id, days]
-    );
+  const topPagesRangeRes = await pool.query(
+    `
+    SELECT page_type, COUNT(*)::int AS views
+    FROM events_raw
+    WHERE site_id = $1
+      AND event_name = 'page_view'
+      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+      AND page_type IS NOT NULL
+    GROUP BY page_type
+    ORDER BY views DESC
+    LIMIT 10
+    `,
+    [site_id, days]
+  );
 
-    const deviceRes = await pool.query(
-      `
-      SELECT
-        SUM(CASE WHEN device = 'mobile' THEN 1 ELSE 0 END)::int AS mobile,
-        SUM(CASE WHEN device = 'desktop' THEN 1 ELSE 0 END)::int AS desktop
-      FROM events_raw
-      WHERE site_id = $1
-        AND event_name = 'page_view'
-        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
-      `,
-      [site_id, days]
-    );
+  const deviceRes = await pool.query(
+    `
+    SELECT
+      SUM(CASE WHEN device = 'mobile' THEN 1 ELSE 0 END)::int AS mobile,
+      SUM(CASE WHEN device = 'desktop' THEN 1 ELSE 0 END)::int AS desktop
+    FROM events_raw
+    WHERE site_id = $1
+      AND event_name = 'page_view'
+      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+    `,
+    [site_id, days]
+  );
 
-    const goalsRangeRes = await pool.query(
-      `
-      SELECT
-        SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
-        SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases,
-        SUM(CASE WHEN event_name='cta_click' THEN 1 ELSE 0 END)::int AS cta_clicks
-      FROM events_raw
-      WHERE site_id=$1
-        AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
-      `,
-      [site_id, days]
-    );
+  const goalsRangeRes = await pool.query(
+    `
+    SELECT
+      SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
+      SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases,
+      SUM(CASE WHEN event_name='cta_click' THEN 1 ELSE 0 END)::int AS cta_clicks
+    FROM events_raw
+    WHERE site_id=$1
+      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+    `,
+    [site_id, days]
+  );
 
-    const lastEventRes = await pool.query(
-      `
-      SELECT event_name, page_type, device, created_at
-      FROM events_raw
-      WHERE site_id = $1
-      ORDER BY created_at DESC
-      LIMIT 1
-      `,
-      [site_id]
-    );
+  const lastEventRes = await pool.query(
+    `
+    SELECT event_name, page_type, device, created_at
+    FROM events_raw
+    WHERE site_id = $1
+    ORDER BY created_at DESC
+    LIMIT 1
+    `,
+    [site_id]
+  );
 
-    const leads = goalsRangeRes.rows[0]?.leads || 0;
-    const purchases = goalsRangeRes.rows[0]?.purchases || 0;
-    const cta_clicks = goalsRangeRes.rows[0]?.cta_clicks || 0;
+  const leads = goalsRangeRes.rows[0]?.leads || 0;
+  const purchases = goalsRangeRes.rows[0]?.purchases || 0;
+  const cta_clicks = goalsRangeRes.rows[0]?.cta_clicks || 0;
 
-    const conversion_rate = visits_range ? Number((leads / visits_range).toFixed(4)) : 0;
-    const purchase_rate = visits_range ? Number((purchases / visits_range).toFixed(4)) : 0;
+  const conversion_rate = visits_range ? Number((leads / visits_range).toFixed(4)) : 0;
+  const purchase_rate = visits_range ? Number((purchases / visits_range).toFixed(4)) : 0;
 
-    const totalRangeViews = topPagesRangeRes.rows.reduce((s, r) => s + (r.views || 0), 0);
-    const top_pages_range = topPagesRangeRes.rows.map((r) => ({
-      page_type: r.page_type,
-      views: r.views,
-      share: totalRangeViews ? Math.round((r.views / totalRangeViews) * 100) : 0
-    }));
+  const totalRangeViews = topPagesRangeRes.rows.reduce((s, r) => s + (r.views || 0), 0);
+  const top_pages_range = topPagesRangeRes.rows.map((r) => ({
+    page_type: r.page_type,
+    views: r.views,
+    share: totalRangeViews ? Math.round((r.views / totalRangeViews) * 100) : 0
+  }));
 
-    res.json({
-      ok: true,
-      site_id,
-      plan: site.plan || "unpaid",
-      days,
-      visits_today: todayRes.rows[0]?.visits_today || 0,
-      visits_range,
-      trend: trendRes.rows.map((r) => ({ day: String(r.day), visits: r.visits })),
-      device_mix: deviceRes.rows[0] || { mobile: 0, desktop: 0 },
-      last_event: lastEventRes.rows[0] || null,
-      leads,
-      purchases,
-      cta_clicks,
-      conversion_rate,
-      purchase_rate,
-      top_pages_range
-    });
-  })
-);
+  res.json({
+    ok: true,
+    site_id,
+    plan: site.plan || "unpaid",
+    days,
+    visits_today: todayRes.rows[0]?.visits_today || 0,
+    visits_range,
+    trend: trendRes.rows.map((r) => ({ day: String(r.day), visits: r.visits })),
+    device_mix: deviceRes.rows[0] || { mobile: 0, desktop: 0 },
+    last_event: lastEventRes.rows[0] || null,
+    leads,
+    purchases,
+    cta_clicks,
+    conversion_rate,
+    purchase_rate,
+    top_pages_range
+  });
+}));
 
 /* ---------------------------
    Reports
 ----------------------------*/
-app.get(
-  "/reports",
-  asyncHandler(async (req, res) => {
-    setNoStore(res);
+app.get("/reports", asyncHandler(async (req, res) => {
+  setNoStore(res);
 
-    const token = String(req.query.token || "");
-    const site = await getSiteByToken(token);
-    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+  const site = await getSiteByToken(req.query.token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
-    const limit = Math.min(parseInt(req.query.limit || "30", 10), 100);
+  const limit = Math.min(parseInt(req.query.limit || "30", 10), 100);
+  const r = await pool.query(
+    `SELECT site_id, report_date, created_at, LEFT(report_text, 260) AS preview
+     FROM daily_reports
+     WHERE site_id=$1
+     ORDER BY report_date DESC, created_at DESC
+     LIMIT $2`,
+    [site.site_id, limit]
+  );
+  res.json({ ok: true, reports: r.rows });
+}));
 
-    const r = await pool.query(
-      `SELECT site_id, report_date, created_at, LEFT(report_text, 260) AS preview
-       FROM daily_reports
-       WHERE site_id=$1
-       ORDER BY report_date DESC, created_at DESC
-       LIMIT $2`,
-      [site.site_id, limit]
-    );
+app.get("/reports/latest", asyncHandler(async (req, res) => {
+  setNoStore(res);
 
-    res.json({ ok: true, reports: r.rows });
-  })
-);
+  const site = await getSiteByToken(req.query.token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
-app.get(
-  "/reports/latest",
-  asyncHandler(async (req, res) => {
-    setNoStore(res);
+  const r = await pool.query(
+    `SELECT site_id, report_date, report_text, created_at
+     FROM daily_reports
+     WHERE site_id=$1
+     ORDER BY report_date DESC, created_at DESC
+     LIMIT 1`,
+    [site.site_id]
+  );
 
-    const token = String(req.query.token || "");
-    const site = await getSiteByToken(token);
-    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+  if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
+  res.json({ ok: true, report: r.rows[0] });
+}));
 
-    const r = await pool.query(
-      `SELECT site_id, report_date, report_text, created_at
-       FROM daily_reports
-       WHERE site_id=$1
-       ORDER BY report_date DESC, created_at DESC
-       LIMIT 1`,
-      [site.site_id]
-    );
+app.get("/reports/by-date", asyncHandler(async (req, res) => {
+  setNoStore(res);
 
-    if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
-    res.json({ ok: true, report: r.rows[0] });
-  })
-);
+  const site = await getSiteByToken(req.query.token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+  const date = String(req.query.date || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ ok: false, error: "date must be YYYY-MM-DD" });
+  }
+
+  const r = await pool.query(
+    `SELECT site_id, report_date, report_text, created_at
+     FROM daily_reports
+     WHERE site_id=$1 AND report_date=$2
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [site.site_id, date]
+  );
+
+  if (!r.rows.length) return res.status(404).json({ ok: false, error: "Report not found for that date" });
+  res.json({ ok: true, report: r.rows[0] });
+}));
 
 /* ---------------------------
    Demo seeder
    POST /demo/seed?token=...
 ----------------------------*/
-app.post(
-  "/demo/seed",
-  asyncHandler(async (req, res) => {
-    if (process.env.ENABLE_DEMO_SEED !== "true") {
-      return res.status(403).json({ ok: false, error: "Seeder disabled. Set ENABLE_DEMO_SEED=true" });
-    }
+app.post("/demo/seed", asyncHandler(async (req, res) => {
+  if (process.env.ENABLE_DEMO_SEED !== "true") {
+    return res.status(403).json({ ok: false, error: "Seeder disabled. Set ENABLE_DEMO_SEED=true" });
+  }
 
-    const token = String(req.query.token || req.body?.token || "");
-    const site = await getSiteByToken(token);
-    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Provide ?token=..." });
+  const site = await getSiteByToken(req.query.token || req.body?.token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Provide ?token=..." });
 
-    const site_id = site.site_id;
-    const days = Math.max(1, Math.min(parseInt(req.body?.days || "14", 10), 3650));
-    const eventsPerDay = Math.max(5, Math.min(parseInt(req.body?.events_per_day || "60", 10), 500));
+  const site_id = site.site_id;
+  const days = Math.max(1, Math.min(parseInt(req.body?.days || "7", 10), 3650));
+  const eventsPerDay = Math.max(5, Math.min(parseInt(req.body?.events_per_day || "40", 10), 500));
 
-    const leadRate = clamp01(req.body?.lead_rate ?? 0.02);
-    const purchaseRate = clamp01(req.body?.purchase_rate ?? 0.004);
-    const ctaRate = clamp01(req.body?.cta_rate ?? 0.06);
+  const leadRate = clamp01(req.body?.lead_rate ?? 0.02);
+  const purchaseRate = clamp01(req.body?.purchase_rate ?? 0.004);
+  const ctaRate = clamp01(req.body?.cta_rate ?? 0.06);
 
-    const pages = ["/", "/pricing", "/services", "/about", "/contact", "/blog", "/faq", "/checkout"];
-    let inserted = 0;
+  const pages = ["/", "/pricing", "/services", "/about", "/contact", "/blog", "/faq", "/checkout"];
+  let inserted = 0;
 
-    for (let d = 0; d < days; d++) {
-      const dayStart = new Date();
-      dayStart.setHours(0, 0, 0, 0);
-      dayStart.setDate(dayStart.getDate() - d);
+  for (let d = 0; d < days; d++) {
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    dayStart.setDate(dayStart.getDate() - d);
 
-      for (let i = 0; i < eventsPerDay; i++) {
-        const seconds = Math.floor(Math.random() * 86400);
-        const ts = new Date(dayStart.getTime() + seconds * 1000);
+    for (let i = 0; i < eventsPerDay; i++) {
+      const seconds = Math.floor(Math.random() * 86400);
+      const ts = new Date(dayStart.getTime() + seconds * 1000);
 
-        const r = Math.random();
-        const page =
-          r < 0.30 ? "/" :
-          r < 0.55 ? "/pricing" :
-          r < 0.70 ? "/services" :
-          r < 0.80 ? "/contact" :
-          pages[Math.floor(Math.random() * pages.length)];
+      const r = Math.random();
+      const page =
+        r < 0.30 ? "/" :
+        r < 0.55 ? "/pricing" :
+        r < 0.70 ? "/services" :
+        r < 0.80 ? "/contact" :
+        pages[Math.floor(Math.random() * pages.length)];
 
-        const device = Math.random() < 0.62 ? "mobile" : "desktop";
+      const device = Math.random() < 0.62 ? "mobile" : "desktop";
 
+      await pool.query(
+        `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
+         VALUES ($1, 'page_view', $2, $3, $4)`,
+        [site_id, page, device, ts.toISOString()]
+      );
+      inserted++;
+
+      const roll = Math.random();
+      if (roll < purchaseRate) {
         await pool.query(
           `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
-           VALUES ($1, 'page_view', $2, $3, $4)`,
+           VALUES ($1, 'purchase', $2, $3, $4)`,
+          [site_id, "/checkout", device, ts.toISOString()]
+        );
+        inserted++;
+      } else if (roll < purchaseRate + leadRate) {
+        await pool.query(
+          `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
+           VALUES ($1, 'lead', $2, $3, $4)`,
+          [site_id, "/contact", device, ts.toISOString()]
+        );
+        inserted++;
+      } else if (roll < purchaseRate + leadRate + ctaRate) {
+        await pool.query(
+          `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
+           VALUES ($1, 'cta_click', $2, $3, $4)`,
           [site_id, page, device, ts.toISOString()]
         );
         inserted++;
-
-        const roll = Math.random();
-        if (roll < purchaseRate) {
-          await pool.query(
-            `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
-             VALUES ($1, 'purchase', $2, $3, $4)`,
-            [site_id, "/checkout", device, ts.toISOString()]
-          );
-          inserted++;
-        } else if (roll < purchaseRate + leadRate) {
-          await pool.query(
-            `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
-             VALUES ($1, 'lead', $2, $3, $4)`,
-            [site_id, "/contact", device, ts.toISOString()]
-          );
-          inserted++;
-        } else if (roll < purchaseRate + leadRate + ctaRate) {
-          await pool.query(
-            `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
-             VALUES ($1, 'cta_click', $2, $3, $4)`,
-            [site_id, page, device, ts.toISOString()]
-          );
-          inserted++;
-        }
       }
     }
+  }
 
-    const sample1 =
-      "1) What happened\nTraffic concentrated on /pricing and /services.\n\n" +
-      "2) Trend + what it means\nVisitors are exploring multiple pages — offer clarity should help.\n\n" +
-      "3) Next steps\n- Add a single primary CTA on /pricing\n- Add proof (logos/testimonials)\n- Track a lead event on forms\n\n" +
-      "4) Metric to watch\nPricing → Lead rate";
+  const sample1 =
+    "Summary:\nTraffic is concentrating on Pricing and Services.\n\n" +
+    "Trend:\nVisitors are exploring multiple pages.\n\n" +
+    "Next steps:\n1) Add a clear primary CTA on Pricing\n2) Add proof (logos/testimonials)\n3) Track a lead event\n\n" +
+    "Metric to watch:\nPricing → Contact rate";
 
-    const sample2 =
-      "1) What happened\nSteady visits with meaningful interest on /pricing.\n\n" +
-      "2) Trend + what it means\nConsistency suggests conversion tweaks can compound.\n\n" +
-      "3) Next steps\n- Put best offer at top of /pricing\n- Add a 3-step “what happens next” section\n- Shorten forms + speed up load time\n\n" +
-      "4) Metric to watch\nCTA clicks / visits";
+  const sample2 =
+    "Summary:\nYou’re getting steady visits and people are checking Pricing.\n\n" +
+    "Trend:\nInterest is consistent — conversion work likely helps.\n\n" +
+    "Next steps:\n1) Strongest offer at top of Pricing\n2) Add a 3-step “what happens next”\n3) Shorten forms + speed up pages\n\n" +
+    "Metric to watch:\nCTA clicks";
 
-    await pool.query(
-      `INSERT INTO daily_reports (site_id, report_date, report_text)
-       VALUES ($1, CURRENT_DATE - INTERVAL '1 day', $2)
-       ON CONFLICT (site_id, report_date) DO NOTHING`,
-      [site_id, sample1]
-    );
-    await pool.query(
-      `INSERT INTO daily_reports (site_id, report_date, report_text)
-       VALUES ($1, CURRENT_DATE, $2)
-       ON CONFLICT (site_id, report_date) DO NOTHING`,
-      [site_id, sample2]
-    );
+  await pool.query(
+    `INSERT INTO daily_reports (site_id, report_date, report_text)
+     VALUES ($1, CURRENT_DATE - INTERVAL '1 day', $2)
+     ON CONFLICT (site_id, report_date) DO NOTHING`,
+    [site_id, sample1]
+  );
 
-    res.json({
-      ok: true,
-      site_id,
-      days,
-      events_per_day: eventsPerDay,
-      lead_rate: leadRate,
-      purchase_rate: purchaseRate,
-      cta_rate: ctaRate,
-      inserted
-    });
-  })
-);
+  await pool.query(
+    `INSERT INTO daily_reports (site_id, report_date, report_text)
+     VALUES ($1, CURRENT_DATE, $2)
+     ON CONFLICT (site_id, report_date) DO NOTHING`,
+    [site_id, sample2]
+  );
+
+  res.json({
+    ok: true,
+    site_id,
+    days,
+    events_per_day: eventsPerDay,
+    lead_rate: leadRate,
+    purchase_rate: purchaseRate,
+    cta_rate: ctaRate,
+    inserted
+  });
+}));
+
+/* ---------------------------
+   AI endpoints (FULL AI only)
+----------------------------*/
+app.post("/api/ai/chat", asyncHandler(async (req, res) => {
+  setNoStore(res);
+
+  const token = req.query.token || req.body?.token;
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+  const gate = planGate(site, ["full_ai"]);
+  if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+  const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
+  const message = String(req.body?.message || "").trim();
+  const history = Array.isArray(req.body?.history) ? req.body.history.slice(-12) : [];
+  if (!message) return res.status(400).json({ ok: false, error: "message required" });
+
+  const days = 30;
+
+  const metricsRes = await pool.query(
+    `
+    SELECT
+      COUNT(*)::int AS total_events,
+      SUM(CASE WHEN event_name='page_view' THEN 1 ELSE 0 END)::int AS page_views,
+      SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
+      SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases,
+      SUM(CASE WHEN event_name='cta_click' THEN 1 ELSE 0 END)::int AS cta_clicks
+    FROM events_raw
+    WHERE site_id=$1 AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+    `,
+    [site.site_id, days]
+  );
+
+  const topPagesRes = await pool.query(
+    `
+    SELECT page_type, COUNT(*)::int AS views
+    FROM events_raw
+    WHERE site_id=$1 AND event_name='page_view'
+      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+      AND page_type IS NOT NULL
+    GROUP BY 1
+    ORDER BY views DESC
+    LIMIT 8
+    `,
+    [site.site_id, days]
+  );
+
+  const lastReportRes = await pool.query(
+    `
+    SELECT report_date, report_text
+    FROM daily_reports
+    WHERE site_id=$1
+    ORDER BY report_date DESC, created_at DESC
+    LIMIT 1
+    `,
+    [site.site_id]
+  );
+
+  const context = {
+    site_id: site.site_id,
+    plan: site.plan,
+    window_days: days,
+    metrics_30d: metricsRes.rows[0],
+    top_pages_30d: topPagesRes.rows,
+    latest_report: lastReportRes.rows[0] || null
+  };
+
+  const system = `
+You are Constrava's on-dashboard analytics assistant.
+- Be plain-English, specific, and actionable.
+- Use the provided site context.
+- If data is insufficient, say what’s missing and suggest what to track.
+- Avoid guarantees. If forecasting, use probabilistic language and label it as an estimate.
+- Prefer: (1) what’s happening, (2) why it might be happening, (3) next best actions, (4) a metric to watch.
+`.trim();
+
+  const messages = [
+    { role: "system", content: system },
+    { role: "user", content: "Site context JSON:\n" + JSON.stringify(context) },
+    ...history.map((h) => ({ role: h.role, content: String(h.content || "") })),
+    { role: "user", content: message }
+  ];
+
+  const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      messages,
+      temperature: 0.4
+    })
+  });
+
+  const aiData = await aiRes.json();
+  const reply = aiData?.choices?.[0]?.message?.content;
+  if (!reply) return res.status(500).json({ ok: false, error: "AI response missing" });
+
+  res.json({ ok: true, reply });
+}));
+
+app.post("/generate-report", asyncHandler(async (req, res) => {
+  const site = await getSiteByToken(req.query.token || req.body?.token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+  const gate = planGate(site, ["full_ai"]);
+  if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+  const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
+
+  const metricsRes = await pool.query(
+    `
+    SELECT
+      $1::text as site_id,
+      COUNT(*)::int AS total_events,
+      SUM(CASE WHEN event_name='page_view' THEN 1 ELSE 0 END)::int AS page_views,
+      SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
+      SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases
+    FROM events_raw
+    WHERE site_id=$1 AND created_at >= NOW() - INTERVAL '7 days'
+    `,
+    [site.site_id]
+  );
+
+  const metrics = metricsRes.rows[0];
+
+  const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_MODEL || "gpt-4o",
+      messages: [
+        { role: "system", content: "You are a helpful business analytics assistant. Be plain-English, actionable, and concise." },
+        {
+          role: "user",
+          content:
+            "Here are metrics for the last 7 days (JSON): " +
+            JSON.stringify(metrics) +
+            "\nWrite:\n1) What happened\n2) Trend + what it means\n3) 3 next steps\n4) One metric to watch"
+        }
+      ],
+      temperature: 0.4
+    })
+  });
+
+  const aiData = await aiRes.json();
+  const reportText = aiData?.choices?.[0]?.message?.content;
+  if (!reportText) return res.status(500).json({ ok: false, error: "AI response missing" });
+
+  const saved = await pool.query(
+    `INSERT INTO daily_reports (site_id, report_date, report_text)
+     VALUES ($1, CURRENT_DATE, $2)
+     ON CONFLICT (site_id, report_date)
+     DO UPDATE SET report_text = EXCLUDED.report_text
+     RETURNING site_id, report_date, report_text, created_at`,
+    [site.site_id, reportText]
+  );
+
+  res.json({ ok: true, report: saved.rows[0] });
+}));
+
+app.post("/generate-action-plan", asyncHandler(async (req, res) => {
+  setNoStore(res);
+
+  const token = req.query.token || req.body?.token;
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+  const gate = planGate(site, ["full_ai"]);
+  if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+  const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
+  const days = 30;
+
+  const trendRes = await pool.query(
+    `
+    SELECT created_at::date AS day, COUNT(*)::int AS visits
+    FROM events_raw
+    WHERE site_id=$1
+      AND event_name='page_view'
+      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+    GROUP BY 1
+    ORDER BY 1
+    `,
+    [site.site_id, days]
+  );
+
+  const topPagesRes = await pool.query(
+    `
+    SELECT page_type, COUNT(*)::int AS views
+    FROM events_raw
+    WHERE site_id=$1
+      AND event_name='page_view'
+      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+      AND page_type IS NOT NULL
+    GROUP BY 1
+    ORDER BY views DESC
+    LIMIT 10
+    `,
+    [site.site_id, days]
+  );
+
+  const goalsRes = await pool.query(
+    `
+    SELECT
+      SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
+      SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases,
+      SUM(CASE WHEN event_name='cta_click' THEN 1 ELSE 0 END)::int AS cta_clicks
+    FROM events_raw
+    WHERE site_id=$1
+      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+    `,
+    [site.site_id, days]
+  );
+
+  const payload = {
+    site_id: site.site_id,
+    window_days: days,
+    trend: trendRes.rows,
+    top_pages: topPagesRes.rows,
+    goals: goalsRes.rows[0] || { leads: 0, purchases: 0, cta_clicks: 0 }
+  };
+
+  const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_MODEL || "gpt-4o",
+      messages: [
+        { role: "system", content: "You are an analytics + conversion expert. Be plain-English, specific, and actionable." },
+        {
+          role: "user",
+          content:
+            "Analyze this site data JSON and write a short action plan.\n\n" +
+            JSON.stringify(payload) +
+            "\n\nFormat:\n1) What's happening (3 bullets)\n2) Biggest opportunity\n3) 5-step action plan\n4) One KPI to watch\n5) A one-sentence executive summary"
+        }
+      ],
+      temperature: 0.45
+    })
+  });
+
+  const aiData = await aiRes.json();
+  const text = aiData?.choices?.[0]?.message?.content;
+  if (!text) return res.status(500).json({ ok: false, error: "AI response missing" });
+
+  const saved = await pool.query(
+    `INSERT INTO daily_reports (site_id, report_date, report_text)
+     VALUES ($1, CURRENT_DATE, $2)
+     ON CONFLICT (site_id, report_date)
+     DO UPDATE SET report_text = EXCLUDED.report_text
+     RETURNING site_id, report_date, report_text, created_at`,
+    [site.site_id, text]
+  );
+
+  res.json({ ok: true, report: saved.rows[0] });
+}));
+
+/* ---------------------------
+   Email latest report (PRO + FULL AI)
+   POST /email-latest { token, to_email }
+----------------------------*/
+app.post("/email-latest", asyncHandler(async (req, res) => {
+  const { token, to_email } = req.body || {};
+  if (!to_email) return res.status(400).json({ ok: false, error: "to_email required" });
+
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Invalid token" });
+
+  const gate = planGate(site, ["pro", "full_ai"]);
+  if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+  const r = await pool.query(
+    `SELECT report_text, report_date
+     FROM daily_reports
+     WHERE site_id=$1
+     ORDER BY report_date DESC, created_at DESC
+     LIMIT 1`,
+    [site.site_id]
+  );
+  if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
+
+  const RESEND_API_KEY = requireEnv("RESEND_API_KEY");
+  const from = requireEnv("FROM_EMAIL");
+
+  const emailRes = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${RESEND_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from,
+      to: [String(to_email).trim()],
+      subject: `Constrava Daily Report (${site.site_id})`,
+      html: `<pre style="white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;">${r.rows[0].report_text}</pre>`
+    })
+  });
+
+  const emailData = await emailRes.json();
+  res.json({ ok: true, resend: emailData });
+}));
 
 /* ---------------------------
    DEMO: activate a plan
    POST /demo/activate-plan { token, plan }
 ----------------------------*/
-app.post(
-  "/demo/activate-plan",
-  asyncHandler(async (req, res) => {
-    if (process.env.ENABLE_DEMO_ACTIVATE === "false") {
-      return res.status(403).json({ ok: false, error: "Demo activation disabled" });
-    }
+app.post("/demo/activate-plan", asyncHandler(async (req, res) => {
+  if (process.env.ENABLE_DEMO_ACTIVATE === "false") {
+    return res.status(403).json({ ok: false, error: "Demo activation disabled" });
+  }
 
-    const { token, plan } = req.body || {};
-    const allowed = new Set(["starter", "pro", "full_ai"]);
+  const { token, plan } = req.body || {};
+  const allowed = new Set(["starter", "pro", "full_ai"]);
 
-    if (!token) return res.status(400).json({ ok: false, error: "token required" });
-    if (!plan || !allowed.has(plan)) return res.status(400).json({ ok: false, error: "Invalid plan" });
+  if (!token) return res.status(400).json({ ok: false, error: "token required" });
+  if (!plan || !allowed.has(plan)) return res.status(400).json({ ok: false, error: "Invalid plan" });
 
-    const site = await getSiteByToken(token);
-    if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
-    const r = await pool.query(`UPDATE sites SET plan=$2 WHERE site_id=$1 RETURNING site_id, plan`, [
-      site.site_id,
-      plan
-    ]);
+  const r = await pool.query(
+    `UPDATE sites SET plan=$2 WHERE site_id=$1 RETURNING site_id, plan`,
+    [site.site_id, plan]
+  );
 
-    res.json({ ok: true, updated: r.rows[0] });
-  })
-);
+  res.json({ ok: true, updated: r.rows[0] });
+}));
 
 /* ---------------------------
-   Storefront (token-gated)
-   GET /storefront?token=...
+   Storefront
 ----------------------------*/
-app.get(
-  "/storefront",
-  asyncHandler(async (req, res) => {
-    setNoStore(res);
+app.get("/storefront", asyncHandler(async (req, res) => {
+  setNoStore(res);
 
-    const token = String(req.query.token || "");
-    const site = await getSiteByToken(token);
-    if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+  const token = req.query.token;
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
 
-    const site_id = site.site_id;
-    const plan = site.plan || "unpaid";
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
+  const site_id = site.site_id;
+  const plan = site.plan || "unpaid";
 
-    res.send(`<!doctype html>
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Constrava — Plans</title>
 <style>
-  :root{
-    --bg:#0b0f19; --panel:#111827; --text:#e5e7eb; --muted:#9ca3af;
-    --border:rgba(255,255,255,.10); --accent:#60a5fa; --accent2:#34d399;
-    --shadow:0 10px 30px rgba(0,0,0,.35); --radius:16px;
-  }
-  *{box-sizing:border-box}
-  body{
-    margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-    background: radial-gradient(1200px 800px at 20% -10%, rgba(96,165,250,.22), transparent 60%),
-                radial-gradient(900px 600px at 90% 0%, rgba(52,211,153,.16), transparent 55%),
-                var(--bg);
-    color:var(--text);
-  }
-  .wrap{max-width:1100px;margin:0 auto;padding:26px 18px 70px;}
-  .topbar{
-    display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px;
-    border:1px solid var(--border); border-radius: var(--radius);
-    background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-    box-shadow: var(--shadow);
-  }
-  .brand{display:flex;align-items:center;gap:12px;}
-  .logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg, rgba(96,165,250,.9), rgba(52,211,153,.85));}
-  h1{font-size:18px;margin:0;}
-  .sub{font-size:12px;color:var(--muted);margin-top:2px;}
-  .pill{font-size:12px;color:var(--muted);border:1px solid var(--border);padding:6px 10px;border-radius:999px;background: rgba(15,23,42,.6);}
-  .grid{margin-top:18px;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
-  .card{
-    grid-column: span 4; padding:16px; border-radius: var(--radius);
-    border:1px solid var(--border); background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
-    box-shadow: var(--shadow);
-  }
-  @media (max-width: 980px){ .card{grid-column: 1 / -1;} .topbar{flex-direction:column; align-items:flex-start;} }
-  .name{font-weight:950;margin:0}
-  .price{margin-top:10px;font-size:28px;font-weight:1000;}
-  .muted{color:var(--muted);font-size:12px;line-height:1.5}
-  ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
-  .btn{
-    width:100%; margin-top:14px; padding:12px 14px;
-    border-radius:12px; border:1px solid var(--border);
-    background: rgba(96,165,250,.14); color:var(--text);
-    cursor:pointer; font-weight:950;
-  }
-  .btn:hover{border-color: rgba(96,165,250,.5)}
-  .btnGreen{background: rgba(52,211,153,.14)}
-  .btnGreen:hover{border-color: rgba(52,211,153,.5)}
-  .note{
-    margin-top:16px; padding:12px; border-radius: 14px; border:1px dashed rgba(255,255,255,.16);
-    background: rgba(15,23,42,.35); color: var(--muted); font-size:13px; line-height: 1.55;
-  }
+:root{
+  --bg:#0b0f19; --text:#e5e7eb; --muted:#9ca3af;
+  --border:rgba(255,255,255,.10); --shadow:0 10px 30px rgba(0,0,0,.35);
+  --radius:16px; --accent:#60a5fa; --accent2:#34d399;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  background: radial-gradient(1200px 800px at 20% -10%, rgba(96,165,250,.22), transparent 60%),
+              radial-gradient(900px 600px at 90% 0%, rgba(52,211,153,.16), transparent 55%),
+              var(--bg);
+  color:var(--text);
+}
+.wrap{max-width:1100px;margin:0 auto;padding:26px 18px 70px;}
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px;
+  border:1px solid var(--border); border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+  box-shadow: var(--shadow);
+}
+.brand{display:flex;align-items:center;gap:12px;}
+.logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg, rgba(96,165,250,.9), rgba(52,211,153,.85));}
+h1{font-size:18px;margin:0;}
+.sub{font-size:12px;color:var(--muted);margin-top:2px;}
+.pill{font-size:12px;color:var(--muted);border:1px solid var(--border);padding:6px 10px;border-radius:999px;background: rgba(15,23,42,.6);}
+.grid{margin-top:18px;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
+.card{
+  grid-column: span 6; padding:16px; border-radius: var(--radius);
+  border:1px solid var(--border); background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+  box-shadow: var(--shadow);
+}
+@media (max-width: 980px){ .card{grid-column: 1 / -1;} .topbar{flex-direction:column; align-items:flex-start;} }
+.name{font-weight:950;margin:0}
+.price{margin-top:10px;font-size:28px;font-weight:1000;}
+.muted{color:var(--muted);font-size:12px;line-height:1.5}
+ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
+.btn{
+  width:100%; margin-top:14px; padding:12px 14px;
+  border-radius:12px; border:1px solid var(--border);
+  background: rgba(96,165,250,.14); color:var(--text);
+  cursor:pointer; font-weight:950;
+}
+.btn:hover{border-color: rgba(96,165,250,.5)}
+.btnGreen{background: rgba(52,211,153,.14)}
+.btnGreen:hover{border-color: rgba(52,211,153,.5)}
+.note{
+  margin-top:16px; padding:12px; border-radius: 14px; border:1px dashed rgba(255,255,255,.16);
+  background: rgba(15,23,42,.35); color: var(--muted); font-size:13px; line-height: 1.55;
+}
 </style>
 </head>
 <body>
@@ -1099,7 +1368,7 @@ app.get(
       <div class="logo"></div>
       <div>
         <h1>Constrava Plans</h1>
-        <div class="sub">Demo activation for now. Stripe later.</div>
+        <div class="sub">Activate your dashboard. Stripe later — demo activation for now.</div>
       </div>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -1122,198 +1391,184 @@ app.get(
     </div>
 
     <div class="card">
-      <h3 class="name">Pro</h3>
-      <div class="price">$59 <span class="muted">/mo</span></div>
-      <div class="muted">Includes daily report generation (non-AI).</div>
-      <ul>
-        <li>Everything in Starter</li>
-        <li>Daily report job</li>
-        <li>Email latest report (optional)</li>
-      </ul>
-      <button class="btn" onclick="activate('pro')">Activate Pro</button>
-    </div>
-
-    <div class="card">
       <h3 class="name">Full AI</h3>
       <div class="price">$99 <span class="muted">/mo</span></div>
-      <div class="muted">AI summaries + action plans.</div>
+      <div class="muted">AI summaries + next steps + action plans.</div>
       <ul>
-        <li>Everything in Pro</li>
-        <li>AI report + action plan</li>
-        <li>AI assistant chat (optional)</li>
+        <li>AI report generator</li>
+        <li>AI action plan generator</li>
+        <li>On-dashboard AI chat</li>
       </ul>
       <button class="btn btnGreen" onclick="activate('full_ai')">Activate Full AI</button>
     </div>
   </div>
 
   <div class="note">
-    <b>Note:</b> These buttons call a demo activation endpoint. Later Stripe will do this via webhooks.
+    <b>Note:</b> These buttons call a demo activation endpoint. Later, Stripe will call a real webhook after payment.
   </div>
 
   <div class="note" id="status">Status: idle</div>
 </div>
 
 <script>
-  const token = new URLSearchParams(location.search).get("token");
-  const statusEl = document.getElementById("status");
+const token = new URLSearchParams(location.search).get("token");
+const statusEl = document.getElementById("status");
 
-  async function activate(plan){
-    try{
-      statusEl.textContent = "Status: activating " + plan + "...";
-      const r = await fetch("/demo/activate-plan", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ token, plan })
-      });
-      const data = await r.json().catch(()=> ({}));
-      if(!data.ok){
-        statusEl.textContent = "Status: " + (data.error || "activation failed");
-        return;
-      }
-      statusEl.textContent = "Status: activated ✅ redirecting...";
-      setTimeout(() => location.href = "/dashboard?token=" + encodeURIComponent(token), 600);
-    }catch(e){
-      statusEl.textContent = "Status: error " + (e && e.message ? e.message : "unknown");
+async function activate(plan){
+  try{
+    statusEl.textContent = "Status: activating " + plan + "...";
+    const r = await fetch("/demo/activate-plan", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ token, plan })
+    });
+    const data = await r.json().catch(()=> ({}));
+    if(!data.ok){
+      statusEl.textContent = "Status: " + (data.error || "activation failed");
+      return;
     }
+    statusEl.textContent = "Status: activated ✅ redirecting...";
+    setTimeout(() => location.href = "/dashboard?token=" + encodeURIComponent(token), 600);
+  }catch(e){
+    statusEl.textContent = "Status: error " + (e && e.message ? e.message : "unknown");
   }
+}
 </script>
 </body>
 </html>`);
-  })
-);
+}));
 
 /* ---------------------------
-   Dashboard UI (NO INLINE JS)
+   Dashboard UI
    GET /dashboard?token=...
 ----------------------------*/
-app.get(
-  "/dashboard",
-  asyncHandler(async (req, res) => {
-    setNoStore(res);
+app.get("/dashboard", asyncHandler(async (req, res) => {
+  setNoStore(res);
 
-    const token = String(req.query.token || "");
-    const site = await getSiteByToken(token);
-    if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+  const token = req.query.token;
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
 
-    const plan = site.plan || "unpaid";
-    if (plan === "unpaid") return res.redirect("/storefront?token=" + encodeURIComponent(token));
+  const plan = site.plan || "unpaid";
+  if (plan === "unpaid") return res.redirect("/storefront?token=" + encodeURIComponent(token));
 
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
 
-    res.send(`<!doctype html>
+  // Clean dashboard: HTML + CSS only. All behavior comes from /dashboard.js
+  res.send(`<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Constrava Dashboard</title>
 <style>
-  :root{
-    --bg:#0b0f19;
-    --panel: rgba(255,255,255,.06);
-    --panel2: rgba(255,255,255,.04);
-    --text:#e5e7eb;
-    --muted:#9ca3af;
-    --border: rgba(255,255,255,.12);
-    --accent:#60a5fa;
-    --accent2:#34d399;
-    --danger:#fb7185;
-    --shadow: 0 14px 40px rgba(0,0,0,.35);
-    --radius: 16px;
-  }
-  *{box-sizing:border-box}
-  body{
-    margin:0;
-    font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial;
-    background:
-      radial-gradient(1100px 720px at 20% -10%, rgba(96,165,250,.20), transparent 60%),
-      radial-gradient(900px 620px at 90% 0%, rgba(52,211,153,.14), transparent 55%),
-      var(--bg);
-    color: var(--text);
-  }
-  .wrap{max-width:1180px;margin:0 auto;padding:22px 16px 60px}
-  .top{
-    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
-    padding:16px;
-    border:1px solid var(--border);
-    border-radius: var(--radius);
-    background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
-    box-shadow: var(--shadow);
-  }
-  .brand{display:flex;align-items:center;gap:12px}
-  .logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg, rgba(96,165,250,.95), rgba(52,211,153,.88));}
-  h1{margin:0;font-size:18px;font-weight:950}
-  .sub{margin-top:3px;font-size:12px;color:var(--muted)}
-  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-  .pill{
-    display:inline-block;
-    padding:7px 10px;
-    border:1px solid var(--border);
-    border-radius:999px;
-    background: rgba(15,23,42,.55);
-    font-size:12px;
-    color: var(--muted);
-    white-space:nowrap;
-  }
-  .grid{margin-top:14px;display:grid;grid-template-columns:repeat(12,1fr);gap:12px;}
-  .card{
-    border:1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--panel2);
-    box-shadow: var(--shadow);
-    padding:14px;
-    min-width:0;
-  }
-  .kpi{font-size:28px;font-weight:1000;letter-spacing:-0.5px}
-  .kpiSmall{font-size:18px;font-weight:950}
-  .muted{color:var(--muted);font-size:12px;line-height:1.5}
-  button,select,a,input{
-    border-radius:12px;border:1px solid var(--border);
-    background: rgba(15,23,42,.55);
-    color: var(--text);
-    padding:10px 12px;
-    font-weight:900;
-    cursor:pointer;
-    text-decoration:none;
-    outline:none;
-  }
-  button:hover,a:hover,select:hover{border-color: rgba(96,165,250,.55)}
-  .btn{background: rgba(96,165,250,.14)}
-  .btnGreen{background: rgba(52,211,153,.14)}
-  .btnDanger{background: rgba(251,113,133,.10)}
-  .btnGhost{background: rgba(255,255,255,.04)}
-  .divider{height:1px;background: rgba(255,255,255,.10);margin:12px 0;}
-  .span12{grid-column:1 / -1}
-  .span8{grid-column: span 8}
-  .span6{grid-column: span 6}
-  .span4{grid-column: span 4}
-  .span3{grid-column: span 3}
-  @media (max-width: 980px){
-    .span8,.span6,.span4,.span3{grid-column:1 / -1}
-  }
-  .chartBox{padding:10px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background: rgba(15,23,42,.35)}
-  svg{display:block;width:100%;height:auto}
-  .list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-  .item{
-    display:flex;justify-content:space-between;gap:10px;align-items:center;
-    padding:10px 10px;border:1px solid rgba(255,255,255,.10);
-    border-radius:14px;background: rgba(15,23,42,.35);
-  }
-  .barWrap{flex:1;min-width:0}
-  .bar{
-    height:10px;border-radius:999px;background: rgba(96,165,250,.20);
-    border:1px solid rgba(255,255,255,.10);
-    overflow:hidden;
-  }
-  .bar > div{height:100%;background: rgba(96,165,250,.70)}
-  .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace}
-  pre{
-    margin:10px 0 0 0;
-    white-space:pre-wrap;
-    background: rgba(15,23,42,.55);
-    border:1px solid rgba(255,255,255,.12);
-    padding:12px;border-radius:14px;
-  }
-  .rightBtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+:root{
+  --bg:#0b0f19;
+  --panel: rgba(255,255,255,.06);
+  --panel2: rgba(255,255,255,.04);
+  --text:#e5e7eb;
+  --muted:#9ca3af;
+  --border: rgba(255,255,255,.12);
+  --accent:#60a5fa;
+  --accent2:#34d399;
+  --danger:#fb7185;
+  --shadow: 0 14px 40px rgba(0,0,0,.35);
+  --radius: 16px;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  background:
+    radial-gradient(1100px 720px at 20% -10%, rgba(96,165,250,.20), transparent 60%),
+    radial-gradient(900px 620px at 90% 0%, rgba(52,211,153,.14), transparent 55%),
+    var(--bg);
+  color: var(--text);
+}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 16px 60px}
+.top{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  padding:16px;
+  border:1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
+  box-shadow: var(--shadow);
+}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg, rgba(96,165,250,.95), rgba(52,211,153,.88));}
+h1{margin:0;font-size:18px;font-weight:950}
+.sub{margin-top:3px;font-size:12px;color:var(--muted)}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.pill{
+  display:inline-block;
+  padding:7px 10px;
+  border:1px solid var(--border);
+  border-radius:999px;
+  background: rgba(15,23,42,.55);
+  font-size:12px;
+  color: var(--muted);
+  white-space:nowrap;
+}
+.grid{margin-top:14px;display:grid;grid-template-columns:repeat(12,1fr);gap:12px;}
+.card{
+  border:1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel2);
+  box-shadow: var(--shadow);
+  padding:14px;
+  min-width:0;
+}
+.kpi{font-size:28px;font-weight:1000;letter-spacing:-0.5px}
+.kpiSmall{font-size:18px;font-weight:950}
+.muted{color:var(--muted);font-size:12px;line-height:1.5}
+button,select,a,input{
+  border-radius:12px;border:1px solid var(--border);
+  background: rgba(15,23,42,.55);
+  color: var(--text);
+  padding:10px 12px;
+  font-weight:900;
+  cursor:pointer;
+  text-decoration:none;
+  outline:none;
+}
+button:hover,a:hover,select:hover{border-color: rgba(96,165,250,.55)}
+.btn{background: rgba(96,165,250,.14)}
+.btnGreen{background: rgba(52,211,153,.14)}
+.btnDanger{background: rgba(251,113,133,.10)}
+.btnGhost{background: rgba(255,255,255,.04)}
+.divider{height:1px;background: rgba(255,255,255,.10);margin:12px 0;}
+.span12{grid-column:1 / -1}
+.span8{grid-column: span 8}
+.span6{grid-column: span 6}
+.span4{grid-column: span 4}
+.span3{grid-column: span 3}
+@media (max-width: 980px){
+  .span8,.span6,.span4,.span3{grid-column:1 / -1}
+}
+.chartBox{padding:10px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background: rgba(15,23,42,.35)}
+svg{display:block;width:100%;height:auto}
+.list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.item{
+  display:flex;justify-content:space-between;gap:10px;align-items:center;
+  padding:10px 10px;border:1px solid rgba(255,255,255,.10);
+  border-radius:14px;background: rgba(15,23,42,.35);
+}
+.barWrap{flex:1;min-width:0}
+.bar{
+  height:10px;border-radius:999px;background: rgba(96,165,250,.20);
+  border:1px solid rgba(255,255,255,.10);
+  overflow:hidden;
+}
+.bar > div{height:100%;background: rgba(96,165,250,.70)}
+.mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace}
+pre{
+  margin:10px 0 0 0;
+  white-space:pre-wrap;
+  background: rgba(15,23,42,.55);
+  border:1px solid rgba(255,255,255,.12);
+  padding:12px;border-radius:14px;
+}
+.rightBtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 </style>
 </head>
 <body>
@@ -1323,7 +1578,7 @@ app.get(
       <div class="logo"></div>
       <div>
         <h1>Constrava Dashboard</h1>
-        <div class="sub">Site: <b id="siteId">—</b> • Plan: <b id="plan">—</b></div>
+        <div class="sub">Token-auth dashboard • secure it later with accounts if desired</div>
       </div>
     </div>
 
@@ -1335,21 +1590,17 @@ app.get(
         <option value="365">1 year</option>
       </select>
       <button class="btnDanger" id="seedBtn">Seed demo data</button>
+      <button class="btnGreen" id="aiReportTopBtn">Generate AI report</button>
       <button class="btn" id="refresh">Refresh</button>
-      <a class="btnGhost" id="plansLink" href="#">Plans</a>
+      <a class="btnGhost" id="plansLink" href="/storefront?token=${encodeURIComponent(String(token))}">Plans</a>
       <span class="pill" id="status">Status: idle</span>
     </div>
   </div>
 
   <div class="grid">
     <div class="card span12">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <div>
-          <div style="font-weight:950">Latest report</div>
-          <div class="muted">Shows the most recent report saved in the database</div>
-        </div>
-        <span class="pill">Reports</span>
-      </div>
+      <div style="font-weight:950">Latest AI Report</div>
+      <div class="muted">Your most recent report (or seed sample).</div>
       <div class="divider"></div>
       <pre id="latestAiReport">Loading…</pre>
     </div>
@@ -1357,32 +1608,32 @@ app.get(
     <div class="card span3">
       <div class="muted">Visits today</div>
       <div class="kpi" id="kpiToday">—</div>
-      <div class="muted">Last event: <span id="kpiTodaySub">—</span></div>
+      <div class="muted" id="kpiTodaySub"></div>
     </div>
 
     <div class="card span3">
       <div class="muted">Visits in range</div>
       <div class="kpi" id="kpiRange">—</div>
-      <div class="muted" id="kpiRangeSub">Window: —</div>
+      <div class="muted" id="kpiRangeSub"></div>
     </div>
 
     <div class="card span3">
-      <div class="muted">Lead rate</div>
+      <div class="muted">Lead rate (leads/visits)</div>
       <div class="kpi" id="kpiLeadRate">—</div>
-      <div class="muted">leads / visits</div>
+      <div class="muted">Goal: improve CTA + forms</div>
     </div>
 
     <div class="card span3">
       <div class="muted">Purchase rate</div>
       <div class="kpi" id="kpiPurchaseRate">—</div>
-      <div class="muted">purchases / visits</div>
+      <div class="muted">Track “purchase” events</div>
     </div>
 
     <div class="card span8">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
           <div style="font-weight:950">Traffic trend</div>
-          <div class="muted">Visits per day</div>
+          <div class="muted">Visits per day (selected window)</div>
         </div>
         <div class="row">
           <span class="pill">Max/day: <b id="maxDay">—</b></span>
@@ -1405,7 +1656,7 @@ app.get(
       </div>
 
       <div class="muted" style="margin-top:10px">
-        Seeder requires <span class="mono">ENABLE_DEMO_SEED=true</span>. Sim buttons always work.
+        Seeder requires <span class="mono">ENABLE_DEMO_SEED=true</span>. Sim buttons work any time.
       </div>
     </div>
 
@@ -1413,7 +1664,6 @@ app.get(
       <div style="font-weight:950">Live</div>
       <div class="muted">Polls every few seconds for new page_views</div>
       <div class="divider"></div>
-
       <div class="row" style="justify-content:space-between">
         <div>
           <div class="muted">New page_views</div>
@@ -1424,11 +1674,8 @@ app.get(
           <div class="kpiSmall" id="liveLast">—</div>
         </div>
       </div>
-
       <div class="divider"></div>
-      <div class="muted">Details</div>
       <pre id="liveJson">Loading…</pre>
-
       <div class="row" style="margin-top:10px">
         <button class="btnGhost" id="liveToggle">Pause</button>
         <button class="btnGhost" id="liveNow">Check now</button>
@@ -1456,10 +1703,10 @@ app.get(
       </div>
 
       <div class="grid" style="margin-top:10px;gap:10px">
-        <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
+        <div class="card" style="grid-column: span 6; background: rgba(15,23,42,.35); box-shadow:none">
           <div class="muted">Device donut</div>
           <div class="chartBox" style="margin-top:8px">
-            <svg id="deviceSvg" viewBox="0 0 240 160" role="img" aria-label="Device mix chart"></svg>
+            <svg id="deviceSvg" viewBox="0 0 240 160"></svg>
           </div>
           <div class="row" style="margin-top:8px">
             <span class="pill">Mobile: <b id="mob">—</b></span>
@@ -1467,7 +1714,7 @@ app.get(
           </div>
         </div>
 
-        <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
+        <div class="card" style="grid-column: span 6; background: rgba(15,23,42,.35); box-shadow:none">
           <div class="muted">Goals in range</div>
           <div class="row" style="margin-top:6px">
             <span class="pill">Leads: <b id="leads">—</b></span>
@@ -1480,35 +1727,58 @@ app.get(
         </div>
       </div>
     </div>
+
+    <div class="card span12">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Reports</div>
+          <div class="muted">History list</div>
+        </div>
+        <div class="rightBtns">
+          <button class="btnGhost" id="loadReports">Refresh list</button>
+        </div>
+      </div>
+      <div class="grid" style="margin-top:10px;gap:12px">
+        <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
+          <div class="muted">Latest</div>
+          <pre id="report">Loading…</pre>
+        </div>
+        <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
+          <div class="muted">History</div>
+          <div class="list" id="reportsList">Loading…</div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- ✅ IMPORTANT: External JS file (NO inline script blob) -->
-<script src="/dashboard.js"></script>
+<!-- Load the real client script -->
+<script src="/dashboard.js?token=${encodeURIComponent(String(token))}"></script>
 </body>
 </html>`);
-  })
-);
+}));
 
 /* ---------------------------
-   Dashboard JS (EXTERNAL)
-   GET /dashboard.js
-   (Reads token from URL: /dashboard?token=...)
+   Dashboard client JS
+   GET /dashboard.js?token=...
 ----------------------------*/
-app.get(
-  "/dashboard.js",
-  asyncHandler(async (req, res) => {
-    setNoStore(res);
-    res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+app.get("/dashboard.js", asyncHandler(async (req, res) => {
+  setNoStore(res);
 
-    res.send(`
-// Constrava dashboard.js (plain JS) — loads metrics + reports, wires buttons, draws charts.
+  const token = String(req.query.token || "");
+  const site = await getSiteByToken(token);
+  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+
+  if (!site) {
+    return res.send(`console.error("Unauthorized dashboard.js (missing/invalid token)");`);
+  }
+
+  // Important: embed values safely
+  res.send(`
 (() => {
   "use strict";
 
-  const qs = new URLSearchParams(location.search);
-  const TOKEN = qs.get("token") || "";
-
+  const TOKEN = ${JSON.stringify(token)};
   const $ = (id) => document.getElementById(id);
 
   function setStatus(t){
@@ -1516,7 +1786,7 @@ app.get(
     if (el) el.textContent = "Status: " + t;
   }
 
-  function pct(n) {
+  function pct(n){
     return (Math.round((Number(n) || 0) * 10000) / 100).toFixed(2) + "%";
   }
 
@@ -1525,10 +1795,18 @@ app.get(
     return Math.max(min, Math.min(max, n));
   }
 
-  // ----- Charts -----
+  function esc(s) {
+    return String(s || "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[c]));
+  }
+
   function renderTrend(svgEl, trend) {
     if (!svgEl) return;
-
     const W = 900, H = 260, p = 18;
     while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
 
@@ -1542,14 +1820,11 @@ app.get(
     bg.setAttribute("stroke", "rgba(255,255,255,.10)");
     svgEl.appendChild(bg);
 
-    const n = Array.isArray(trend) ? trend.length : 0;
+    const n = (trend && trend.length) ? trend.length : 0;
     if (!n) return;
 
     let maxV = 0, sumV = 0;
-    for (const r of trend) {
-      maxV = Math.max(maxV, r.visits || 0);
-      sumV += (r.visits || 0);
-    }
+    for (const r of trend) { maxV = Math.max(maxV, r.visits || 0); sumV += (r.visits || 0); }
     const avg = sumV / n;
 
     if ($("maxDay")) $("maxDay").textContent = String(maxV);
@@ -1566,9 +1841,7 @@ app.get(
     };
 
     let d = "";
-    for (let i = 0; i < n; i++) {
-      d += (i === 0 ? "M " : " L ") + x(i) + " " + y(trend[i].visits || 0);
-    }
+    for (let i = 0; i < n; i++) d += (i === 0 ? "M " : " L ") + x(i) + " " + y(trend[i].visits || 0);
 
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", d);
@@ -1596,13 +1869,13 @@ app.get(
       const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
       const large = (a1 - a0) > Math.PI ? 1 : 0;
 
-      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      p.setAttribute("d", \`M \${x0} \${y0} A \${r} \${r} 0 \${large} 1 \${x1} \${y1}\`);
-      p.setAttribute("stroke", color);
-      p.setAttribute("stroke-width", String(w));
-      p.setAttribute("fill", "none");
-      p.setAttribute("stroke-linecap", "round");
-      svgEl.appendChild(p);
+      const pth = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      pth.setAttribute("d", "M " + x0 + " " + y0 + " A " + r + " " + r + " 0 " + large + " 1 " + x1 + " " + y1);
+      pth.setAttribute("stroke", color);
+      pth.setAttribute("stroke-width", String(w));
+      pth.setAttribute("fill", "none");
+      pth.setAttribute("stroke-linecap", "round");
+      svgEl.appendChild(pth);
     }
 
     const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
@@ -1614,8 +1887,8 @@ app.get(
     ring.setAttribute("fill", "none");
     svgEl.appendChild(ring);
 
-    arc(start, mid, "rgba(52,211,153,.90)");              // mobile
-    arc(mid, start + Math.PI * 2, "rgba(96,165,250,.90)"); // desktop
+    arc(start, mid, "rgba(52,211,153,.90)");
+    arc(mid, start + Math.PI * 2, "rgba(96,165,250,.90)");
   }
 
   function renderTopPages(container, rows) {
@@ -1637,7 +1910,7 @@ app.get(
       left.style.overflow = "hidden";
       left.style.textOverflow = "ellipsis";
       left.style.whiteSpace = "nowrap";
-      left.innerHTML = "<b>" + (r.page_type || "/") + "</b><div class='muted'>" + (r.views || 0) + " views • " + (r.share || 0) + "%</div>";
+      left.innerHTML = "<b>" + esc(r.page_type || "/") + "</b><div class='muted'>" + (r.views || 0) + " views • " + (r.share || 0) + "%</div>";
 
       const barWrap = document.createElement("div");
       barWrap.className = "barWrap";
@@ -1657,46 +1930,71 @@ app.get(
     }
   }
 
-  // ----- API -----
-  async function loadLatestReport(){
-    const pre = $("latestAiReport");
-    if (pre) pre.textContent = "Loading…";
-    const r = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
-    const j = await r.json().catch(() => ({}));
-    const text = (j.ok && j.report && j.report.report_text) ? j.report.report_text : "";
-    if (pre) pre.textContent = text || "No report yet.";
+  async function loadLatestReport() {
+    const pre1 = $("latestAiReport");
+    const pre2 = $("report");
+    if (pre1) pre1.textContent = "Loading latest report...";
+    if (pre2) pre2.textContent = "Loading latest report...";
+
+    const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
+    const jj = await rr.json().catch(() => ({}));
+
+    const text = (jj.ok && jj.report && jj.report.report_text) ? jj.report.report_text : "";
+    if (pre1) pre1.textContent = text || "No report yet.";
+    if (pre2) pre2.textContent = text || "No report yet.";
   }
 
-  async function refresh(){
-    try{
+  async function loadReportsList() {
+    const list = $("reportsList");
+    if (!list) return;
+
+    list.textContent = "Loading...";
+    const r = await fetch("/reports?token=" + encodeURIComponent(TOKEN) + "&limit=30");
+    const j = await r.json().catch(() => ({}));
+
+    list.innerHTML = "";
+    if (!j.ok) { list.textContent = j.error || "Failed to load reports"; return; }
+    if (!j.reports || !j.reports.length) { list.textContent = "No reports yet."; return; }
+
+    for (const rep of j.reports) {
+      const item = document.createElement("div");
+      item.className = "item";
+
+      const left = document.createElement("div");
+      left.innerHTML = "<b>" + esc(rep.report_date) + "</b><div class='muted'>" + esc(rep.preview || "") + "</div>";
+
+      const right = document.createElement("div");
+      right.className = "pill";
+      right.textContent = "Open";
+
+      item.appendChild(left);
+      item.appendChild(right);
+      list.appendChild(item);
+    }
+  }
+
+  async function refresh() {
+    try {
       const days = $("days") ? $("days").value : "7";
       setStatus("loading metrics…");
 
       const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
       const j = await r.json().catch(() => ({}));
-      if (!j.ok){
-        setStatus(j.error || "error");
-        return;
-      }
-
-      if ($("siteId")) $("siteId").textContent = j.site_id || "—";
-      if ($("plan")) $("plan").textContent = j.plan || "—";
-      if ($("plansLink")) $("plansLink").href = "/storefront?token=" + encodeURIComponent(TOKEN);
+      if (!j.ok) { setStatus(j.error || "error"); return; }
 
       if ($("kpiToday")) $("kpiToday").textContent = j.visits_today;
+      if ($("kpiTodaySub")) $("kpiTodaySub").textContent = j.last_event ? ("Last event: " + (j.last_event.event_name || "—")) : "";
       if ($("kpiRange")) $("kpiRange").textContent = j.visits_range;
+      if ($("kpiRangeSub")) $("kpiRangeSub").textContent = "Window: " + j.days + " day(s)";
       if ($("kpiLeadRate")) $("kpiLeadRate").textContent = pct(j.conversion_rate || 0);
       if ($("kpiPurchaseRate")) $("kpiPurchaseRate").textContent = pct(j.purchase_rate || 0);
-
-      if ($("kpiRangeSub")) $("kpiRangeSub").textContent = "Window: " + j.days + " day(s)";
-      if ($("kpiTodaySub")) $("kpiTodaySub").textContent = (j.last_event && j.last_event.event_name) ? j.last_event.event_name : "—";
 
       if ($("leads")) $("leads").textContent = j.leads || 0;
       if ($("purchases")) $("purchases").textContent = j.purchases || 0;
       if ($("cta")) $("cta").textContent = j.cta_clicks || 0;
 
-      const mob = j.device_mix?.mobile || 0;
-      const desk = j.device_mix?.desktop || 0;
+      const mob = (j.device_mix && j.device_mix.mobile) ? j.device_mix.mobile : 0;
+      const desk = (j.device_mix && j.device_mix.desktop) ? j.device_mix.desktop : 0;
       if ($("mob")) $("mob").textContent = mob;
       if ($("desk")) $("desk").textContent = desk;
 
@@ -1707,18 +2005,19 @@ app.get(
       renderTopPages($("topPages"), j.top_pages_range || []);
 
       await loadLatestReport();
+      await loadReportsList();
 
       setStatus("ready");
-    }catch(e){
-      setStatus("error: " + (e?.message || "unknown"));
+    } catch (e) {
+      setStatus("error: " + (e && e.message ? e.message : "unknown"));
     }
   }
 
-  async function fire(eventName){
+  async function fire(eventName) {
     setStatus("sending " + eventName + "…");
     const r = await fetch("/demo/fire-event", {
-      method:"POST",
-      headers: {"Content-Type":"application/json"},
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         token: TOKEN,
         event_name: eventName,
@@ -1726,17 +2025,17 @@ app.get(
         device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop"
       })
     });
-    const j = await r.json().catch(() => ({}));
-    if (!j.ok) { setStatus(j.error || "error"); return; }
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { setStatus(d.error || "error"); return; }
     setStatus("sent ✅");
     setTimeout(refresh, 300);
   }
 
-  async function seed(){
+  async function seed() {
     setStatus("seeding…");
     const r = await fetch("/demo/seed?token=" + encodeURIComponent(TOKEN), {
-      method:"POST",
-      headers: {"Content-Type":"application/json"},
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ days: 14, events_per_day: 60 })
     });
     const j = await r.json().catch(() => ({}));
@@ -1745,84 +2044,91 @@ app.get(
     setTimeout(refresh, 350);
   }
 
-  async function share(){
+  async function share() {
     setStatus("creating share link…");
     const r = await fetch("/demo/link", {
-      method:"POST",
-      headers: {"Content-Type":"application/json"},
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: TOKEN })
     });
-    const j = await r.json().catch(() => ({}));
-    if (!j.ok) { setStatus(j.error || "error"); return; }
-    try{
-      await navigator.clipboard.writeText(j.url);
-      setStatus("copied ✅");
-    }catch{
-      setStatus("share link: " + j.url);
-    }
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { setStatus(d.error || "error"); return; }
+
+    try { await navigator.clipboard.writeText(d.url); setStatus("copied ✅"); }
+    catch { setStatus("share link: " + d.url); }
   }
 
-  // ----- Live polling -----
+  // live polling
   let liveSince = new Date().toISOString();
   let liveOn = true;
   let liveTimer = null;
 
-  async function liveCheck(){
-    try{
-      const r = await fetch("/live?token=" + encodeURIComponent(TOKEN) + "&since=" + encodeURIComponent(liveSince));
+  async function liveCheck() {
+    try {
+      const url = "/live?token=" + encodeURIComponent(TOKEN) + "&since=" + encodeURIComponent(liveSince);
+      const r = await fetch(url);
       const j = await r.json().catch(() => ({}));
       if (!j.ok) return;
-
       if ($("liveNew")) $("liveNew").textContent = String(j.new_page_views || 0);
       if ($("liveLast")) $("liveLast").textContent = j.last_event ? (j.last_event.event_name || "—") : "—";
       if ($("liveJson")) $("liveJson").textContent = JSON.stringify(j, null, 2);
-
       liveSince = j.now || new Date().toISOString();
-    }catch{}
+    } catch (e) {}
   }
 
-  function startLive(){
+  function startLive() {
     if (liveTimer) clearInterval(liveTimer);
     liveTimer = setInterval(() => { if (liveOn) liveCheck(); }, 3500);
   }
 
-  // ----- Init -----
+  async function aiReport() {
+    setStatus("generating AI report…");
+    const r = await fetch("/generate-report?token=" + encodeURIComponent(TOKEN), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: TOKEN })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) { setStatus(j.error || "AI report failed"); return; }
+    setStatus("AI report saved ✅");
+    await loadLatestReport();
+    await loadReportsList();
+  }
+
   window.addEventListener("DOMContentLoaded", () => {
-    if (!TOKEN){
-      setStatus("missing token (add ?token=...)");
-      return;
-    }
+    if (!TOKEN) { setStatus("missing token"); return; }
 
     if ($("refresh")) $("refresh").addEventListener("click", refresh);
     if ($("days")) $("days").addEventListener("change", refresh);
-
-    if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
-    if ($("share")) $("share").addEventListener("click", share);
 
     if ($("simView")) $("simView").addEventListener("click", () => fire("page_view"));
     if ($("simLead")) $("simLead").addEventListener("click", () => fire("lead"));
     if ($("simPurchase")) $("simPurchase").addEventListener("click", () => fire("purchase"));
     if ($("simCta")) $("simCta").addEventListener("click", () => fire("cta_click"));
 
+    if ($("share")) $("share").addEventListener("click", share);
+    if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
+
+    if ($("loadReports")) $("loadReports").addEventListener("click", loadReportsList);
+
+    if ($("aiReportTopBtn")) $("aiReportTopBtn").addEventListener("click", aiReport);
+
     if ($("liveToggle")) $("liveToggle").addEventListener("click", () => {
       liveOn = !liveOn;
       $("liveToggle").textContent = liveOn ? "Pause" : "Resume";
-      if (liveOn) liveCheck();
+      setStatus(liveOn ? "live on" : "live paused");
     });
-
     if ($("liveNow")) $("liveNow").addEventListener("click", liveCheck);
 
     startLive();
     liveCheck();
     refresh();
   });
-})();
-    `);
-  })
-);
+})();`.trim());
+}));
 
 /* ---------------------------
-   “Daily job” utilities (non-AI)
+   “Daily job” utilities
 ----------------------------*/
 async function generateNonAiDailyReport(site_id) {
   const metricsRes = await pool.query(
@@ -1853,23 +2159,23 @@ async function generateNonAiDailyReport(site_id) {
   );
 
   const lines = [];
-  lines.push("1) What happened");
-  lines.push(\`In the last 24 hours you recorded \${m.page_views || 0} page views.\`);
-  lines.push(\`Leads: \${m.leads || 0} • Purchases: \${m.purchases || 0}\`);
+  lines.push("Summary:");
+  lines.push(`In the last 24 hours you recorded ${m.page_views || 0} page views.`);
+  lines.push(`Leads: ${m.leads || 0} • Purchases: ${m.purchases || 0}`);
   lines.push("");
-  lines.push("2) Top pages (7d)");
+  lines.push("Top pages (7d):");
   if (!topRes.rows.length) lines.push("- (no data yet)");
-  for (const r of topRes.rows) lines.push(\`- \${r.page_type || "/"}: \${r.views}\`);
+  for (const r of topRes.rows) lines.push(`- ${r.page_type || "/"}: ${r.views}`);
   lines.push("");
-  lines.push("3) Next steps");
-  lines.push("- Put your strongest CTA on the top page");
-  lines.push("- Add a lead capture (form / booking / email)");
-  lines.push("- Track a conversion event next");
+  lines.push("Next steps:");
+  lines.push("1) Put your strongest CTA on the top page");
+  lines.push("2) Add a lead capture (form / booking / email)");
+  lines.push("3) Track a conversion event next");
   lines.push("");
-  lines.push("4) Metric to watch");
+  lines.push("Metric to watch:");
   lines.push("Lead rate (leads / visits)");
 
-  return lines.join("\\n");
+  return lines.join("\n");
 }
 
 async function runDailyForAllSites() {
@@ -1895,16 +2201,13 @@ async function runDailyForAllSites() {
   return { ok: true, updated_sites: made };
 }
 
-app.post(
-  "/jobs/run-daily",
-  asyncHandler(async (req, res) => {
-    const result = await runDailyForAllSites();
-    res.json(result);
-  })
-);
+app.post("/jobs/run-daily", asyncHandler(async (req, res) => {
+  const result = await runDailyForAllSites();
+  res.json(result);
+}));
 
 if (process.env.ENABLE_SCHEDULER === "true") {
-  console.log("⏱️ In-process scheduler enabled (every 6h).");
+  console.log("⏱️ In-process scheduler enabled (not a real cron).");
   runDailyForAllSites().catch(() => {});
   setInterval(() => runDailyForAllSites().catch(() => {}), 6 * 60 * 60 * 1000);
 }
