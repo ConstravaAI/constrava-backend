@@ -1081,35 +1081,39 @@ app.post("/generate-report", asyncHandler(async (req, res) => {
   const metrics = metricsRes.rows[0];
 
   const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4o",
-      messages: [
-  {
-    role: "system",
-    content: `
-You are Constrava's analytics assistant.
-Write for a busy small-business owner.
-Make it friendly, non-intimidating, and very scannable.
-No jargon unless you define it in simple words.
-`.trim()
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${OPENAI_API_KEY}`,
+    "Content-Type": "application/json"
   },
-  {
-    role: "user",
-    content: `
+  body: JSON.stringify({
+    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+    temperature: 0.4,
+    messages: [
+      {
+        role: "system",
+        content: `
+You are Constrava's analytics assistant.
+
+Write for a busy small-business owner.
+Make it friendly, simple, and easy to scan.
+Avoid jargon unless explained simply.
+Keep things encouraging, not technical.
+`.trim()
+      },
+      {
+        role: "user",
+        content: `
 Metrics JSON (last 7 days):
 ${JSON.stringify(metrics)}
 
-Return EXACTLY this format (headings must match):
+Return EXACTLY this format:
+
 SUMMARY:
 (1–2 sentences)
 
 HIGHLIGHTS:
-- (max 3 bullets, each under 90 characters)
+- (max 3 bullets, short)
 
 WHAT HAPPENED:
 (2–3 short sentences)
@@ -1124,8 +1128,11 @@ NEXT STEPS:
 
 KPI: <name> — <value> (target: <target>)
 `.trim()
-  }
-]
+      }
+    ]
+  })
+});
+
 
       temperature: 0.4
     })
