@@ -2086,33 +2086,37 @@ function renderReportCards(containerEl, text){
 
   const s = parseReportSections(text);
 
-  const esc = (v) => String(v||"").replace(/[&<>"']/g,c=>({
+  const esc2 = (v) => String(v||"").replace(/[&<>"']/g, c => ({
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
   }[c]));
 
-  const ul = (items)=>
-    items?.length
-      ? `<ul class="repList">${items.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`
-      : `<div class="muted">—</div>`;
+  function ul(items){
+    if (items && items.length){
+      return '<ul class="repList">' +
+        items.map(x => '<li>' + esc2(x) + '</li>').join('') +
+      '</ul>';
+    }
+    return '<div class="muted">—</div>';
+  }
 
-  containerEl.innerHTML = `
-    <div class="repCard">
-      <div class="repTitle">Summary</div>
-      <div class="repText">${esc(s.summary)}</div>
-      ${s.kpi?`<div class="repKpi"><b>${esc(s.kpi)}</b></div>`:""}
-    </div>
+  containerEl.innerHTML =
+    '<div class="repCard">' +
+      '<div class="repTitle">Summary</div>' +
+      '<div class="repText">' + esc2(s.summary) + '</div>' +
+      (s.kpi ? ('<div class="repKpi"><b>' + esc2(s.kpi) + '</b></div>') : '') +
+    '</div>' +
 
-    <div class="repCard">
-      <div class="repTitle">Highlights</div>
-      ${ul(s.highlights)}
-    </div>
+    '<div class="repCard">' +
+      '<div class="repTitle">Highlights</div>' +
+      ul(s.highlights) +
+    '</div>' +
 
-    <div class="repCard">
-      <div class="repTitle">Next Steps</div>
-      ${ul(s.steps)}
-    </div>
-  `;
+    '<div class="repCard">' +
+      '<div class="repTitle">Next Steps</div>' +
+      ul(s.steps) +
+    '</div>';
 }
+
 
  async function loadLatestReport() {
   const pre1 = $("latestAiReport");
