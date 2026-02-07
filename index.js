@@ -1878,7 +1878,7 @@ app.get("/dashboard.js", asyncHandler(async (req, res) => {
   }
 
   // Important: embed values safely
-  res.send(`
+  res.send(String.raw`
 (() => {
   "use strict";
 
