@@ -2033,89 +2033,82 @@ app.get("/dashboard.js", asyncHandler(async (req, res) => {
       container.appendChild(item);
     }
   }
-// ===== Report Helpers =====
+  // ===== Report Helpers =====
 
-function splitLines(txt){
-  return String(txt || "")
-    .replace(/\r\n/g,"\n")
-    .split("\n")
-    .map(s => s.trim())
-    .filter(Boolean);
-}
-
-function parseReportSections(text){
-  const lines = splitLines(text);
-  const sections = {
-    summary: "",
-    highlights: [],
-    steps: [],
-    kpi: ""
-  };
-
-  let mode = "";
-
-  for (const line0 of lines){
-    const line = line0.replace(/\*\*/g,"");
-
-    if (/^SUMMARY:/i.test(line)) { mode="summary"; continue; }
-    if (/^HIGHLIGHTS:/i.test(line)) { mode="highlights"; continue; }
-    if (/^NEXT STEPS:/i.test(line)) { mode="steps"; continue; }
-    if (/^KPI:/i.test(line)){
-      sections.kpi = line.replace(/^KPI:\s*/i,"").trim();
-      mode="";
-      continue;
-    }
-
-    const cleaned = line
-      .replace(/^[-•]\s*/,"")
-      .replace(/^\d+\)\s*/,"")
-      .trim();
-
-    if (!cleaned) continue;
-
-    if (mode==="summary") sections.summary += (sections.summary?" ":"")+cleaned;
-    if (mode==="highlights") sections.highlights.push(cleaned);
-    if (mode==="steps") sections.steps.push(cleaned);
+  function splitLines(txt){
+    return String(txt || "")
+      .replace(/\r\n/g,"\n")
+      .split("\n")
+      .map(s => s.trim())
+      .filter(Boolean);
   }
 
-  return sections;
-}
+  function parseReportSections(text){
+    const lines = splitLines(text);
+    const sections = { summary: "", highlights: [], steps: [], kpi: "" };
+    let mode = "";
 
-function renderReportCards(containerEl, text){
-  if (!containerEl) return;
+    for (const line0 of lines){
+      const line = line0.replace(/\*\*/g,"");
 
-  const s = parseReportSections(text);
+      if (/^SUMMARY:/i.test(line)) { mode="summary"; continue; }
+      if (/^HIGHLIGHTS:/i.test(line)) { mode="highlights"; continue; }
+      if (/^NEXT STEPS:/i.test(line)) { mode="steps"; continue; }
+      if (/^KPI:/i.test(line)){
+        sections.kpi = line.replace(/^KPI:\s*/i,"").trim();
+        mode="";
+        continue;
+      }
 
-  const esc2 = (v) => String(v||"").replace(/[&<>"']/g, c => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-  }[c]));
+      const cleaned = line
+        .replace(/^[-•]\s*/,"")
+        .replace(/^\d+\)\s*/,"")
+        .trim();
 
-  function ul(items){
-    if (items && items.length){
+      if (!cleaned) continue;
+
+      if (mode==="summary") sections.summary += (sections.summary?" ":"") + cleaned;
+      if (mode==="highlights") sections.highlights.push(cleaned);
+      if (mode==="steps") sections.steps.push(cleaned);
+    }
+
+    return sections;
+  }
+
+  function renderReportCards(containerEl, text){
+    if (!containerEl) return;
+
+    const s = parseReportSections(text);
+
+    const escLocal = (v) => String(v||"").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+
+    const ul = (items) => {
+      if (!items || !items.length) return '<div class="muted">—</div>';
       return '<ul class="repList">' +
-        items.map(x => '<li>' + esc2(x) + '</li>').join('') +
+        items.map(x => '<li>' + escLocal(x) + '</li>').join('') +
       '</ul>';
-    }
-    return '<div class="muted">—</div>';
+    };
+
+    containerEl.innerHTML =
+      '<div class="repCard">' +
+        '<div class="repTitle">Summary</div>' +
+        '<div class="repText">' + escLocal(s.summary) + '</div>' +
+        (s.kpi ? '<div class="repKpi"><b>' + escLocal(s.kpi) + '</b></div>' : '') +
+      '</div>' +
+
+      '<div class="repCard">' +
+        '<div class="repTitle">Highlights</div>' +
+        ul(s.highlights) +
+      '</div>' +
+
+      '<div class="repCard">' +
+        '<div class="repTitle">Next Steps</div>' +
+        ul(s.steps) +
+      '</div>';
   }
 
-  containerEl.innerHTML =
-    '<div class="repCard">' +
-      '<div class="repTitle">Summary</div>' +
-      '<div class="repText">' + esc2(s.summary) + '</div>' +
-      (s.kpi ? ('<div class="repKpi"><b>' + esc2(s.kpi) + '</b></div>') : '') +
-    '</div>' +
-
-    '<div class="repCard">' +
-      '<div class="repTitle">Highlights</div>' +
-      ul(s.highlights) +
-    '</div>' +
-
-    '<div class="repCard">' +
-      '<div class="repTitle">Next Steps</div>' +
-      ul(s.steps) +
-    '</div>';
-}
 
 
  async function loadLatestReport() {
