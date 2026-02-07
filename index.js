@@ -2600,342 +2600,153 @@ app.get(
 </div>
 
 <script>
-  const TOKEN = ${TOKEN_JS};
-  const PLAN = ${PLAN_JS};
-  const SITE_ID = ${SITEID_JS};
+// dashboard.js — Constrava Dashboard client (plain JS)
+// Expects you are on /dashboard?token=...
+(() => {
+  "use strict";
+
+  const qs = new URLSearchParams(location.search);
+  const TOKEN = qs.get("token") || "";
 
   const $ = (id) => document.getElementById(id);
-  /* ===== REPORT PARSER ===== */
 
-function splitLines(text){
-  return String(text||"")
-    .replace(/\\r\\n/g,"\\n")
-    .split("\\n")
-    .map(s => s.trim())
-    .filter(Boolean);
-}
-
-function parseReport(text){
-  const lines = splitLines(text);
-  const out = { what:"", trend:"", steps:[], metric:"", full:text||"" };
-  let mode = "";
-
-  for (const raw of lines){
-    const l = raw.replace(/\\*\\*/g,"");
-
-    if (/^1\\)|^what happened/i.test(l)){ mode="what"; continue; }
-    if (/^2\\)|^trend/i.test(l)){ mode="trend"; continue; }
-    if (/^3\\)|^next steps/i.test(l)){ mode="steps"; continue; }
-    if (/^4\\)|^metric/i.test(l)){ mode="metric"; continue; }
-
-    if (mode === "steps"){
-      const cleaned = l.replace(/^[-•]\\s*/,"");
-      if (cleaned) out.steps.push(cleaned);
-    } else if (mode === "what"){
-      out.what += " " + l;
-    } else if (mode === "trend"){
-      out.trend += " " + l;
-    } else if (mode === "metric"){
-      out.metric += " " + l;
-    }
+  function setStatus(t) {
+    const el = $("status");
+    if (el) el.textContent = "Status: " + t;
   }
 
-  return out;
-}
-  const chatEl = $("aiChat");
-const inputEl = $("aiInput");
-const history = [];
-
-function addMsg(role, text){
-  const wrap = document.createElement("div");
-  wrap.style.margin = "8px 0";
-wrap.innerHTML =
-  '<div class="pill" style="display:inline-block;margin-bottom:6px">' + role + '</div>' +
-  '<div style="white-space:pre-wrap;line-height:1.55">' + esc(text) + '</div>';
-  chatEl.appendChild(wrap);
-  chatEl.scrollTop = chatEl.scrollHeight;
-}
-
-async function sendToAI(text){
-  if (PLAN !== "full_ai"){
-    addMsg("assistant", "AI Assistant requires the full_ai plan.");
-    return;
+  function esc(s) {
+    return String(s || "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    }[c]));
   }
 
-  addMsg("you", text);
-  history.push({ role: "user", content: text });
-
-  addMsg("assistant", "Typing…");
-  const typingNode = chatEl.lastChild;
-
-  const r = await fetch("/api/ai/chat?token=" + encodeURIComponent(TOKEN), {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ message: text, history })
-  });
-
-  const j = await r.json().catch(()=> ({}));
-  if (!j.ok){
-    typingNode.querySelector("div:nth-child(2)").textContent = j.error || "AI error";
-    return;
+  function pct(n) {
+    return (Math.round((Number(n) || 0) * 10000) / 100).toFixed(2) + "%";
   }
 
-  const reply = j.reply || "";
-  typingNode.querySelector("div:nth-child(2)").textContent = reply;
-  history.push({ role: "assistant", content: reply });
-}
-
-$("aiSend").addEventListener("click", () => {
-  const t = inputEl.value.trim();
-  if (!t) return;
-  inputEl.value = "";
-  sendToAI(t);
-});
-inputEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") $("aiSend").click();
-});
-
-$("qp1").addEventListener("click", () => sendToAI("What changed this week? Summarize the main trends and why they might be happening."));
-$("qp2").addEventListener("click", () => sendToAI("Where are users likely dropping off? Use the top pages and goals to infer the biggest friction points."));
-$("qp3").addEventListener("click", () => sendToAI("Give me 3 next steps to improve lead rate and one metric to watch."));
-
-  const statusEl = $("status");
-  function openModal(title, sub, body){
-  $("modalTitle").textContent = title || "Done";
-  $("modalSub").textContent = sub || "";
-  $("modalBody").textContent = body || "";
-  $("modalBg").style.display = "block";
-}
-
-function closeModal(){
-  $("modalBg").style.display = "none";
-}
-
-$("modalClose").addEventListener("click", closeModal);
-$("modalBg").addEventListener("click", (e) => { if (e.target === $("modalBg")) closeModal(); });
-$("modalCopy").addEventListener("click", async () => {
-  const text = $("modalBody").textContent || "";
-  try { await navigator.clipboard.writeText(text); setStatus("copied ✅"); }
-  catch { setStatus("copy failed"); }
-});
-
-
-  function setStatus(t){ statusEl.textContent = "Status: " + t; }
-  function pct(n){ return (Math.round((Number(n)||0) * 10000) / 100).toFixed(2) + "%"; }
-  function clamp(n,min,max){ n=Number(n)||0; return Math.max(min, Math.min(max, n)); }
-
-  $("siteId").textContent = SITE_ID;
-  $("plan").textContent = PLAN;
-  $("plansLink").href = "/storefront?token=" + encodeURIComponent(TOKEN);
-
-  // Show AI buttons only if allowed by plan
-  if (PLAN === "full_ai"){
-    $("aiReportBtn").style.display = "inline-block";
-    $("aiPlanBtn").style.display = "inline-block";
+  function clamp(n, min, max) {
+    n = Number(n) || 0;
+    return Math.max(min, Math.min(max, n));
   }
 
- function esc(s){
-  return String(s || "").replace(/[&<>\"']/g, (c) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "\"": "&quot;",
-    "'": "&#39;"
-  })[c]);
-}
+  // ---------- Charts (safe no-op if elements missing) ----------
+  function renderTrend(svgEl, trend) {
+    if (!svgEl) return;
 
-
-  function renderTrend(svgEl, trend){
-    // trend = [{day, visits}]
     const W = 900, H = 260, p = 18;
     while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
 
-    // background grid
     const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("x","0"); bg.setAttribute("y","0");
-    bg.setAttribute("width", String(W)); bg.setAttribute("height", String(H));
-    bg.setAttribute("rx","14");
-    bg.setAttribute("fill","rgba(15,23,42,.25)");
-    bg.setAttribute("stroke","rgba(255,255,255,.10)");
+    bg.setAttribute("x", "0");
+    bg.setAttribute("y", "0");
+    bg.setAttribute("width", String(W));
+    bg.setAttribute("height", String(H));
+    bg.setAttribute("rx", "14");
+    bg.setAttribute("fill", "rgba(15,23,42,.25)");
+    bg.setAttribute("stroke", "rgba(255,255,255,.10)");
     svgEl.appendChild(bg);
 
-    const n = trend.length || 0;
-    if (!n){
-      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      t.setAttribute("x", String(p));
-      t.setAttribute("y", String(p+22));
-      t.setAttribute("fill","rgba(229,231,235,.75)");
-      t.setAttribute("font-size","14");
-      t.textContent = "No data yet.";
-      svgEl.appendChild(t);
-      return;
-    }
+    const n = (trend && trend.length) ? trend.length : 0;
+    if (!n) return;
 
     let maxV = 0, sumV = 0;
-    for (let i=0;i<n;i++){ maxV = Math.max(maxV, trend[i].visits||0); sumV += (trend[i].visits||0); }
-    const avg = n ? (sumV / n) : 0;
-    $("maxDay").textContent = String(maxV);
-    $("avgDay").textContent = String(Math.round(avg*10)/10);
-
-    const innerW = W - p*2;
-    const innerH = H - p*2;
-
-    function x(i){
-      if (n === 1) return p + innerW/2;
-      return p + (i * innerW) / (n - 1);
+    for (const r of trend) {
+      maxV = Math.max(maxV, r.visits || 0);
+      sumV += (r.visits || 0);
     }
-    function y(v){
+    const avg = sumV / n;
+
+    if ($("maxDay")) $("maxDay").textContent = String(maxV);
+    if ($("avgDay")) $("avgDay").textContent = String(Math.round(avg * 10) / 10);
+
+    const innerW = W - p * 2;
+    const innerH = H - p * 2;
+
+    const x = (i) => (n === 1 ? p + innerW / 2 : p + (i * innerW) / (n - 1));
+    const y = (v) => {
       const m = Math.max(1, maxV);
       const t = clamp(v / m, 0, 1);
       return p + (1 - t) * innerH;
-    }
+    };
 
-    // baseline
-    const base = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    base.setAttribute("d", "M " + p + " " + (H-p) + " L " + (W-p) + " " + (H-p));
-    base.setAttribute("stroke","rgba(255,255,255,.10)");
-    base.setAttribute("fill","none");
-    svgEl.appendChild(base);
-
-    // path
     let d = "";
-    for (let i=0;i<n;i++){
-      const xi = x(i);
-      const yi = y(trend[i].visits||0);
-      d += (i===0 ? "M " : " L ") + xi + " " + yi;
+    for (let i = 0; i < n; i++) {
+      d += (i === 0 ? "M " : " L ") + x(i) + " " + y(trend[i].visits || 0);
     }
+
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", d);
-    path.setAttribute("stroke","rgba(96,165,250,.90)");
-    path.setAttribute("stroke-width","3");
-    path.setAttribute("fill","none");
-    path.setAttribute("stroke-linecap","round");
-    path.setAttribute("stroke-linejoin","round");
+    path.setAttribute("stroke", "rgba(96,165,250,.90)");
+    path.setAttribute("stroke-width", "3");
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
     svgEl.appendChild(path);
-
-    // dots + labels (sparse)
-    for (let i=0;i<n;i++){
-      const xi = x(i);
-      const yi = y(trend[i].visits||0);
-
-      const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      c.setAttribute("cx", String(xi));
-      c.setAttribute("cy", String(yi));
-      c.setAttribute("r","3.5");
-      c.setAttribute("fill","rgba(96,165,250,.95)");
-      c.setAttribute("stroke","rgba(255,255,255,.20)");
-      svgEl.appendChild(c);
-
-      // label every ~5 points or ends
-      const show = (i===0 || i===n-1 || (n>=10 && i % Math.ceil(n/6) === 0));
-      if (show){
-        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
-        t.setAttribute("x", String(xi));
-        t.setAttribute("y", String(H - 6));
-        t.setAttribute("fill","rgba(229,231,235,.65)");
-        t.setAttribute("font-size","11");
-        t.setAttribute("text-anchor","middle");
-        const day = String(trend[i].day||"").slice(5); // MM-DD
-        t.textContent = day;
-        svgEl.appendChild(t);
-      }
-    }
   }
 
-  function renderDevice(svgEl, mobile, desktop){
+  function renderDevice(svgEl, mobile, desktop) {
+    if (!svgEl) return;
     while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
-    const W=240, H=160;
-    const cx=80, cy=80;
-    const r=50, w=16;
-    const total = (mobile||0) + (desktop||0);
-    const m = total ? (mobile/total) : 0.5;
-    const start = -Math.PI/2;
-    const mid = start + (Math.PI*2*m);
 
-    function arc(a0,a1,color){
-      const x0 = cx + r*Math.cos(a0), y0 = cy + r*Math.sin(a0);
-      const x1 = cx + r*Math.cos(a1), y1 = cy + r*Math.sin(a1);
-      const large = (a1-a0) > Math.PI ? 1 : 0;
-      const p = document.createElementNS("http://www.w3.org/2000/svg","path");
-      p.setAttribute("d",
-        "M " + x0 + " " + y0 +
-        " A " + r + " " + r + " 0 " + large + " 1 " + x1 + " " + y1
-      );
+    const cx = 80, cy = 80, r = 50, w = 16;
+    const total = (mobile || 0) + (desktop || 0);
+    const m = total ? mobile / total : 0.5;
+
+    const start = -Math.PI / 2;
+    const mid = start + Math.PI * 2 * m;
+
+    function arc(a0, a1, color) {
+      const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+      const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+      const large = (a1 - a0) > Math.PI ? 1 : 0;
+
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      p.setAttribute("d", `M ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1}`);
       p.setAttribute("stroke", color);
       p.setAttribute("stroke-width", String(w));
-      p.setAttribute("fill","none");
-      p.setAttribute("stroke-linecap","round");
+      p.setAttribute("fill", "none");
+      p.setAttribute("stroke-linecap", "round");
       svgEl.appendChild(p);
     }
 
-    const ring = document.createElementNS("http://www.w3.org/2000/svg","circle");
+    const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     ring.setAttribute("cx", String(cx));
     ring.setAttribute("cy", String(cy));
     ring.setAttribute("r", String(r));
-    ring.setAttribute("stroke","rgba(255,255,255,.12)");
+    ring.setAttribute("stroke", "rgba(255,255,255,.12)");
     ring.setAttribute("stroke-width", String(w));
-    ring.setAttribute("fill","none");
+    ring.setAttribute("fill", "none");
     svgEl.appendChild(ring);
 
-    arc(start, mid, "rgba(52,211,153,.90)");      // mobile
-    arc(mid, start + Math.PI*2, "rgba(96,165,250,.90)"); // desktop
-
-    const label = document.createElementNS("http://www.w3.org/2000/svg","text");
-    label.setAttribute("x", String(cx));
-    label.setAttribute("y", String(cy+6));
-    label.setAttribute("text-anchor","middle");
-    label.setAttribute("fill","rgba(229,231,235,.90)");
-    label.setAttribute("font-size","14");
-    label.textContent = total ? (Math.round(m*100) + "% mobile") : "No data";
-    svgEl.appendChild(label);
-
-    // legend
-    const t1 = document.createElementNS("http://www.w3.org/2000/svg","text");
-    t1.setAttribute("x","150"); t1.setAttribute("y","72");
-    t1.setAttribute("fill","rgba(229,231,235,.75)"); t1.setAttribute("font-size","12");
-    t1.textContent = "Mobile";
-    svgEl.appendChild(t1);
-
-    const s1 = document.createElementNS("http://www.w3.org/2000/svg","rect");
-    s1.setAttribute("x","132"); s1.setAttribute("y","62"); s1.setAttribute("width","12"); s1.setAttribute("height","12");
-    s1.setAttribute("rx","3"); s1.setAttribute("fill","rgba(52,211,153,.90)");
-    svgEl.appendChild(s1);
-
-    const t2 = document.createElementNS("http://www.w3.org/2000/svg","text");
-    t2.setAttribute("x","150"); t2.setAttribute("y","102");
-    t2.setAttribute("fill","rgba(229,231,235,.75)"); t2.setAttribute("font-size","12");
-    t2.textContent = "Desktop";
-    svgEl.appendChild(t2);
-
-    const s2 = document.createElementNS("http://www.w3.org/2000/svg","rect");
-    s2.setAttribute("x","132"); s2.setAttribute("y","92"); s2.setAttribute("width","12"); s2.setAttribute("height","12");
-    s2.setAttribute("rx","3"); s2.setAttribute("fill","rgba(96,165,250,.90)");
-    svgEl.appendChild(s2);
+    arc(start, mid, "rgba(52,211,153,.90)");         // mobile
+    arc(mid, start + Math.PI * 2, "rgba(96,165,250,.90)"); // desktop
   }
 
-  function renderTopPages(container, rows){
+  function renderTopPages(container, rows) {
+    if (!container) return;
     container.innerHTML = "";
-    if (!rows || !rows.length){
+
+    if (!rows || !rows.length) {
       container.textContent = "No page data yet.";
       return;
     }
-    // rows from API: top_pages_range [{page_type, views, share}]
-    for (let i=0;i<rows.length;i++){
-      const r = rows[i];
-      const page = r.page_type || "/";
-      const views = r.views || 0;
-      const share = r.share || 0;
 
+    for (const r of rows) {
       const item = document.createElement("div");
       item.className = "item";
 
       const left = document.createElement("div");
       left.style.minWidth = "160px";
-      left.style.maxWidth = "50%";
+      left.style.maxWidth = "55%";
       left.style.overflow = "hidden";
       left.style.textOverflow = "ellipsis";
       left.style.whiteSpace = "nowrap";
-      left.innerHTML = "<b>" + esc(page) + "</b><div class='muted'>" + views + " views • " + share + "%</div>";
+      left.innerHTML = `<b>${esc(r.page_type || "/")}</b><div class="muted">${r.views || 0} views • ${r.share || 0}%</div>`;
 
       const barWrap = document.createElement("div");
       barWrap.className = "barWrap";
@@ -2944,7 +2755,7 @@ $("modalCopy").addEventListener("click", async () => {
       bar.className = "bar";
 
       const fill = document.createElement("div");
-      fill.style.width = clamp(share, 0, 100) + "%";
+      fill.style.width = clamp(r.share || 0, 0, 100) + "%";
 
       bar.appendChild(fill);
       barWrap.appendChild(bar);
@@ -2955,34 +2766,83 @@ $("modalCopy").addEventListener("click", async () => {
     }
   }
 
-  async function refresh(){
-    try{
-      const days = $("days").value;
+  // ---------- API ----------
+  async function loadLatestReport() {
+    const pre1 = $("latestAiReport");
+    const pre2 = $("report");
+    if (pre1) pre1.textContent = "Loading latest report...";
+    if (pre2) pre2.textContent = "Loading latest report...";
+
+    const rr = await fetch(`/reports/latest?token=${encodeURIComponent(TOKEN)}`);
+    const jj = await rr.json().catch(() => ({}));
+
+    const text = (jj.ok && jj.report && jj.report.report_text) ? jj.report.report_text : "";
+    if (pre1) pre1.textContent = text || "No report yet.";
+    if (pre2) pre2.textContent = text || "No report yet.";
+  }
+
+  async function loadReportsList() {
+    const list = $("reportsList");
+    if (!list) return;
+
+    list.textContent = "Loading...";
+    const r = await fetch(`/reports?token=${encodeURIComponent(TOKEN)}&limit=30`);
+    const j = await r.json().catch(() => ({}));
+
+    list.innerHTML = "";
+    if (!j.ok) {
+      list.textContent = j.error || "Failed to load reports";
+      return;
+    }
+    if (!j.reports || !j.reports.length) {
+      list.textContent = "No reports yet.";
+      return;
+    }
+
+    for (const rep of j.reports) {
+      const item = document.createElement("div");
+      item.className = "item";
+
+      const left = document.createElement("div");
+      left.innerHTML = `<b>${esc(rep.report_date)}</b><div class="muted">${esc(rep.preview || "")}</div>`;
+
+      const right = document.createElement("div");
+      right.className = "pill";
+      right.textContent = "Open";
+
+      item.appendChild(left);
+      item.appendChild(right);
+      list.appendChild(item);
+    }
+  }
+
+  async function refresh() {
+    try {
+      const days = $("days") ? $("days").value : "7";
       setStatus("loading metrics…");
 
-      const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
-      const j = await r.json().catch(()=> ({}));
-      if(!j.ok){ setStatus(j.error || "error"); return; }
+      const r = await fetch(`/metrics?token=${encodeURIComponent(TOKEN)}&days=${encodeURIComponent(days)}`);
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) {
+        setStatus(j.error || "error");
+        return;
+      }
 
-      $("kpiToday").textContent = j.visits_today;
-      $("kpiTodaySub").textContent = j.last_event ? ("Last event: " + (j.last_event.event_name || "—")) : "";
-      $("kpiRange").textContent = j.visits_range;
-      $("kpiRangeSub").textContent = "Window: " + j.days + " day(s)";
-      $("kpiLeadRate").textContent = pct(j.conversion_rate || 0);
-      $("kpiPurchaseRate").textContent = pct(j.purchase_rate || 0);
+      if ($("kpiToday")) $("kpiToday").textContent = j.visits_today;
+      if ($("kpiRange")) $("kpiRange").textContent = j.visits_range;
+      if ($("kpiLeadRate")) $("kpiLeadRate").textContent = pct(j.conversion_rate || 0);
+      if ($("kpiPurchaseRate")) $("kpiPurchaseRate").textContent = pct(j.purchase_rate || 0);
 
-      $("leads").textContent = j.leads || 0;
-      $("purchases").textContent = j.purchases || 0;
-      $("cta").textContent = j.cta_clicks || 0;
-      $("leadRate2").textContent = pct(j.conversion_rate || 0);
-      $("purchaseRate2").textContent = pct(j.purchase_rate || 0);
+      if ($("leads")) $("leads").textContent = j.leads || 0;
+      if ($("purchases")) $("purchases").textContent = j.purchases || 0;
+      if ($("cta")) $("cta").textContent = j.cta_clicks || 0;
 
-      const mob = (j.device_mix && j.device_mix.mobile) ? j.device_mix.mobile : 0;
-      const desk = (j.device_mix && j.device_mix.desktop) ? j.device_mix.desktop : 0;
-      $("mob").textContent = mob;
-      $("desk").textContent = desk;
+      const mob = j.device_mix?.mobile || 0;
+      const desk = j.device_mix?.desktop || 0;
+      if ($("mob")) $("mob").textContent = mob;
+      if ($("desk")) $("desk").textContent = desk;
 
-      $("lastEvent").textContent = j.last_event ? JSON.stringify(j.last_event, null, 2) : "No events yet.";
+      if ($("lastEvent")) $("lastEvent").textContent = j.last_event ? JSON.stringify(j.last_event, null, 2) : "No events yet.";
 
       renderTrend($("trendSvg"), j.trend || []);
       renderDevice($("deviceSvg"), mob, desk);
@@ -2992,422 +2852,86 @@ $("modalCopy").addEventListener("click", async () => {
       await loadReportsList();
 
       setStatus("ready");
-    }catch(e){
-      setStatus("error: " + (e && e.message ? e.message : "unknown"));
+    } catch (e) {
+      setStatus("error: " + (e?.message || "unknown"));
     }
   }
 
-async function loadLatestReport(){
-  const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
-  const jj = await rr.json().catch(()=> ({}));
-
-  const text = (jj.ok && jj.report && jj.report.report_text) ? jj.report.report_text : "";
-
-  // Update the top card pre
-  if ($("latestAiReport")) $("latestAiReport").textContent = text || "No report yet.";
-
-  // Update the "Latest" report area
-  if ($("report")) $("report").textContent = text || "No report yet.";
-
-  if (!text){
-    if ($("reportEmpty")) $("reportEmpty").textContent = "No report yet.";
-    return;
-  }
-
-  const parsed = parseReport(text);
-
-  if ($("repWhat")) $("repWhat").textContent = parsed.what || "";
-  if ($("repTrend")) $("repTrend").textContent = parsed.trend || "";
-
-  const stepsEl = $("repSteps");
-  if (stepsEl){
-    stepsEl.innerHTML = "";
-    (parsed.steps || []).forEach(s => {
-      const li = document.createElement("li");
-      li.textContent = s;
-      stepsEl.appendChild(li);
-    });
-  }
-
-  if ($("repMetric")) $("repMetric").textContent = parsed.metric || "—";
-  if ($("repFull")) $("repFull").textContent = text;
-}
-
-  async function loadReportsList(){
-    const r = await fetch("/reports?token=" + encodeURIComponent(TOKEN) + "&limit=30");
-    const j = await r.json().catch(()=> ({}));
-    const list = $("reportsList");
-    list.innerHTML = "";
-
-    if(!j.ok){
-      list.textContent = j.error || "Failed to load reports";
-      return;
-    }
-    if(!j.reports || !j.reports.length){
-      list.textContent = "No reports yet.";
-      return;
-    }
-
-    for (let i=0;i<j.reports.length;i++){
-      const rep = j.reports[i];
-      const item = document.createElement("div");
-      item.className = "item";
-      item.style.cursor = "pointer";
-
-      const left = document.createElement("div");
-      left.innerHTML = "<b>" + esc(rep.report_date) + "</b><div class='muted'>" + esc(rep.preview || "") + "</div>";
-
-      const right = document.createElement("div");
-      right.className = "pill";
-      right.textContent = "Open";
-
-      item.appendChild(left);
-      item.appendChild(right);
-
-      item.addEventListener("click", async () => {
-        $("report").textContent = "Tip: add a report-by-date endpoint to open older reports precisely.";
-      });
-
-      list.appendChild(item);
-    }
-  }
-
-  async function fire(eventName){
+  async function fire(eventName) {
     setStatus("sending " + eventName + "…");
     const r = await fetch("/demo/fire-event", {
       method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ token: TOKEN, event_name: eventName, page_type: location.pathname, device: "desktop" })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: TOKEN,
+        event_name: eventName,
+        page_type: location.pathname,
+        device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop",
+      }),
     });
-    const d = await r.json().catch(()=> ({}));
-    if(!d.ok){ setStatus(d.error || "error"); return; }
-    setStatus("sent ✅ refreshing…");
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) return setStatus(d.error || "error");
+    setStatus("sent ✅");
+    setTimeout(refresh, 300);
+  }
+
+  async function seed() {
+    setStatus("seeding…");
+    const r = await fetch(`/demo/seed?token=${encodeURIComponent(TOKEN)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ days: 14, events_per_day: 60 }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) return setStatus(j.error || "seed failed");
+    setStatus("seeded ✅");
     setTimeout(refresh, 350);
   }
 
-  async function seed(){
-    setStatus("seeding…");
-    const r = await fetch("/demo/seed?token=" + encodeURIComponent(TOKEN), { method:"POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ days: 14, events_per_day: 60 })});
-    const j = await r.json().catch(()=> ({}));
-    if(!j.ok){ setStatus(j.error || "seed failed"); return; }
-    setStatus("seeded ✅ refreshing…");
-    setTimeout(refresh, 450);
-  }
-
-  async function share(){
+  async function share() {
     setStatus("creating share link…");
     const r = await fetch("/demo/link", {
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ token: TOKEN })
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: TOKEN }),
     });
-    const d = await r.json().catch(()=> ({}));
-    if(!d.ok){ setStatus(d.error || "error"); return; }
-    try{ await navigator.clipboard.writeText(d.url); setStatus("copied ✅"); }
-    catch{ setStatus("share link: " + d.url); }
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) return setStatus(d.error || "error");
+
+    try {
+      await navigator.clipboard.writeText(d.url);
+      setStatus("copied ✅");
+    } catch {
+      setStatus("share link: " + d.url);
+    }
   }
 
-async function aiReport(){
-  setStatus("generating AI report…");
+  // ---------- Init ----------
+  window.addEventListener("DOMContentLoaded", () => {
+    if (!TOKEN) {
+      setStatus("missing token");
+      return;
+    }
 
-  const r = await fetch("/generate-report?token=" + encodeURIComponent(TOKEN), {
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({ token: TOKEN })
+    // Wire buttons safely (only if elements exist)
+    if ($("refresh")) $("refresh").addEventListener("click", refresh);
+    if ($("days")) $("days").addEventListener("change", refresh);
+
+    if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
+    if ($("share")) $("share").addEventListener("click", share);
+
+    if ($("simView")) $("simView").addEventListener("click", () => fire("page_view"));
+    if ($("simLead")) $("simLead").addEventListener("click", () => fire("lead"));
+    if ($("simPurchase")) $("simPurchase").addEventListener("click", () => fire("purchase"));
+    if ($("simCta")) $("simCta").addEventListener("click", () => fire("cta_click"));
+
+    // If you still have these buttons in your HTML, no problem:
+    if ($("loadReports")) $("loadReports").addEventListener("click", loadReportsList);
+
+    refresh();
   });
+})();
 
-  const j = await r.json().catch(()=> ({}));
-  if(!j.ok){ setStatus(j.error || "AI report failed"); return; }
-
-  const text = (j.report && j.report.report_text) ? j.report.report_text : "";
-
-  openModal(
-    "AI report complete ✅",
-    "Saved to reports. You can copy it below.",
-    text
-  );
-
-  setStatus("AI report saved ✅");
-  await loadLatestReport();
-  await loadReportsList();
-}
-
-async function aiPlan(){
-  setStatus("generating AI action plan…");
-
-  const r = await fetch("/generate-action-plan?token=" + encodeURIComponent(TOKEN), {
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({ token: TOKEN })
-  });
-
-  const j = await r.json().catch(()=> ({}));
-  if(!j.ok){ setStatus(j.error || "AI action plan failed"); return; }
-
-  const text = (j.report && j.report.report_text) ? j.report.report_text : "";
-
-  openModal(
-    "AI action plan ✅",
-    "Saved to reports. You can copy it below.",
-    text
-  );
-
-  setStatus("action plan saved ✅");
-  await loadLatestReport();
-  await loadReportsList();
-}
-
-
-  // Live polling
-  let liveSince = new Date().toISOString();
-  let liveOn = true;
-  let liveTimer = null;
-
-  async function liveCheck(){
-    try{
-      const url = "/live?token=" + encodeURIComponent(TOKEN) + "&since=" + encodeURIComponent(liveSince);
-      const r = await fetch(url);
-      const j = await r.json().catch(()=> ({}));
-      if(!j.ok){ return; }
-      $("liveNew").textContent = String(j.new_page_views || 0);
-      $("liveLast").textContent = j.last_event ? (j.last_event.event_name || "—") : "—";
-      $("liveJson").textContent = JSON.stringify(j, null, 2);
-      liveSince = j.now || new Date().toISOString();
-    }catch(e){}
-  }
-
-  function startLive(){
-    if (liveTimer) clearInterval(liveTimer);
-    liveTimer = setInterval(() => { if(liveOn) liveCheck(); }, 3500);
-  }
-
-  $("refresh").addEventListener("click", refresh);
-  $("days").addEventListener("change", refresh);
-  $("aiReportTop").addEventListener("click", aiReport);
-if ($("aiReportTopBtn")){
-  $("aiReportTopBtn").addEventListener("click", aiReport);
-}
-
-
-  $("simView").addEventListener("click", () => fire("page_view"));
-  $("simLead").addEventListener("click", () => fire("lead"));
-  $("simPurchase").addEventListener("click", () => fire("purchase"));
-  $("simCta").addEventListener("click", () => fire("cta_click"));
-
-  $("share").addEventListener("click", share);
-  if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
-
-
-  $("loadReports").addEventListener("click", loadReportsList);
-  $("aiReportBtn").addEventListener("click", aiReport);
-  if ($("aiPlanBtn")) $("aiPlanBtn").addEventListener("click", aiPlan);
-
-  $("liveToggle").addEventListener("click", () => {
-    liveOn = !liveOn;
-    $("liveToggle").textContent = liveOn ? "Pause" : "Resume";
-    if (liveOn) liveCheck();
-  });
-  $("liveNow").addEventListener("click", liveCheck);
-
-  startLive();
-  liveCheck();
-  refresh();
-</script>
-</body>
-</html>`);
-  })
-);
-
-/* ---------------------------
-   PUBLIC Store page (no token)
-   GET /store
-----------------------------*/
-app.get(
-  "/store",
-  asyncHandler(async (req, res) => {
-    setNoStore(res);
-    res.setHeader("Content-Type", "text/html; charset=utf-8");
-
-    const base = publicBaseUrl(req);
-    const BASE_JS = JSON.stringify(base);
-
-    res.send(`<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Constrava — Store</title>
-  <style>
-    :root{
-      --bg:#0b0f19;
-      --panel: rgba(255,255,255,.06);
-      --text:#e5e7eb;
-      --muted:#9ca3af;
-      --border:rgba(255,255,255,.12);
-      --accent:#60a5fa;
-      --accent2:#34d399;
-      --danger:#fb7185;
-      --shadow: 0 14px 40px rgba(0,0,0,.35);
-      --radius:18px;
-    }
-    *{box-sizing:border-box}
-    body{
-      margin:0;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      background:
-        radial-gradient(1100px 720px at 20% -10%, rgba(96,165,250,.25), transparent 60%),
-        radial-gradient(900px 620px at 90% 0%, rgba(52,211,153,.18), transparent 55%),
-        var(--bg);
-      color:var(--text);
-    }
-    .wrap{max-width:1100px;margin:0 auto;padding:28px 18px 70px;}
-    .top{
-      display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
-      padding:18px 18px;
-      border:1px solid var(--border);
-      background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-    }
-    .brand{display:flex;align-items:center;gap:12px;}
-    .logo{
-      width:44px;height:44px;border-radius:14px;
-      background: linear-gradient(135deg, rgba(96,165,250,.95), rgba(52,211,153,.88));
-    }
-    h1{margin:0;font-size:18px;}
-    .sub{margin-top:3px;font-size:12px;color:var(--muted);}
-    .pill{
-      font-size:12px;color:var(--muted);
-      border:1px solid var(--border);
-      padding:7px 10px;border-radius:999px;
-      background: rgba(15,23,42,.55);
-      white-space:nowrap;
-    }
-    .grid{margin-top:16px;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
-    .span8{grid-column: span 8;}
-    .span4{grid-column: span 4;}
-    @media (max-width: 980px){ .span8,.span4{grid-column: 1 / -1;} }
-    .card{
-      border:1px solid var(--border);
-      border-radius: var(--radius);
-      background: var(--panel);
-      box-shadow: var(--shadow);
-      padding:16px;
-    }
-    label{display:block;font-size:12px;color:var(--muted);font-weight:900;margin:10px 0 6px;}
-    input{
-      width:100%;
-      border-radius:14px;
-      border:1px solid var(--border);
-      background: rgba(15,23,42,.60);
-      color: var(--text);
-      padding:12px 12px;
-      outline:none;
-      font-weight:800;
-    }
-    .row{display:flex;gap:12px;flex-wrap:wrap;}
-    .row > div{flex:1; min-width: 240px;}
-    .btn{
-      width:100%;
-      margin-top:14px;
-      padding:12px 14px;
-      border-radius: 14px;
-      border:1px solid var(--border);
-      background: rgba(96,165,250,.16);
-      color: var(--text);
-      font-weight:1000;
-      cursor:pointer;
-    }
-    .muted{color:var(--muted);font-size:12px;line-height:1.55;}
-    .out{
-      margin-top:12px;
-      border:1px solid var(--border);
-      border-radius: var(--radius);
-      background: rgba(15,23,42,.55);
-      padding:14px;
-      display:none;
-    }
-    pre{
-      margin:10px 0 0 0;
-      white-space:pre-wrap;
-      word-break:break-word;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
-      font-size:12px;
-    }
-    .ok{color: var(--accent2); font-weight:1000}
-    .err{color: var(--danger); font-weight:1000}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="top">
-      <div class="brand">
-        <div class="logo"></div>
-        <div>
-          <h1>Constrava</h1>
-          <div class="sub">Tracking + plain-English insights for small business sites</div>
-        </div>
-      </div>
-      <div class="pill">Backend: <b>${base}</b></div>
-    </div>
-
-    <div class="grid">
-      <div class="card span8">
-        <h2 style="margin:0;font-size:16px;font-weight:1000;">Create a site</h2>
-        <div class="muted" style="margin-top:6px;">
-          Choose your own <b>site_id</b> (your “username”). Optionally set your own token, or leave it blank to auto-generate.
-        </div>
-
-        <form id="createForm">
-          <div class="row">
-            <div>
-              <label for="site_id">site_id (username)</label>
-              <input id="site_id" name="site_id" placeholder="example: my-business" required />
-              <div class="muted">Lowercase letters, numbers, hyphens. 4–24 chars.</div>
-            </div>
-            <div>
-              <label for="site_name">site_name</label>
-              <input id="site_name" name="site_name" placeholder="My Business" required />
-            </div>
-          </div>
-
-          <div class="row">
-            <div>
-              <label for="owner_email">owner_email</label>
-              <input id="owner_email" name="owner_email" placeholder="you@domain.com" required />
-            </div>
-            <div>
-              <label for="custom_token">custom token (optional)</label>
-              <input id="custom_token" name="custom_token" placeholder="Leave blank to auto-generate" />
-              <div class="muted">If you set one, it must be strong (20+ chars, mixed types).</div>
-            </div>
-          </div>
-
-          <button class="btn" type="submit">Create site →</button>
-
-          <div id="msg" class="muted" style="margin-top:10px;"></div>
-
-          <div id="out" class="out">
-            <div id="outStatus" class="ok">Created ✅</div>
-            <div class="muted" style="margin-top:6px;">Save these:</div>
-            <pre id="outPre"></pre>
-          </div>
-        </form>
-      </div>
-
-      <div class="card span4">
-        <h2 style="margin:0;font-size:16px;font-weight:1000;">Next steps</h2>
-        <div class="muted" style="margin-top:10px;line-height:1.6;">
-          1) Copy the <b>tracking snippet</b> into your website.<br/>
-          2) Visit the <b>dashboard link</b>.<br/>
-          3) If your plan is <b>unpaid</b>, you’ll be redirected to activate.
-        </div>
-        <div class="muted" style="margin-top:12px;">
-          Demo data: <span class="pill">POST /demo/seed?token=YOUR_TOKEN</span>
-        </div>
-      </div>
-    </div>
-  </div>
 
 <script>
   const base = ${BASE_JS};
