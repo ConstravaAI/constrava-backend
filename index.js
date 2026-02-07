@@ -1089,15 +1089,44 @@ app.post("/generate-report", asyncHandler(async (req, res) => {
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL || "gpt-4o",
       messages: [
-        { role: "system", content: "You are a helpful business analytics assistant. Be plain-English, actionable, and concise." },
-        {
-          role: "user",
-          content:
-            "Here are metrics for the last 7 days (JSON): " +
-            JSON.stringify(metrics) +
-            "\nWrite:\n1) What happened\n2) Trend + what it means\n3) 3 next steps\n4) One metric to watch"
-        }
-      ],
+  {
+    role: "system",
+    content: `
+You are Constrava's analytics assistant.
+Write for a busy small-business owner.
+Make it friendly, non-intimidating, and very scannable.
+No jargon unless you define it in simple words.
+`.trim()
+  },
+  {
+    role: "user",
+    content: `
+Metrics JSON (last 7 days):
+${JSON.stringify(metrics)}
+
+Return EXACTLY this format (headings must match):
+SUMMARY:
+(1–2 sentences)
+
+HIGHLIGHTS:
+- (max 3 bullets, each under 90 characters)
+
+WHAT HAPPENED:
+(2–3 short sentences)
+
+WHY IT MATTERS:
+- (max 3 bullets)
+
+NEXT STEPS:
+1) (step)
+2) (step)
+3) (step)
+
+KPI: <name> — <value> (target: <target>)
+`.trim()
+  }
+]
+
       temperature: 0.4
     })
   });
@@ -1494,6 +1523,59 @@ body{
   background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
   box-shadow: var(--shadow);
 }
+/* ---------- Report UI (cards) ---------- */
+.repWrap{
+  display:grid;
+  grid-template-columns:repeat(12,1fr);
+  gap:10px;
+}
+.repCard{
+  grid-column: span 6;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(15,23,42,.35);
+  border-radius: 16px;
+  padding:12px;
+  min-width:0;
+}
+@media (max-width: 980px){ .repCard{ grid-column: 1 / -1; } }
+
+.repTitle{
+  font-weight:950;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.repBadge{
+  font-size:11px;
+  color: rgba(229,231,235,.75);
+  border:1px solid rgba(255,255,255,.12);
+  padding:4px 8px;
+  border-radius:999px;
+  background: rgba(255,255,255,.04);
+}
+.repText{
+  margin-top:8px;
+  color: rgba(229,231,235,.90);
+  font-size:13px;
+  line-height:1.55;
+}
+.repList{
+  margin:8px 0 0 0;
+  padding-left:18px;
+  color: rgba(229,231,235,.92);
+  line-height:1.6;
+}
+.repList li{ margin:4px 0; }
+.repKpi{
+  margin-top:10px;
+  padding:10px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(96,165,250,.10);
+}
+.repKpi b{ font-size:14px; }
+
 .brand{display:flex;align-items:center;gap:12px}
 .logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg, rgba(96,165,250,.95), rgba(52,211,153,.88));}
 h1{margin:0;font-size:18px;font-weight:950}
@@ -1602,7 +1684,13 @@ pre{
       <div style="font-weight:950">Latest AI Report</div>
       <div class="muted">Your most recent report (or seed sample).</div>
       <div class="divider"></div>
-      <pre id="latestAiReport">Loading…</pre>
+      <div id="latestAiReportCards" class="repWrap">Loading latest report…</div>
+
+<details style="margin-top:10px">
+  <summary class="muted" style="cursor:pointer">Show raw report</summary>
+  <pre id="latestAiReport" class="mono" style="max-height:320px;overflow:auto">Loading…</pre>
+</details>
+
     </div>
 
     <div class="card span3">
@@ -1741,7 +1829,13 @@ pre{
       <div class="grid" style="margin-top:10px;gap:12px">
         <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
           <div class="muted">Latest</div>
-          <pre id="report">Loading…</pre>
+          <div id="reportCards" class="repWrap">Loading…</div>
+
+<details style="margin-top:10px">
+  <summary class="muted" style="cursor:pointer">Show raw report</summary>
+  <pre id="report" class="mono" style="max-height:320px;overflow:auto">Loading…</pre>
+</details>
+
         </div>
         <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
           <div class="muted">History</div>
@@ -1929,20 +2023,113 @@ app.get("/dashboard.js", asyncHandler(async (req, res) => {
       container.appendChild(item);
     }
   }
+// ===== Report Helpers =====
 
-  async function loadLatestReport() {
-    const pre1 = $("latestAiReport");
-    const pre2 = $("report");
-    if (pre1) pre1.textContent = "Loading latest report...";
-    if (pre2) pre2.textContent = "Loading latest report...";
+function splitLines(txt){
+  return String(txt || "")
+    .replace(/\r\n/g,"\n")
+    .split("\n")
+    .map(s => s.trim())
+    .filter(Boolean);
+}
 
-    const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
-    const jj = await rr.json().catch(() => ({}));
+function parseReportSections(text){
+  const lines = splitLines(text);
+  const sections = {
+    summary: "",
+    highlights: [],
+    steps: [],
+    kpi: ""
+  };
 
-    const text = (jj.ok && jj.report && jj.report.report_text) ? jj.report.report_text : "";
-    if (pre1) pre1.textContent = text || "No report yet.";
-    if (pre2) pre2.textContent = text || "No report yet.";
+  let mode = "";
+
+  for (const line0 of lines){
+    const line = line0.replace(/\*\*/g,"");
+
+    if (/^SUMMARY:/i.test(line)) { mode="summary"; continue; }
+    if (/^HIGHLIGHTS:/i.test(line)) { mode="highlights"; continue; }
+    if (/^NEXT STEPS:/i.test(line)) { mode="steps"; continue; }
+    if (/^KPI:/i.test(line)){
+      sections.kpi = line.replace(/^KPI:\s*/i,"").trim();
+      mode="";
+      continue;
+    }
+
+    const cleaned = line
+      .replace(/^[-•]\s*/,"")
+      .replace(/^\d+\)\s*/,"")
+      .trim();
+
+    if (!cleaned) continue;
+
+    if (mode==="summary") sections.summary += (sections.summary?" ":"")+cleaned;
+    if (mode==="highlights") sections.highlights.push(cleaned);
+    if (mode==="steps") sections.steps.push(cleaned);
   }
+
+  return sections;
+}
+
+function renderReportCards(containerEl, text){
+  if (!containerEl) return;
+
+  const s = parseReportSections(text);
+
+  const esc = (v) => String(v||"").replace(/[&<>"']/g,c=>({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+
+  const ul = (items)=>
+    items?.length
+      ? `<ul class="repList">${items.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`
+      : `<div class="muted">—</div>`;
+
+  containerEl.innerHTML = `
+    <div class="repCard">
+      <div class="repTitle">Summary</div>
+      <div class="repText">${esc(s.summary)}</div>
+      ${s.kpi?`<div class="repKpi"><b>${esc(s.kpi)}</b></div>`:""}
+    </div>
+
+    <div class="repCard">
+      <div class="repTitle">Highlights</div>
+      ${ul(s.highlights)}
+    </div>
+
+    <div class="repCard">
+      <div class="repTitle">Next Steps</div>
+      ${ul(s.steps)}
+    </div>
+  `;
+}
+
+ async function loadLatestReport() {
+  const pre1 = $("latestAiReport");
+  const pre2 = $("report");
+  const cards1 = $("latestAiReportCards");
+  const cards2 = $("reportCards");
+
+  if (pre1) pre1.textContent = "Loading latest report...";
+  if (pre2) pre2.textContent = "Loading latest report...";
+
+  const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
+  const jj = await rr.json().catch(()=>({}));
+
+  const text = (jj.ok && jj.report && jj.report.report_text)
+    ? jj.report.report_text
+    : "";
+
+  if (pre1) pre1.textContent = text || "No report yet.";
+  if (pre2) pre2.textContent = text || "No report yet.";
+
+  renderReportCards(cards1, text);
+  renderReportCards(cards2, text);
+}
+
+
+  
+  
 
   async function loadReportsList() {
     const list = $("reportsList");
