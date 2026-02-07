@@ -1081,18 +1081,18 @@ app.post("/generate-report", asyncHandler(async (req, res) => {
   const metrics = metricsRes.rows[0];
 
   const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-  method: "POST",
-  headers: {
-    Authorization: `Bearer ${OPENAI_API_KEY}`,
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify({
-    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-    temperature: 0.4,
-    messages: [
-      {
-        role: "system",
-        content: `
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      temperature: 0.4,
+      messages: [
+        {
+          role: "system",
+          content: `
 You are Constrava's analytics assistant.
 
 Write for a busy small-business owner.
@@ -1100,10 +1100,10 @@ Make it friendly, simple, and easy to scan.
 Avoid jargon unless explained simply.
 Keep things encouraging, not technical.
 `.trim()
-      },
-      {
-        role: "user",
-        content: `
+        },
+        {
+          role: "user",
+          content: `
 Metrics JSON (last 7 days):
 ${JSON.stringify(metrics)}
 
@@ -1128,19 +1128,22 @@ NEXT STEPS:
 
 KPI: <name> — <value> (target: <target>)
 `.trim()
-      }
-    ]
-  })
-});
-
-
-      temperature: 0.4
+        }
+      ]
     })
   });
 
-  const aiData = await aiRes.json();
+  const aiData = await aiRes.json().catch(() => ({}));
   const reportText = aiData?.choices?.[0]?.message?.content;
-  if (!reportText) return res.status(500).json({ ok: false, error: "AI response missing" });
+
+  if (!reportText) {
+    return res.status(500).json({
+      ok: false,
+      error: "AI response missing",
+      ai_preview: JSON.stringify(aiData).slice(0, 800)
+    });
+  }
+
 
   const saved = await pool.query(
     `INSERT INTO daily_reports (site_id, report_date, report_text)
