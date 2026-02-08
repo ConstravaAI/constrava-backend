@@ -1534,11 +1534,6 @@ body{
   box-shadow: var(--shadow);
 }
 /* ---------- Report UI (cards) ---------- */
-.repWrap{
-  display:grid;
-  grid-template-columns:repeat(12,1fr);
-  gap:10px;
-}
 .repCard{
   grid-column: span 6;
   border:1px solid rgba(255,255,255,.12);
@@ -1839,7 +1834,6 @@ pre{
       <div class="grid" style="margin-top:10px;gap:12px">
         <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
           <div class="muted">Latest</div>
-          <div id="latestAiReportCards" class="repWrap">...</div>
           <div id="reportCards" class="repWrap">Loading…</div>
           .repWrap{
   display:grid;
@@ -1868,10 +1862,10 @@ pre{
 
 <!-- Load the real client script -->
 <script>
-const TOKEN = String(window.CONSTRAVA_TOKEN || "");
-)};
+  window.CONSTRAVA_TOKEN = ${JSON.stringify(String(token || ""))};
 </script>
 <script src="/dashboard.js"></script>
+
 
 </body>
 </html>`);
