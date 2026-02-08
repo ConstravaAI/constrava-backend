@@ -2108,7 +2108,7 @@ app.get("/dashboard.js", (req, res) => {
     containerEl.innerHTML =
       '<div class="repCard"><div class="repTitle">Summary</div><div class="repText">' + escHtml(s.summary) + '</div>' + kpiHtml + '</div>' +
       '<div class="repCard"><div class="repTitle">Highlights</div>' + ul(s.highlights, 3) + '</div>' +
-      '<div class="repCard"><div class="repTitle">Next Steps</div>' + ul(s.steps, 3) + '</div>';
+      '<div class="repCard repFull"><div class="repTitle">Next Steps</div>' + ul(s.steps, 3) + '</div>';
   }
 
   async function loadLatestReport() {
@@ -2302,6 +2302,7 @@ app.get("/dashboard.js", (req, res) => {
     refresh();
   });
 })();`.trim());
+  });
 
 
 /* ---------------------------
