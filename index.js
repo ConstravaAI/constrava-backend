@@ -1867,7 +1867,12 @@ pre{
 </div>
 
 <!-- Load the real client script -->
-<script src="/dashboard.js?token=${encodeURIComponent(String(token))}"></script>
+<script>
+const TOKEN = String(window.CONSTRAVA_TOKEN || "");
+)};
+</script>
+<script src="/dashboard.js"></script>
+
 </body>
 </html>`);
 }));
