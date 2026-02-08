@@ -1840,6 +1840,15 @@ pre{
         <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
           <div class="muted">Latest</div>
           <div id="reportCards" class="repWrap">Loading…</div>
+          .repWrap{
+  display:grid;
+  grid-template-columns:repeat(12,1fr);
+  gap:12px;
+}
+
+.repCard{ grid-column: span 6; }
+.repCard:nth-child(3){ grid-column: 1 / -1; } /* Next Steps full width */
+
 
 <details style="margin-top:10px">
   <summary class="muted" style="cursor:pointer">Show raw report</summary>
@@ -2084,12 +2093,19 @@ app.get("/dashboard.js", asyncHandler(async (req, res) => {
       "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
     }[c]));
 
-    const ul = (items) => {
-      if (!items || !items.length) return '<div class="muted">—</div>';
-      return '<ul class="repList">' +
-        items.map(x => '<li>' + escLocal(x) + '</li>').join('') +
-      '</ul>';
-    };
+    const ul = (items, cap=3) => {
+  const list = (items || []);
+  const shown = list.slice(0, cap);
+  const hidden = list.slice(cap);
+
+  return shown.length
+    ? 
+      <ul class="repList">${shown.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+      ${hidden.length ? `<div class="muted" style="margin-top:6px">+${hidden.length} more (see raw report)</div>` : ""}
+    `
+    : `<div class="muted">—</div>`;
+};
+
 
     containerEl.innerHTML =
       '<div class="repCard">' +
@@ -2108,6 +2124,18 @@ app.get("/dashboard.js", asyncHandler(async (req, res) => {
         ul(s.steps) +
       '</div>';
   }
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-copy]");
+  if (!btn) return;
+
+  const key = btn.getAttribute("data-copy");
+  const txt = key==="summary" ? s.summary
+            : key==="highlights" ? (s.highlights||[]).join("\n- ")
+            : (s.steps||[]).join("\n1) ");
+
+  try { await navigator.clipboard.writeText(txt); }
+  catch {}
+});
 
 
 
