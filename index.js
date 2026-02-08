@@ -515,6 +515,7 @@ app.get("/tracker.js", (req, res) => {
 })();`.trim());
 });
 
+
 /* ---------------------------
    Receive events
    POST /events
@@ -2297,7 +2298,6 @@ app.get("/dashboard.js", (req, res) => {
     refresh();
   });
 })();`.trim());
-});
 
 
 /* ---------------------------
