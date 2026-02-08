@@ -1839,6 +1839,7 @@ pre{
       <div class="grid" style="margin-top:10px;gap:12px">
         <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
           <div class="muted">Latest</div>
+          <div id="latestAiReportCards" class="repWrap">...</div>
           <div id="reportCards" class="repWrap">Loading…</div>
           .repWrap{
   display:grid;
