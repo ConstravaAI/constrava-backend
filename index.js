@@ -1543,6 +1543,17 @@ body{
   padding:12px;
   min-width:0;
 }
+
+.repWrap{
+  display:grid;
+  grid-template-columns:repeat(12,1fr);
+  gap:12px;
+}
+
+.repCard:nth-child(3){
+  grid-column: 1 / -1;
+}
+
 @media (max-width: 980px){ .repCard{ grid-column: 1 / -1; } }
 
 .repTitle{
@@ -1836,14 +1847,7 @@ pre{
         <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
           <div class="muted">Latest</div>
           <div id="reportCards" class="repWrap">Loading…</div>
-          .repWrap{
-  display:grid;
-  grid-template-columns:repeat(12,1fr);
-  gap:12px;
-}
-
-.repCard{ grid-column: span 6; }
-.repCard:nth-child(3){ grid-column: 1 / -1; } /* Next Steps full width */
+    
 
 
 <details style="margin-top:10px">
