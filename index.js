@@ -1881,16 +1881,12 @@ const TOKEN = String(window.CONSTRAVA_TOKEN || "");
    Dashboard client JS
    GET /dashboard.js?token=...
 ----------------------------*/
-app.get("/dashboard.js", asyncHandler(async (req, res) => {
+app.get("/dashboard.js", (req, res) => {
   setNoStore(res);
-
-  const token = String(req.query.token || "");
-  const site = await getSiteByToken(token);
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+  res.send(`/* your JS here */`);
+});
 
-  if (!site) {
-    return res.send(`console.error("Unauthorized dashboard.js (missing/invalid token)");`);
-  }
 
   // Important: embed values safely
   res.send(String.raw`
