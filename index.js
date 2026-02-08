@@ -2085,27 +2085,53 @@ app.get("/dashboard.js", asyncHandler(async (req, res) => {
     return sections;
   }
 
-  function renderReportCards(containerEl, text){
-    if (!containerEl) return;
+function renderReportCards(containerEl, text){
+  if (!containerEl) return;
 
-    const s = parseReportSections(text);
+  const s = parseReportSections(text);
 
-    const escLocal = (v) => String(v||"").replace(/[&<>"']/g, c => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-    }[c]));
+  const escHtml = (v) => String(v || "").replace(/[&<>"']/g, (c) => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
 
-    const ul = (items, cap=3) => {
-  const list = (items || []);
-  const shown = list.slice(0, cap);
-  const hidden = list.slice(cap);
+  function ul(items, cap){
+    cap = cap || 3;
+    const list = Array.isArray(items) ? items : [];
+    const shown = list.slice(0, cap);
+    const hiddenCount = Math.max(0, list.length - shown.length);
 
-  return shown.length
-    ? 
-      <ul class="repList">${shown.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
-      ${hidden.length ? `<div class="muted" style="margin-top:6px">+${hidden.length} more (see raw report)</div>` : ""}
-    `
-    : `<div class="muted">—</div>`;
-};
+    if (!shown.length) return '<div class="muted">—</div>';
+
+    const lis = shown.map((x) => '<li>' + escHtml(x) + '</li>').join("");
+    const more = hiddenCount
+      ? '<div class="muted" style="margin-top:6px">+' + hiddenCount + ' more (see raw report)</div>'
+      : "";
+
+    return '<ul class="repList">' + lis + '</ul>' + more;
+  }
+
+  const kpiHtml = s.kpi
+    ? '<div class="repKpi"><b>' + escHtml(s.kpi) + '</b></div>'
+    : "";
+
+  containerEl.innerHTML =
+    '<div class="repCard">' +
+      '<div class="repTitle">Summary</div>' +
+      '<div class="repText">' + escHtml(s.summary) + '</div>' +
+      kpiHtml +
+    '</div>' +
+
+    '<div class="repCard">' +
+      '<div class="repTitle">Highlights</div>' +
+      ul(s.highlights, 3) +
+    '</div>' +
+
+    '<div class="repCard">' +
+      '<div class="repTitle">Next Steps</div>' +
+      ul(s.steps, 3) +
+    '</div>';
+}
+
 
 
     containerEl.innerHTML =
