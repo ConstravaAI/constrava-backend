@@ -482,7 +482,7 @@ app.post("/sites", asyncHandler(async (req, res) => {
     install_snippet: `<script src="${base}/tracker.js" data-site-id="${site_id}"></script>`,
     client_dashboard_url: `${base}/dashboard?token=${encodeURIComponent(token)}`
   });
-}));
+}
 
 /* ---------------------------
    Tracker script
