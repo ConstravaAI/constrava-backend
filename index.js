@@ -1884,16 +1884,16 @@ const TOKEN = String(window.CONSTRAVA_TOKEN || "");
 app.get("/dashboard.js", (req, res) => {
   setNoStore(res);
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-  res.send(`/* your JS here */`);
-});
 
-
-  // Important: embed values safely
   res.send(String.raw`
 (() => {
   "use strict";
 
-  const TOKEN = ${JSON.stringify(token)};
+  const TOKEN =
+    String(window.CONSTRAVA_TOKEN || "") ||
+    new URLSearchParams(location.search).get("token") ||
+    "";
+
   const $ = (id) => document.getElementById(id);
 
   function setStatus(t){
@@ -2025,7 +2025,9 @@ app.get("/dashboard.js", (req, res) => {
       left.style.overflow = "hidden";
       left.style.textOverflow = "ellipsis";
       left.style.whiteSpace = "nowrap";
-      left.innerHTML = "<b>" + esc(r.page_type || "/") + "</b><div class='muted'>" + (r.views || 0) + " views • " + (r.share || 0) + "%</div>";
+      left.innerHTML =
+        "<b>" + esc(r.page_type || "/") + "</b>" +
+        "<div class='muted'>" + (r.views || 0) + " views • " + (r.share || 0) + "%</div>";
 
       const barWrap = document.createElement("div");
       barWrap.className = "barWrap";
@@ -2044,14 +2046,10 @@ app.get("/dashboard.js", (req, res) => {
       container.appendChild(item);
     }
   }
-  // ===== Report Helpers =====
 
+  // ===== Reports =====
   function splitLines(txt){
-    return String(txt || "")
-      .replace(/\r\n/g,"\n")
-      .split("\n")
-      .map(s => s.trim())
-      .filter(Boolean);
+    return String(txt || "").replace(/\r\n/g,"\n").split("\n").map(s => s.trim()).filter(Boolean);
   }
 
   function parseReportSections(text){
@@ -2071,11 +2069,7 @@ app.get("/dashboard.js", (req, res) => {
         continue;
       }
 
-      const cleaned = line
-        .replace(/^[-•]\s*/,"")
-        .replace(/^\d+\)\s*/,"")
-        .trim();
-
+      const cleaned = line.replace(/^[-•]\s*/,"").replace(/^\d+\)\s*/,"").trim();
       if (!cleaned) continue;
 
       if (mode==="summary") sections.summary += (sections.summary?" ":"") + cleaned;
@@ -2086,113 +2080,50 @@ app.get("/dashboard.js", (req, res) => {
     return sections;
   }
 
-function renderReportCards(containerEl, text){
-  if (!containerEl) return;
+  function renderReportCards(containerEl, text){
+    if (!containerEl) return;
 
-  const s = parseReportSections(text);
+    const s = parseReportSections(text);
+    const escHtml = (v) => String(v || "").replace(/[&<>"']/g, (c) => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
 
-  const escHtml = (v) => String(v || "").replace(/[&<>"']/g, (c) => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-  }[c]));
+    function ul(items, cap){
+      cap = cap || 3;
+      const list = Array.isArray(items) ? items : [];
+      const shown = list.slice(0, cap);
+      const hiddenCount = Math.max(0, list.length - shown.length);
 
-  function ul(items, cap){
-    cap = cap || 3;
-    const list = Array.isArray(items) ? items : [];
-    const shown = list.slice(0, cap);
-    const hiddenCount = Math.max(0, list.length - shown.length);
+      if (!shown.length) return '<div class="muted">—</div>';
 
-    if (!shown.length) return '<div class="muted">—</div>';
+      const lis = shown.map((x) => '<li>' + escHtml(x) + '</li>').join("");
+      const more = hiddenCount
+        ? '<div class="muted" style="margin-top:6px">+' + hiddenCount + ' more (see raw report)</div>'
+        : "";
 
-    const lis = shown.map((x) => '<li>' + escHtml(x) + '</li>').join("");
-    const more = hiddenCount
-      ? '<div class="muted" style="margin-top:6px">+' + hiddenCount + ' more (see raw report)</div>'
-      : "";
+      return '<ul class="repList">' + lis + '</ul>' + more;
+    }
 
-    return '<ul class="repList">' + lis + '</ul>' + more;
-  }
-
-  const kpiHtml = s.kpi
-    ? '<div class="repKpi"><b>' + escHtml(s.kpi) + '</b></div>'
-    : "";
-
-  containerEl.innerHTML =
-    '<div class="repCard">' +
-      '<div class="repTitle">Summary</div>' +
-      '<div class="repText">' + escHtml(s.summary) + '</div>' +
-      kpiHtml +
-    '</div>' +
-
-    '<div class="repCard">' +
-      '<div class="repTitle">Highlights</div>' +
-      ul(s.highlights, 3) +
-    '</div>' +
-
-    '<div class="repCard">' +
-      '<div class="repTitle">Next Steps</div>' +
-      ul(s.steps, 3) +
-    '</div>';
-}
-
-
+    const kpiHtml = s.kpi ? '<div class="repKpi"><b>' + escHtml(s.kpi) + '</b></div>' : "";
 
     containerEl.innerHTML =
-      '<div class="repCard">' +
-        '<div class="repTitle">Summary</div>' +
-        '<div class="repText">' + escLocal(s.summary) + '</div>' +
-        (s.kpi ? '<div class="repKpi"><b>' + escLocal(s.kpi) + '</b></div>' : '') +
-      '</div>' +
-
-      '<div class="repCard">' +
-        '<div class="repTitle">Highlights</div>' +
-        ul(s.highlights) +
-      '</div>' +
-
-      '<div class="repCard">' +
-        '<div class="repTitle">Next Steps</div>' +
-        ul(s.steps) +
-      '</div>';
+      '<div class="repCard"><div class="repTitle">Summary</div><div class="repText">' + escHtml(s.summary) + '</div>' + kpiHtml + '</div>' +
+      '<div class="repCard"><div class="repTitle">Highlights</div>' + ul(s.highlights, 3) + '</div>' +
+      '<div class="repCard"><div class="repTitle">Next Steps</div>' + ul(s.steps, 3) + '</div>';
   }
-document.addEventListener("click", async (e) => {
-  const btn = e.target.closest("button[data-copy]");
-  if (!btn) return;
 
-  const key = btn.getAttribute("data-copy");
-  const txt = key==="summary" ? s.summary
-            : key==="highlights" ? (s.highlights||[]).join("\n- ")
-            : (s.steps||[]).join("\n1) ");
+  async function loadLatestReport() {
+    const pre1 = $("latestAiReport");
+    const cards1 = $("latestAiReportCards");
+    if (pre1) pre1.textContent = "Loading latest report...";
 
-  try { await navigator.clipboard.writeText(txt); }
-  catch {}
-});
+    const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
+    const jj = await rr.json().catch(()=>({}));
 
-
-
- async function loadLatestReport() {
-  const pre1 = $("latestAiReport");
-  const pre2 = $("report");
-  const cards1 = $("latestAiReportCards");
-  const cards2 = $("reportCards");
-
-  if (pre1) pre1.textContent = "Loading latest report...";
-  if (pre2) pre2.textContent = "Loading latest report...";
-
-  const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
-  const jj = await rr.json().catch(()=>({}));
-
-  const text = (jj.ok && jj.report && jj.report.report_text)
-    ? jj.report.report_text
-    : "";
-
-  if (pre1) pre1.textContent = text || "No report yet.";
-  if (pre2) pre2.textContent = text || "No report yet.";
-
-  renderReportCards(cards1, text);
-  renderReportCards(cards2, text);
-}
-
-
-  
-  
+    const text = (jj.ok && jj.report && jj.report.report_text) ? jj.report.report_text : "";
+    if (pre1) pre1.textContent = text || "No report yet.";
+    renderReportCards(cards1, text);
+  }
 
   async function loadReportsList() {
     const list = $("reportsList");
@@ -2233,9 +2164,7 @@ document.addEventListener("click", async (e) => {
       if (!j.ok) { setStatus(j.error || "error"); return; }
 
       if ($("kpiToday")) $("kpiToday").textContent = j.visits_today;
-      if ($("kpiTodaySub")) $("kpiTodaySub").textContent = j.last_event ? ("Last event: " + (j.last_event.event_name || "—")) : "";
       if ($("kpiRange")) $("kpiRange").textContent = j.visits_range;
-      if ($("kpiRangeSub")) $("kpiRangeSub").textContent = "Window: " + j.days + " day(s)";
       if ($("kpiLeadRate")) $("kpiLeadRate").textContent = pct(j.conversion_rate || 0);
       if ($("kpiPurchaseRate")) $("kpiPurchaseRate").textContent = pct(j.purchase_rate || 0);
 
@@ -2323,7 +2252,7 @@ document.addEventListener("click", async (e) => {
       if ($("liveLast")) $("liveLast").textContent = j.last_event ? (j.last_event.event_name || "—") : "—";
       if ($("liveJson")) $("liveJson").textContent = JSON.stringify(j, null, 2);
       liveSince = j.now || new Date().toISOString();
-    } catch (e) {}
+    } catch {}
   }
 
   function startLive() {
@@ -2360,7 +2289,6 @@ document.addEventListener("click", async (e) => {
     if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
 
     if ($("loadReports")) $("loadReports").addEventListener("click", loadReportsList);
-
     if ($("aiReportTopBtn")) $("aiReportTopBtn").addEventListener("click", aiReport);
 
     if ($("liveToggle")) $("liveToggle").addEventListener("click", () => {
@@ -2375,7 +2303,8 @@ document.addEventListener("click", async (e) => {
     refresh();
   });
 })();`.trim());
-}));
+});
+
 
 /* ---------------------------
    “Daily job” utilities
