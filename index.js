@@ -1441,22 +1441,9 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
     </div>
   </div>
 
-  <div class="grid">
-    <div class="card">
-      <h3 class="name">Starter</h3>
-      <div class="price">$0 <span class="muted">/mo</span></div>
-      <div class="muted">Basic dashboard + live counters.</div>
-      <ul>
-        <li>Traffic + top pages</li>
-        <li>Live polling</li>
-        <li>Sim buttons</li>
-      </ul>
-      <button class="btn" onclick="activate('starter')">Activate Starter</button>
-    </div>
-
     <div class="card">
       <h3 class="name">Pro</h3>
-      <div class="price">$29 <span class="muted">/mo</span></div>
+      <div class="price">$19 <span class="muted">/mo</span></div>
       <div class="muted">Reports + email.</div>
       <ul>
         <li>Daily reports (non‑AI)</li>
@@ -1467,7 +1454,7 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
 
     <div class="card" style="grid-column: 1 / -1">
       <h3 class="name">Full AI</h3>
-      <div class="price">$99 <span class="muted">/mo</span></div>
+      <div class="price">$69 <span class="muted">/mo</span></div>
       <div class="muted">AI summaries + action plans + on‑dashboard AI chat.</div>
       <ul>
         <li>AI report generator</li>
