@@ -2348,11 +2348,14 @@ function addMsg(role, text){
   // escape HTML, then turn newlines into <br>
   const safe = esc(text).replace(/\n/g, "<br>");
 
-  div.innerHTML = `<b>${label}:</b> <span style="white-space:normal">${safe}</span>`;
+  div.innerHTML =
+    "<b>" + label + ":</b> " +
+    "<span style=\"white-space:normal\">" + safe + "</span>";
 
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
 }
+
 
 async function sendChat(){
   const input = $("chatInput");
