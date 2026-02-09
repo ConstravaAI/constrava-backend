@@ -1542,6 +1542,228 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
     }
   }
 
+
+  // ---------------------------
+  // CRM demo seed (clients + activities)
+  // ---------------------------
+  // This makes the CRM tab feel "alive" for demos.
+  try {
+    const bizEmail = (site.owner_email || "owner@example.com").toLowerCase();
+
+    const demoClients = [
+      {
+        name: "Acme Plumbing",
+        primary_email: "info@acmeplumbing.com",
+        stage: "lead",
+        health: "warm",
+        phone: "+1 (555) 201-1001",
+        domain: "acmeplumbing.com"
+      },
+      {
+        name: "Brightside Dental",
+        primary_email: "hello@brightsidedental.com",
+        stage: "proposal",
+        health: "warm",
+        phone: "+1 (555) 201-1002",
+        domain: "brightsidedental.com"
+      },
+      {
+        name: "Northstar Fitness",
+        primary_email: "manager@northstarfitness.com",
+        stage: "active",
+        health: "good",
+        phone: "+1 (555) 201-1003",
+        domain: "northstarfitness.com"
+      },
+      {
+        name: "Summit Realty Group",
+        primary_email: "team@summitrealtygroup.com",
+        stage: "at_risk",
+        health: "at_risk",
+        phone: "+1 (555) 201-1004",
+        domain: "summitrealtygroup.com"
+      }
+    ];
+
+    const clientIdsByEmail = {};
+
+    for (const c of demoClients) {
+      const r = await pool.query(
+        `
+        INSERT INTO crm_clients (site_id, name, primary_email, stage, health, notes)
+        VALUES ($1,$2,$3,$4,$5,$6)
+        ON CONFLICT (site_id, primary_email)
+        DO UPDATE SET
+          name = EXCLUDED.name,
+          stage = EXCLUDED.stage,
+          health = EXCLUDED.health,
+          notes = EXCLUDED.notes
+        RETURNING id
+        `,
+        [
+          site_id,
+          c.name,
+          safeEmail(c.primary_email),
+          c.stage,
+          c.health,
+          "Demo client seeded. Activity matching uses email/phone/domain identities (with confidence scoring)."
+        ]
+      );
+
+      const client_id = r.rows[0].id;
+      clientIdsByEmail[safeEmail(c.primary_email)] = client_id;
+
+      // identities for matching
+      await pool.query(
+        `INSERT INTO crm_identities (site_id, client_id, type, value)
+         VALUES ($1,$2,'email',$3)
+         ON CONFLICT (site_id, type, value) DO NOTHING`,
+        [site_id, client_id, safeEmail(c.primary_email)]
+      );
+
+      if (c.domain) {
+        await pool.query(
+          `INSERT INTO crm_identities (site_id, client_id, type, value)
+           VALUES ($1,$2,'domain',$3)
+           ON CONFLICT (site_id, type, value) DO NOTHING`,
+          [site_id, client_id, String(c.domain).toLowerCase()]
+        );
+      }
+
+      if (c.phone) {
+        await pool.query(
+          `INSERT INTO crm_identities (site_id, client_id, type, value)
+           VALUES ($1,$2,'phone',$3)
+           ON CONFLICT (site_id, type, value) DO NOTHING`,
+          [site_id, client_id, String(c.phone)]
+        );
+      }
+    }
+
+    // Create a handful of activities across channels.
+    // We bias activity timestamps to the seeded window for a "story".
+    const baseNow = new Date();
+    function daysAgo(n) {
+      return new Date(baseNow.getTime() - n * 24 * 60 * 60 * 1000);
+    }
+
+    // inbound lead email (matches by from email/domain)
+    await createActivityWithMatch({
+      site_id,
+      channel: "email",
+      direction: "inbound",
+      subject: "Quote request — emergency service",
+      body:
+        "Hi! We found you on Google. Can you quote a same-day repair? " +
+        "Also curious about your pricing and scheduling.",
+      from_addr: "info@acmeplumbing.com",
+      to_addr: bizEmail,
+      occurred_at: daysAgo(5).toISOString()
+    });
+
+    // outbound follow-up email (still matches)
+    await createActivityWithMatch({
+      site_id,
+      channel: "email",
+      direction: "outbound",
+      subject: "Re: Quote request — next steps",
+      body:
+        "Thanks for reaching out! Here are 2 options and the earliest availability. " +
+        "If you can confirm an address + time window, we can lock it in.",
+      from_addr: bizEmail,
+      to_addr: "info@acmeplumbing.com",
+      occurred_at: daysAgo(4).toISOString()
+    });
+
+    // discovery call (matches by phone)
+    await createActivityWithMatch({
+      site_id,
+      channel: "call",
+      direction: "inbound",
+      subject: "Discovery call — services & budget",
+      body:
+        "15-min call: they want a monthly plan and asked about response times. " +
+        "They mentioned they get ~2-3 leads/day.",
+      phone: "+1 (555) 201-1002",
+      occurred_at: daysAgo(3).toISOString()
+    });
+
+    // proposal email (matches by domain)
+    await createActivityWithMatch({
+      site_id,
+      channel: "email",
+      direction: "outbound",
+      subject: "Proposal attached — launch checklist",
+      body:
+        "Attached proposal. Key goals: increase qualified leads, reduce form drop-off, " +
+        "and measure CTA performance. Happy to walk through it.",
+      from_addr: bizEmail,
+      to_addr: "hello@brightsidedental.com",
+      occurred_at: daysAgo(3).toISOString()
+    });
+
+    // active client check-in (matches by email)
+    await createActivityWithMatch({
+      site_id,
+      channel: "email",
+      direction: "inbound",
+      subject: "Monthly update — new class schedule",
+      body:
+        "We added new classes and updated the homepage hero. Can you verify the tracking " +
+        "still looks right and send the updated report?",
+      from_addr: "manager@northstarfitness.com",
+      to_addr: bizEmail,
+      occurred_at: daysAgo(2).toISOString()
+    });
+
+    // at-risk signal (matches by domain)
+    await createActivityWithMatch({
+      site_id,
+      channel: "email",
+      direction: "inbound",
+      subject: "Concern: leads dropped this week",
+      body:
+        "We noticed fewer inquiries. Anything change? Can you check where people are dropping off " +
+        "and what we should fix first?",
+      from_addr: "team@summitrealtygroup.com",
+      to_addr: bizEmail,
+      occurred_at: daysAgo(1).toISOString()
+    });
+
+    // unmatched email (shows 'unmatched' bucket in CRM)
+    await createActivityWithMatch({
+      site_id,
+      channel: "email",
+      direction: "inbound",
+      subject: "Random inquiry (unmatched example)",
+      body:
+        "Hi, do you work with ecommerce? Just exploring options. " +
+        "Not sure if this is the right contact.",
+      from_addr: "someone@unknown-example.com",
+      to_addr: bizEmail,
+      occurred_at: daysAgo(1).toISOString()
+    });
+
+    // Update last_touch_at from latest matched activity per client
+    await pool.query(
+      `
+      UPDATE crm_clients c
+      SET last_touch_at = x.last_touch
+      FROM (
+        SELECT m.client_id, MAX(a.occurred_at) AS last_touch
+        FROM crm_activity_matches m
+        JOIN crm_activities a ON a.id = m.activity_id
+        WHERE a.site_id = $1
+        GROUP BY m.client_id
+      ) x
+      WHERE c.id = x.client_id
+      `,
+      [site_id]
+    );
+  } catch (e) {
+    console.warn("CRM demo seed skipped:", e?.message || e);
+  }
+
   const sample1 =
     "Summary:\nTraffic is concentrating on Pricing and Services.\n\n" +
     "Trend:\nVisitors are exploring multiple pages.\n\n" +
