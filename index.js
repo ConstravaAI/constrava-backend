@@ -2300,10 +2300,11 @@ function addMsg(role, text){
   const div = document.createElement("div");
   div.style.marginBottom = "8px";
 
-  div.innerHTML =
-    role === "user"
-      ? `<b>You:</b> ${esc(text)}`
-      : `<b>AI:</b> ${esc(text)}`;
+div.innerHTML =
+  (role === "user"
+    ? "<b>You:</b> "
+    : "<b>AI:</b> ") + esc(text);
+
 
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
