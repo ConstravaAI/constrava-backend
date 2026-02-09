@@ -1419,6 +1419,32 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
 
   <div class="grid">
 <div class="grid">
+  <!-- AI Chat (top, below toolbar) -->
+  <div class="card span12" id="chatCard">
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:950">Live AI Helper</div>
+        <div class="muted">Ask questions about your traffic, pages, conversions, and next steps.</div>
+      </div>
+      <span class="pill">Chat</span>
+    </div>
+
+    <div class="divider"></div>
+
+    <div id="chatBox" style="height:220px;overflow:auto;padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background: rgba(15,23,42,.35);">
+      <div class="muted">Start by asking: “What should I improve first?”</div>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <input id="chatInput" placeholder="Type a message…" style="flex:1;min-width:220px" />
+      <button class="btnGreen" id="chatSend">Send</button>
+      <button class="btnGhost" id="chatClear">Clear</button>
+    </div>
+
+    <div class="muted" style="margin-top:8px">
+      Note: Requires the <b>Full AI</b> plan (or your endpoint will return 403).
+    </div>
+  </div>
 
 <!-- AI CHAT CARD -->
 <div class="card span12">
@@ -2316,18 +2342,35 @@ async function sendChat(){
 
   const msg = input.value.trim();
   if(!msg) return;
-
   input.value = "";
-  addMsg("user", msg);
 
-  const r = await fetch("/api/ai/chat?token=" + encodeURIComponent(TOKEN), {
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({
-      message: msg,
-      history: chatHistory
-    })
-  });
+  addMsg("user", msg);
+  addMsg("ai", "Thinking...");
+
+  try{
+    const r = await fetch("/api/ai/chat", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ token: TOKEN, message: msg, history: [] })
+    });
+    const j = await r.json().catch(()=>({}));
+
+    // remove the "Thinking..." line (last message)
+    const box = $("chatBox");
+    if (box && box.lastElementChild) box.removeChild(box.lastElementChild);
+
+    if(!j.ok){
+      addMsg("ai", j.error || "Chat failed.");
+      return;
+    }
+    addMsg("ai", j.reply || "(no reply)");
+  }catch(e){
+    const box = $("chatBox");
+    if (box && box.lastElementChild) box.removeChild(box.lastElementChild);
+    addMsg("ai", "Error: " + (e?.message || "unknown"));
+  }
+}
+
 
   const j = await r.json().catch(()=>({}));
 
@@ -2348,6 +2391,15 @@ async function sendChat(){
 
     if ($("refresh")) $("refresh").addEventListener("click", refresh);
     if ($("days")) $("days").addEventListener("change", refresh);
+    if ($("chatSend")) $("chatSend").addEventListener("click", sendChat);
+if ($("chatClear")) $("chatClear").addEventListener("click", () => { $("chatBox").innerHTML = ""; });
+
+if ($("chatInput")) {
+  $("chatInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendChat();
+  });
+}
+
 
     if ($("simView")) $("simView").addEventListener("click", () => fire("page_view"));
     if ($("simLead")) $("simLead").addEventListener("click", () => fire("lead"));
