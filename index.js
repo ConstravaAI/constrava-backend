@@ -293,6 +293,20 @@ async function ensureTables() {
     );
   `);
 
+await pool.query(`
+    CREATE TABLE IF NOT EXISTS crm_leads (
+      id BIGSERIAL PRIMARY KEY,
+      site_id TEXT NOT NULL REFERENCES sites(site_id) ON DELETE CASCADE,
+      email TEXT,
+      name TEXT,
+      phone TEXT,
+      source_page TEXT,
+      status TEXT NOT NULL DEFAULT 'new',
+      notes TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS daily_reports (
       id BIGSERIAL PRIMARY KEY,
@@ -521,7 +535,7 @@ app.get("/tracker.js", (req, res) => {
    POST /events
 ----------------------------*/
 app.post("/events", asyncHandler(async (req, res) => {
-  const { site_id, event_name, page_type, device } = req.body || {};
+  const { site_id, event_name, page_type, device, lead_email, lead_name, lead_phone, lead_notes } = req.body || {};
   if (!site_id || !event_name) return res.status(400).json({ ok: false, error: "site_id and event_name required" });
 
   const site = await pool.query("SELECT 1 FROM sites WHERE site_id=$1", [site_id]);
@@ -533,15 +547,28 @@ app.post("/events", asyncHandler(async (req, res) => {
     [site_id, String(event_name), page_type || null, device || null]
   );
 
+  // CRM: if this is a lead event, also store a row in crm_leads (email optional)
+  if (String(event_name) === "lead") {
+    const email = (lead_email ? safeEmail(lead_email) : null) || null;
+    const name = lead_name ? String(lead_name).trim().slice(0, 140) : null;
+    const phone = lead_phone ? String(lead_phone).trim().slice(0, 60) : null;
+    const notes = lead_notes ? String(lead_notes).trim().slice(0, 1000) : null;
+
+    await pool.query(
+      `INSERT INTO crm_leads (site_id, email, name, phone, source_page, status, notes)
+       VALUES ($1,$2,$3,$4,$5,'new',$6)`,
+      [site_id, email, name, phone, page_type || null, notes]
+    );
+  }
+
   res.json({ ok: true });
 }));
-
 /* ---------------------------
    DEMO: fire events
    POST /demo/fire-event { token, event_name, page_type?, device? }
 ----------------------------*/
 app.post("/demo/fire-event", asyncHandler(async (req, res) => {
-  const { token, event_name, page_type, device } = req.body || {};
+  const { token, event_name, page_type, device, lead_email, lead_name, lead_phone, lead_notes } = req.body || {};
   if (!token) return res.status(400).json({ ok: false, error: "token required" });
   if (!event_name) return res.status(400).json({ ok: false, error: "event_name required" });
 
@@ -558,6 +585,20 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
      VALUES ($1,$2,$3,$4)`,
     [site.site_id, event_name, page_type || "/", device || "desktop"]
   );
+
+  // CRM: store lead details when event is "lead"
+  if (event_name === "lead") {
+    const email = (lead_email ? safeEmail(lead_email) : null) || null;
+    const name = lead_name ? String(lead_name).trim().slice(0, 140) : null;
+    const phone = lead_phone ? String(lead_phone).trim().slice(0, 60) : null;
+    const notes = lead_notes ? String(lead_notes).trim().slice(0, 1000) : null;
+
+    await pool.query(
+      `INSERT INTO crm_leads (site_id, email, name, phone, source_page, status, notes)
+       VALUES ($1,$2,$3,$4,$5,'new',$6)`,
+      [site.site_id, email, name, phone, page_type || "/", notes]
+    );
+  }
 
   res.json({ ok: true });
 }));
@@ -774,6 +815,58 @@ app.get("/metrics", asyncHandler(async (req, res) => {
     top_pages_range
   });
 }));
+
+
+/* ---------------------------
+   CRM (Leads)
+   GET /crm?token=...&limit=100
+   POST /crm/update { token, lead_id, status?, notes? }
+----------------------------*/
+app.get("/crm", asyncHandler(async (req, res) => {
+  setNoStore(res);
+
+  const token = req.query.token;
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+  const limit = Math.min(parseInt(req.query.limit || "100", 10), 300);
+
+  const r = await pool.query(
+    `SELECT id, email, name, phone, source_page, status, notes, created_at
+     FROM crm_leads
+     WHERE site_id=$1
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [site.site_id, limit]
+  );
+
+  res.json({ ok: true, leads: r.rows });
+}));
+
+app.post("/crm/update", asyncHandler(async (req, res) => {
+  const { token, lead_id, status, notes } = req.body || {};
+  if (!token) return res.status(400).json({ ok: false, error: "token required" });
+  if (!lead_id) return res.status(400).json({ ok: false, error: "lead_id required" });
+
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+  const s = status ? String(status).trim().slice(0, 40) : null;
+  const n = notes ? String(notes).trim().slice(0, 2000) : null;
+
+  const r = await pool.query(
+    `UPDATE crm_leads
+     SET status = COALESCE($3, status),
+         notes  = COALESCE($4, notes)
+     WHERE id=$2 AND site_id=$1
+     RETURNING id, email, name, phone, source_page, status, notes, created_at`,
+    [site.site_id, lead_id, s, n]
+  );
+
+  if (!r.rows.length) return res.status(404).json({ ok: false, error: "Lead not found" });
+  res.json({ ok: true, lead: r.rows[0] });
+}));
+
 
 /* ---------------------------
    Reports
@@ -1716,6 +1809,7 @@ pre{
       <button class="btnGreen" id="aiReportTopBtn">Generate AI report</button>
       <button class="btn" id="refresh">Refresh</button>
       <a class="btnGhost" id="plansLink" href="/storefront?token=${encodeURIComponent(String(token))}">Plans</a>
+      <a class="btnGhost" id="crmLink" href="#crmCard">CRM</a>
       <span class="pill" id="status">Status: idle</span>
     </div>
   </div>
@@ -1879,7 +1973,26 @@ pre{
       </div>
     </div>
 
-    <div class="card span12">
+    
+    <div class="card span12" id="crmCard">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">CRM — Leads</div>
+          <div class="muted">Lead inbox saved from <span class="mono">lead</span> events (email optional).</div>
+        </div>
+        <div class="rightBtns">
+          <button class="btnGhost" id="crmRefresh">Refresh</button>
+          <button class="btnGhost" id="crmExport">Export CSV</button>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="list" id="crmLeads">Loading…</div>
+      <div class="muted" style="margin-top:10px">
+        Tip: Use <span class="mono">/demo/fire-event</span> with <span class="mono">event_name: "lead"</span> and include <span class="mono">lead_email</span>, <span class="mono">lead_name</span>, <span class="mono">lead_phone</span>.
+      </div>
+    </div>
+
+<div class="card span12">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
           <div style="font-weight:950">Reports</div>
@@ -2092,7 +2205,109 @@ app.get("/dashboard.js", (req, res) => {
     }
   }
 
-  // ===== Reports =====
+  
+  // ===== CRM (Leads) =====
+  let crmCache = [];
+
+  function fmtTime(iso){
+    try{
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso || "");
+      return d.toLocaleString();
+    }catch{ return String(iso || ""); }
+  }
+
+  function renderCRM(container, leads){
+    if (!container) return;
+    container.innerHTML = "";
+
+    const rows = Array.isArray(leads) ? leads : [];
+    crmCache = rows;
+
+    if (!rows.length){
+      container.textContent = "No leads yet.";
+      return;
+    }
+
+    for (const l of rows){
+      const item = document.createElement("div");
+      item.className = "item";
+
+      const left = document.createElement("div");
+      const title = (l.email || l.name || "(no email)") + "";
+      const sub = [
+        l.name ? ("Name: " + l.name) : null,
+        l.phone ? ("Phone: " + l.phone) : null,
+        l.source_page ? ("Page: " + l.source_page) : null,
+        ("Status: " + (l.status || "new")),
+        ("At: " + fmtTime(l.created_at))
+      ].filter(Boolean).join(" • ");
+
+      left.innerHTML =
+        "<b>" + esc(title) + "</b>" +
+        "<div class='muted'>" + esc(sub) + "</div>" +
+        (l.notes ? "<div class='muted' style='margin-top:6px'>Notes: " + esc(l.notes) + "</div>" : "");
+
+      const right = document.createElement("div");
+      right.style.display = "flex";
+      right.style.gap = "8px";
+      right.style.alignItems = "center";
+
+      const btn = document.createElement("button");
+      btn.className = "btnGhost";
+      btn.textContent = "Edit";
+      btn.addEventListener("click", async () => {
+        const newStatus = prompt("Status (e.g. new, contacted, won, lost):", l.status || "new");
+        if (newStatus === null) return;
+        const newNotes = prompt("Notes (optional):", l.notes || "");
+        if (newNotes === null) return;
+
+        const r = await fetch("/crm/update", {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ token: TOKEN, lead_id: l.id, status: newStatus, notes: newNotes })
+        });
+        const j = await r.json().catch(()=>({}));
+        if(!j.ok){ alert(j.error || "Update failed"); return; }
+        await loadCRM();
+      });
+
+      right.appendChild(btn);
+
+      item.appendChild(left);
+      item.appendChild(right);
+      container.appendChild(item);
+    }
+  }
+
+  function leadsToCSV(rows){
+    const cols = ["id","email","name","phone","source_page","status","notes","created_at"];
+    const escCsv = (v) => {
+      const s = String(v ?? "");
+      if (/["\n,]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+      return s;
+    };
+    const out = [];
+    out.push(cols.join(","));
+    for (const r of (rows || [])){
+      out.push(cols.map(c => escCsv(r[c])).join(","));
+    }
+    return out.join("\n");
+  }
+
+  async function loadCRM(){
+    const box = $("crmLeads");
+    if (box) box.textContent = "Loading…";
+    const r = await fetch("/crm?token=" + encodeURIComponent(TOKEN) + "&limit=200");
+    const j = await r.json().catch(()=>({}));
+    if(!j.ok){
+      if (box) box.textContent = j.error || "Failed to load CRM.";
+      return;
+    }
+    renderCRM(box, j.leads || []);
+  }
+
+// ===== Reports =====
   function splitLines(txt){
     return String(txt || "").replace(/\r\n/g,"\n").split("\n").map(s => s.trim()).filter(Boolean);
   }
@@ -2228,6 +2443,7 @@ app.get("/dashboard.js", (req, res) => {
       renderDevice($("deviceSvg"), mob, desk);
       renderTopPages($("topPages"), j.top_pages_range || []);
 
+      await loadCRM();
       await loadLatestReport();
       await loadReportsList();
 
@@ -2421,6 +2637,25 @@ if ($("chatInput")) {
 
     if ($("share")) $("share").addEventListener("click", share);
     if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
+
+    if ($("crmRefresh")) $("crmRefresh").addEventListener("click", loadCRM);
+    if ($("crmExport")) $("crmExport").addEventListener("click", () => {
+      try{
+        const csv = leadsToCSV(crmCache);
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "crm_leads.csv";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setStatus("exported CSV ✅");
+      }catch(e){
+        setStatus("export failed");
+      }
+    });
 
     if ($("loadReports")) $("loadReports").addEventListener("click", loadReportsList);
     if ($("aiReportTopBtn")) $("aiReportTopBtn").addEventListener("click", aiReport);
