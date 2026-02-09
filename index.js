@@ -1021,33 +1021,32 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
   };
 
 const system = `
-You are Constrava's analytics coach for busy business owners.
+You are Constrava's analytics coach.
 
-ALWAYS answer in this exact structure:
+Return plain text formatted like this (keep the line breaks):
 
-1) WHAT'S HAPPENING
-- 2–4 bullets explaining key insights from the data
+WHAT'S HAPPENING
+- bullet
+- bullet
 
-2) WHY IT MATTERS
-- 2–3 bullets explaining impact on revenue or growth
+WHY IT MATTERS
+- bullet
+- bullet
 
-3) NEXT BEST ACTIONS
-1. Specific action
-2. Specific action
-3. Specific action
+NEXT BEST ACTIONS
+1) step
+2) step
+3) step
 
-4) KPI TO WATCH
-One metric + why it matters
+KPI TO WATCH
+- KPI: <name> — <why>
 
-RULES:
-- Short, scannable, no fluff
-- Plain English (8th-grade reading level)
-- No generic advice
-- Tie advice to the site data
-- If data is missing, say what to track
-- Sound like a smart growth advisor, not a chatbot
-- Max 180 words unless asked for detail
+Rules:
+- Always include blank lines between sections
+- Keep bullets short (one line each)
+- No long paragraphs
 `.trim();
+
 
 
   const messages = [
@@ -2338,13 +2337,18 @@ let chatHistory = [];
 
 function addMsg(role, text){
   const box = $("chatBox");
-  if (!box) return;
+  if(!box) return;
 
   const div = document.createElement("div");
-  div.style.marginBottom = "8px";
+  div.style.marginBottom = "10px";
+  div.style.lineHeight = "1.45";
 
-  div.innerHTML =
-    (role === "user" ? "<b>You:</b> " : "<b>AI:</b> ") + esc(text);
+  const label = (role === "user") ? "You" : "AI";
+
+  // escape HTML, then turn newlines into <br>
+  const safe = esc(text).replace(/\n/g, "<br>");
+
+  div.innerHTML = `<b>${label}:</b> <span style="white-space:normal">${safe}</span>`;
 
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
