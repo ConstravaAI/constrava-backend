@@ -225,6 +225,223 @@ async function getSiteById(site_id) {
   return r.rows[0] || null;
 }
 
+
+/* ---------------------------
+   CRM helpers (matching + inference)
+----------------------------*/
+function normEmail(v){ return String(v||"").trim().toLowerCase(); }
+function normPhone(v){ return String(v||"").replace(/[^0-9+]/g,"").trim(); }
+function normName(v){ return String(v||"").trim().toLowerCase(); }
+
+function tokenSet(s){
+  return new Set(String(s||"").toLowerCase().split(/[^a-z0-9]+/g).filter(Boolean));
+}
+function diceCoeff(a,b){
+  const A = tokenSet(a), B = tokenSet(b);
+  if (!A.size || !B.size) return 0;
+  let inter = 0;
+  for (const x of A) if (B.has(x)) inter++;
+  return (2*inter) / (A.size + B.size);
+}
+
+async function findClientByIdentity(site_id, kind, value){
+  const r = await pool.query(
+    `SELECT c.*
+     FROM crm_identities i
+     JOIN crm_clients c ON c.id=i.client_id
+     WHERE i.site_id=$1 AND i.kind=$2 AND i.value=$3
+     LIMIT 1`,
+    [site_id, kind, value]
+  );
+  return r.rows[0] || null;
+}
+
+async function upsertClient(site_id, { full_name, email, phone, stage }){
+  const e = email ? normEmail(email) : null;
+  const p = phone ? normPhone(phone) : null;
+
+  // prefer email identity
+  if (e){
+    const existing = await findClientByIdentity(site_id, "email", e);
+    if (existing) return existing;
+  }
+
+  // try phone identity
+  if (p){
+    const existing = await findClientByIdentity(site_id, "phone", p);
+    if (existing) return existing;
+  }
+
+  // create new client
+  const r = await pool.query(
+    `INSERT INTO crm_clients (site_id, full_name, primary_email, primary_phone, stage, confidence)
+     VALUES ($1,$2,$3,$4,$5,0.55)
+     RETURNING *`,
+    [site_id, full_name ? String(full_name).trim() : null, e, p, stage || "lead"]
+  );
+  const c = r.rows[0];
+
+  // identities
+  if (e) {
+    await pool.query(
+      `INSERT INTO crm_identities (site_id, client_id, kind, value)
+       VALUES ($1,$2,'email',$3)
+       ON CONFLICT (site_id, kind, value) DO NOTHING`,
+      [site_id, c.id, e]
+    );
+  }
+  if (p) {
+    await pool.query(
+      `INSERT INTO crm_identities (site_id, client_id, kind, value)
+       VALUES ($1,$2,'phone',$3)
+       ON CONFLICT (site_id, kind, value) DO NOTHING`,
+      [site_id, c.id, p]
+    );
+  }
+  if (full_name) {
+    const n = normName(full_name);
+    if (n){
+      await pool.query(
+        `INSERT INTO crm_identities (site_id, client_id, kind, value)
+         VALUES ($1,$2,'name',$3)
+         ON CONFLICT (site_id, kind, value) DO NOTHING`,
+        [site_id, c.id, n]
+      );
+    }
+  }
+
+  return c;
+}
+
+async function addIdentity(site_id, client_id, kind, value){
+  const v = String(value||"").trim();
+  if (!v) return;
+  await pool.query(
+    `INSERT INTO crm_identities (site_id, client_id, kind, value)
+     VALUES ($1,$2,$3,$4)
+     ON CONFLICT (site_id, kind, value) DO NOTHING`,
+    [site_id, client_id, kind, v]
+  );
+}
+
+async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
+  const candidates = [];
+
+  const e1 = emailA ? normEmail(emailA) : "";
+  const e2 = emailB ? normEmail(emailB) : "";
+  const ph = phone ? normPhone(phone) : "";
+  const nm = name ? normName(name) : "";
+
+  if (e1){
+    const c = await findClientByIdentity(site_id, "email", e1);
+    if (c) candidates.push({ client:c, confidence:0.95, reason:"Matched email: " + e1 });
+  }
+  if (e2 && e2 !== e1){
+    const c = await findClientByIdentity(site_id, "email", e2);
+    if (c) candidates.push({ client:c, confidence:0.92, reason:"Matched email: " + e2 });
+  }
+  if (ph){
+    const c = await findClientByIdentity(site_id, "phone", ph);
+    if (c) candidates.push({ client:c, confidence:0.90, reason:"Matched phone: " + ph });
+  }
+
+  // fuzzy name match (token overlap)
+  if (nm){
+    const r = await pool.query(
+      `SELECT id, full_name
+       FROM crm_clients
+       WHERE site_id=$1
+       ORDER BY created_at DESC
+       LIMIT 250`,
+      [site_id]
+    );
+    let best = null;
+    for (const row of r.rows){
+      const s = diceCoeff(nm, row.full_name || "");
+      if (!best || s > best.score) best = { row, score: s };
+    }
+    if (best && best.score >= 0.55){
+      const c2 = await pool.query(`SELECT * FROM crm_clients WHERE id=$1 LIMIT 1`, [best.row.id]);
+      const c = c2.rows[0];
+      if (c) candidates.push({ client:c, confidence: Math.max(0.55, Math.min(0.80, best.score)), reason:"Fuzzy name match: " + (c.full_name||"") });
+    }
+  }
+
+  candidates.sort((a,b)=> (b.confidence||0)-(a.confidence||0));
+  return candidates[0] || null;
+}
+
+async function createActivityWithMatch(site_id, activity, matchHint){
+  const r = await pool.query(
+    `INSERT INTO crm_activities
+      (site_id, type, direction, occurred_at, from_email, to_email, subject, body_text, phone, duration_sec, meta)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+     RETURNING *`,
+    [
+      site_id,
+      activity.type,
+      activity.direction || null,
+      activity.occurred_at ? new Date(activity.occurred_at).toISOString() : new Date().toISOString(),
+      activity.from_email ? normEmail(activity.from_email) : null,
+      activity.to_email ? normEmail(activity.to_email) : null,
+      activity.subject ? String(activity.subject).slice(0, 300) : null,
+      activity.body_text ? String(activity.body_text).slice(0, 8000) : null,
+      activity.phone ? normPhone(activity.phone) : null,
+      Number.isFinite(activity.duration_sec) ? Math.max(0, Math.floor(activity.duration_sec)) : null,
+      activity.meta ? activity.meta : null
+    ]
+  );
+
+  const act = r.rows[0];
+
+  const best = await bestMatchClient(site_id, matchHint || {});
+  if (best && best.client){
+    const status = best.confidence >= 0.90 ? "auto_matched" : "needs_review";
+    await pool.query(
+      `INSERT INTO crm_activity_matches (site_id, activity_id, client_id, confidence, reason, status)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [site_id, act.id, best.client.id, best.confidence, best.reason, status]
+    );
+
+    await pool.query(
+      `UPDATE crm_clients
+       SET last_touch_at = GREATEST(COALESCE(last_touch_at, '1970-01-01'::timestamptz), $2::timestamptz)
+       WHERE id=$1`,
+      [best.client.id, act.occurred_at]
+    );
+
+
+// best-effort health heuristic:
+try {
+  const daysSince = Math.round((Date.now() - new Date(act.occurred_at).getTime()) / (1000*60*60*24));
+  // daysSince is usually 0 for new activity; compute based on last_touch drift later is fine.
+  // We still set health based on stage + recency (simple defaults).
+  await pool.query(
+    `UPDATE crm_clients
+     SET health = CASE
+       WHEN stage='won' THEN 'good'
+       WHEN stage='lost' THEN 'at_risk'
+       WHEN COALESCE(last_touch_at, NOW()) >= NOW() - INTERVAL '3 days' THEN 'good'
+       WHEN COALESCE(last_touch_at, NOW()) >= NOW() - INTERVAL '7 days' THEN 'ok'
+       ELSE 'at_risk'
+     END
+     WHERE id=$1`,
+    [best.client.id]
+  );
+} catch(e) {}
+
+return { activity: act, match: { ...best, status } };
+  }
+
+  await pool.query(
+    `INSERT INTO crm_activity_matches (site_id, activity_id, client_id, confidence, reason, status)
+     VALUES ($1,$2,NULL,0.3,'No strong match','needs_review')`,
+    [site_id, act.id]
+  );
+
+  return { activity: act, match: null };
+}
+
 async function getSession(req) {
   const sid = getCookie(req, "constrava_session");
   if (!sid) return null;
@@ -306,6 +523,77 @@ await pool.query(`
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS crm_clients (
+    id BIGSERIAL PRIMARY KEY,
+    site_id TEXT NOT NULL REFERENCES sites(site_id) ON DELETE CASCADE,
+    full_name TEXT,
+    primary_email TEXT,
+    primary_phone TEXT,
+    stage TEXT NOT NULL DEFAULT 'lead', -- lead|active|won|lost
+    health TEXT NOT NULL DEFAULT 'unknown', -- good|ok|at_risk|unknown
+    confidence REAL NOT NULL DEFAULT 0.5,
+    last_touch_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(site_id, primary_email)
+  );
+`);
+
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS crm_identities (
+    id BIGSERIAL PRIMARY KEY,
+    site_id TEXT NOT NULL REFERENCES sites(site_id) ON DELETE CASCADE,
+    client_id BIGINT NOT NULL REFERENCES crm_clients(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL, -- email|phone|name
+    value TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(site_id, kind, value)
+  );
+`);
+
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS crm_activities (
+    id BIGSERIAL PRIMARY KEY,
+    site_id TEXT NOT NULL REFERENCES sites(site_id) ON DELETE CASCADE,
+    type TEXT NOT NULL, -- email|call|note|form_lead
+    direction TEXT, -- in|out
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    from_email TEXT,
+    to_email TEXT,
+    subject TEXT,
+    body_text TEXT,
+    phone TEXT,
+    duration_sec INT,
+    meta JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+`);
+
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS crm_activity_matches (
+    id BIGSERIAL PRIMARY KEY,
+    site_id TEXT NOT NULL REFERENCES sites(site_id) ON DELETE CASCADE,
+    activity_id BIGINT NOT NULL REFERENCES crm_activities(id) ON DELETE CASCADE,
+    client_id BIGINT REFERENCES crm_clients(id) ON DELETE SET NULL,
+    confidence REAL NOT NULL DEFAULT 0.5,
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'needs_review', -- auto_matched|needs_review|confirmed|rejected
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+`);
+
+await pool.query(`
+  CREATE INDEX IF NOT EXISTS crm_activities_site_time_idx
+    ON crm_activities (site_id, occurred_at DESC);
+`);
+
+await pool.query(`
+  CREATE INDEX IF NOT EXISTS crm_matches_site_status_idx
+    ON crm_activity_matches (site_id, status, created_at DESC);
+`);
+
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS daily_reports (
@@ -559,6 +847,43 @@ app.post("/events", asyncHandler(async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,'new',$6)`,
       [site_id, email, name, phone, page_type || null, notes]
     );
+
+
+
+// CRM v2: also create/attach a client + activity (best-effort)
+try {
+  if (event_name === "lead") {
+    const client = await upsertClient(site_id, {
+      full_name: name || null,
+      email: email || null,
+      phone: phone || null,
+      stage: "lead"
+    });
+
+    // keep identities fresh
+    if (email) await addIdentity(site_id, client.id, "email", normEmail(email));
+    if (phone) await addIdentity(site_id, client.id, "phone", normPhone(phone));
+    if (name) await addIdentity(site_id, client.id, "name", normName(name));
+
+    await createActivityWithMatch(site_id, {
+      type: "form_lead",
+      direction: "in",
+      occurred_at: new Date().toISOString(),
+      from_email: email || null,
+      to_email: null,
+      subject: "New lead captured",
+      body_text: notes || null,
+      phone: phone || null,
+      meta: { source_page: page_type || null }
+    }, {
+      emailA: email || null,
+      phone: phone || null,
+      name: name || null
+    });
+  }
+} catch (e) {
+  // do not block event ingestion if CRM v2 fails
+}
   }
 
   res.json({ ok: true });
@@ -869,6 +1194,216 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 /* ---------------------------
+   CRM v2 (clients + activities + matching)
+----------------------------*/
+
+// List / search clients
+app.get("/crm/clients", asyncHandler(async (req, res) => {
+  setNoStore(res);
+  const token = req.query.token;
+  const q = String(req.query.q || "").trim().toLowerCase();
+
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+  const params = [site.site_id];
+  let where = "";
+  if (q) {
+    params.push("%" + q + "%");
+    where = " AND (LOWER(COALESCE(full_name,'')) LIKE $2 OR LOWER(COALESCE(primary_email,'')) LIKE $2 OR LOWER(COALESCE(primary_phone,'')) LIKE $2)";
+  }
+
+  const r = await pool.query(
+    `SELECT id, full_name, primary_email, primary_phone, stage, health, confidence, last_touch_at, created_at
+     FROM crm_clients
+     WHERE site_id=$1 ${where}
+     ORDER BY COALESCE(last_touch_at, created_at) DESC
+     LIMIT 100`,
+    params
+  );
+
+  res.json({ ok: true, clients: r.rows });
+}));
+
+// Create a client
+app.post("/crm/clients", asyncHandler(async (req, res) => {
+  const token = req.query.token || req.body?.token;
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+  const full_name = String(req.body?.full_name || "").trim();
+  const email = String(req.body?.email || "").trim();
+  const phone = String(req.body?.phone || "").trim();
+  const stage = String(req.body?.stage || "lead").trim();
+
+  if (!full_name && !email && !phone) {
+    return res.status(400).json({ ok: false, error: "Provide at least one of: full_name, email, phone" });
+  }
+
+  const c = await upsertClient(site.site_id, { full_name, email, phone, stage });
+  // if user provided extra, ensure identities exist
+  if (email) await addIdentity(site.site_id, c.id, "email", normEmail(email));
+  if (phone) await addIdentity(site.site_id, c.id, "phone", normPhone(phone));
+  if (full_name) await addIdentity(site.site_id, c.id, "name", normName(full_name));
+
+  res.json({ ok: true, client: c });
+}));
+
+// Client detail (with recent activity + matches)
+app.get("/crm/client", asyncHandler(async (req, res) => {
+  setNoStore(res);
+  const token = req.query.token;
+  const client_id = parseInt(req.query.client_id || "0", 10);
+
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+  if (!client_id) return res.status(400).json({ ok: false, error: "client_id required" });
+
+  const c = await pool.query(
+    `SELECT * FROM crm_clients WHERE site_id=$1 AND id=$2 LIMIT 1`,
+    [site.site_id, client_id]
+  );
+  if (!c.rows.length) return res.status(404).json({ ok: false, error: "Client not found" });
+
+  const ids = await pool.query(
+    `SELECT kind, value FROM crm_identities WHERE site_id=$1 AND client_id=$2 ORDER BY kind, created_at DESC`,
+    [site.site_id, client_id]
+  );
+
+  const acts = await pool.query(
+    `SELECT a.*, m.confidence, m.reason, m.status as match_status
+     FROM crm_activity_matches m
+     JOIN crm_activities a ON a.id = m.activity_id
+     WHERE m.site_id=$1 AND m.client_id=$2 AND m.status <> 'rejected'
+     ORDER BY a.occurred_at DESC
+     LIMIT 50`,
+    [site.site_id, client_id]
+  );
+
+  res.json({ ok: true, client: c.rows[0], identities: ids.rows, activities: acts.rows });
+}));
+
+// Review queue (unmatched / low-confidence)
+app.get("/crm/review", asyncHandler(async (req, res) => {
+  setNoStore(res);
+  const token = req.query.token;
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+  const r = await pool.query(
+    `SELECT m.id as match_id, m.confidence, m.reason, m.status,
+            a.id as activity_id, a.type, a.direction, a.occurred_at, a.from_email, a.to_email, a.subject,
+            LEFT(COALESCE(a.body_text,''), 280) as body_preview, a.phone, a.duration_sec
+     FROM crm_activity_matches m
+     JOIN crm_activities a ON a.id=m.activity_id
+     WHERE m.site_id=$1 AND m.status='needs_review'
+     ORDER BY a.occurred_at DESC
+     LIMIT 80`,
+    [site.site_id]
+  );
+
+  res.json({ ok: true, queue: r.rows });
+}));
+
+// Confirm a match (assign activity to a client)
+app.post("/crm/review/confirm", asyncHandler(async (req, res) => {
+  const { token, match_id, client_id } = req.body || {};
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+  const mid = parseInt(match_id || "0", 10);
+  const cid = parseInt(client_id || "0", 10);
+  if (!mid || !cid) return res.status(400).json({ ok: false, error: "match_id and client_id required" });
+
+  // validate client belongs to site
+  const c = await pool.query(`SELECT id FROM crm_clients WHERE site_id=$1 AND id=$2 LIMIT 1`, [site.site_id, cid]);
+  if (!c.rows.length) return res.status(404).json({ ok:false, error:"Client not found" });
+
+  const r = await pool.query(
+    `UPDATE crm_activity_matches
+     SET client_id=$3, status='confirmed', confidence=GREATEST(confidence, 0.85)
+     WHERE site_id=$1 AND id=$2
+     RETURNING *`,
+    [site.site_id, mid, cid]
+  );
+
+  res.json({ ok: true, match: r.rows[0] });
+}));
+
+// Reject a match
+app.post("/crm/review/reject", asyncHandler(async (req, res) => {
+  const { token, match_id } = req.body || {};
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+  const mid = parseInt(match_id || "0", 10);
+  if (!mid) return res.status(400).json({ ok: false, error: "match_id required" });
+
+  const r = await pool.query(
+    `UPDATE crm_activity_matches SET status='rejected' WHERE site_id=$1 AND id=$2 RETURNING *`,
+    [site.site_id, mid]
+  );
+
+  res.json({ ok: true, match: r.rows[0] });
+}));
+
+// Ingest email activity (webhook-friendly)
+// POST /crm/ingest/email { token, occurred_at?, direction?, from_email, to_email, subject?, body_text?, client_name? }
+app.post("/crm/ingest/email", asyncHandler(async (req, res) => {
+  const token = req.body?.token || req.query.token;
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok:false, error:"Unauthorized" });
+
+  const from_email = normEmail(req.body?.from_email);
+  const to_email = normEmail(req.body?.to_email);
+  if (!from_email && !to_email) return res.status(400).json({ ok:false, error:"from_email or to_email required" });
+
+  const out = await createActivityWithMatch(site.site_id, {
+    type: "email",
+    direction: req.body?.direction || null,
+    occurred_at: req.body?.occurred_at || null,
+    from_email,
+    to_email,
+    subject: req.body?.subject || null,
+    body_text: req.body?.body_text || null,
+    meta: req.body?.meta || null
+  }, {
+    emailA: from_email,
+    emailB: to_email,
+    name: req.body?.client_name || null
+  });
+
+  res.json({ ok:true, ...out });
+}));
+
+// Ingest call activity
+// POST /crm/ingest/call { token, occurred_at?, direction?, phone, duration_sec?, notes? , client_name? }
+app.post("/crm/ingest/call", asyncHandler(async (req, res) => {
+  const token = req.body?.token || req.query.token;
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok:false, error:"Unauthorized" });
+
+  const phone = normPhone(req.body?.phone);
+  if (!phone) return res.status(400).json({ ok:false, error:"phone required" });
+
+  const out = await createActivityWithMatch(site.site_id, {
+    type: "call",
+    direction: req.body?.direction || null,
+    occurred_at: req.body?.occurred_at || null,
+    phone,
+    duration_sec: req.body?.duration_sec || null,
+    body_text: req.body?.notes || null,
+    meta: req.body?.meta || null
+  }, {
+    phone,
+    name: req.body?.client_name || null
+  });
+
+  res.json({ ok:true, ...out });
+}));
+
+
+/* ---------------------------
    Reports
 ----------------------------*/
 app.get("/reports", asyncHandler(async (req, res) => {
@@ -1167,6 +1702,124 @@ Rules:
   if (!reply) return res.status(500).json({ ok: false, error: "AI response missing" });
 
   res.json({ ok: true, reply });
+}));
+
+
+/* ---------------------------
+   AI CRM Answer Bot (FULL AI)
+   POST /api/ai/crm/answer { token, question }
+----------------------------*/
+app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
+  setNoStore(res);
+
+  const token = req.query.token || req.body?.token;
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok:false, error:"Unauthorized" });
+
+  const gate = planGate(site, ["full_ai"]);
+  if (!gate.ok) return res.status(gate.status).json({ ok:false, error: gate.error });
+
+  const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
+  const question = String(req.body?.question || "").trim();
+  if (!question) return res.status(400).json({ ok:false, error:"question required" });
+
+  // lightweight context: clients + latest touch + recent activities + review queue counts
+  const clientsRes = await pool.query(
+    `SELECT id, full_name, primary_email, primary_phone, stage, health, confidence, last_touch_at
+     FROM crm_clients
+     WHERE site_id=$1
+     ORDER BY COALESCE(last_touch_at, created_at) DESC
+     LIMIT 120`,
+    [site.site_id]
+  );
+
+  const recentActsRes = await pool.query(
+    `SELECT a.id, a.type, a.direction, a.occurred_at, a.from_email, a.to_email, a.phone,
+            LEFT(COALESCE(a.subject,''), 180) as subject,
+            LEFT(COALESCE(a.body_text,''), 300) as body_preview,
+            m.client_id, m.confidence as match_confidence, m.status as match_status
+     FROM crm_activities a
+     JOIN crm_activity_matches m ON m.activity_id=a.id
+     WHERE a.site_id=$1
+     ORDER BY a.occurred_at DESC
+     LIMIT 80`,
+    [site.site_id]
+  );
+
+  const reviewCountRes = await pool.query(
+    `SELECT COUNT(*)::int as needs_review
+     FROM crm_activity_matches
+     WHERE site_id=$1 AND status='needs_review'`,
+    [site.site_id]
+  );
+
+  const context = {
+    site_id: site.site_id,
+    plan: site.plan,
+    clients: clientsRes.rows,
+    recent_activity: recentActsRes.rows,
+    needs_review_count: reviewCountRes.rows[0]?.needs_review || 0
+  };
+
+  const system = `
+You are Constrava's CRM autopilot.
+
+The user will ask questions like:
+- "What is the status of Acme Plumbing?"
+- "When did we last talk to Sarah?"
+- "Which clients are at risk?"
+- "How many calls did we have this week?"
+- "Do we owe anyone a follow-up?"
+
+You MUST:
+- Answer with structured, scannable text (no wall of text).
+- If client matching is uncertain, say so and show your best guess + confidence.
+- Suggest 1–3 next actions when appropriate.
+
+Return EXACTLY this format:
+
+ANSWER
+- <1–4 bullets>
+
+EVIDENCE
+- <2–6 bullets referencing concrete data points (dates/emails/calls/subjects)>
+- If uncertain, include: "Uncertainty: <why>"
+
+NEXT ACTIONS
+1) ...
+2) ...
+3) ...
+
+CONFIDENCE
+- <0–100% and one-sentence reason>
+
+Rules:
+- Keep bullets one line each.
+- Prefer dates in ISO (YYYY-MM-DD) if possible.
+- Never invent facts. If data isn't present, say what is missing.
+  `.trim();
+
+  const messages = [
+    { role:"system", content: system },
+    { role:"user", content: "CRM context JSON:\n" + JSON.stringify(context) },
+    { role:"user", content: question }
+  ];
+
+  const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type":"application/json" },
+    body: JSON.stringify({
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      messages,
+      temperature: 0.35
+    })
+  });
+
+  const aiData = await aiRes.json().catch(()=>({}));
+  const reply = aiData?.choices?.[0]?.message?.content;
+  if (!reply) return res.status(500).json({ ok:false, error:"AI response missing" });
+
+  res.json({ ok:true, reply });
 }));
 
 app.post("/generate-report", asyncHandler(async (req, res) => {
@@ -1990,6 +2643,63 @@ pre{
       <div class="muted" style="margin-top:10px">
         Tip: Use <span class="mono">/demo/fire-event</span> with <span class="mono">event_name: "lead"</span> and include <span class="mono">lead_email</span>, <span class="mono">lead_name</span>, <span class="mono">lead_phone</span>.
       </div>
+
+<div class="divider"></div>
+
+<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+  <div>
+    <div style="font-weight:950">Automated CRM (best-effort)</div>
+    <div class="muted">Emails + calls can be auto-matched to clients with a confidence score. Low-confidence items appear in the review queue.</div>
+  </div>
+  <span class="pill">AI + Matching</span>
+</div>
+
+<div class="grid" style="margin-top:10px;gap:10px">
+  <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
+    <div style="font-weight:950">Clients</div>
+    <div class="muted">Search, create, and open a client.</div>
+    <div class="row" style="margin-top:8px">
+      <input id="crmClientSearch" placeholder="Search by name/email/phone…" style="flex:1;min-width:220px" />
+      <button class="btn" id="crmClientSearchBtn">Search</button>
+    </div>
+    <div class="divider"></div>
+
+    <div class="row">
+      <input id="crmNewName" placeholder="Full name" style="flex:1;min-width:140px" />
+      <input id="crmNewEmail" placeholder="Email" style="flex:1;min-width:140px" />
+      <input id="crmNewPhone" placeholder="Phone" style="flex:1;min-width:120px" />
+      <button class="btnGreen" id="crmCreateClient">Add</button>
+    </div>
+
+    <div class="list" id="crmClients" style="margin-top:10px">Loading…</div>
+  </div>
+
+  <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
+    <div style="font-weight:950">Client status (auto-inferred)</div>
+    <div class="muted">Select a client to see latest touch + activity.</div>
+    <div class="divider"></div>
+    <pre id="crmClientDetail">Pick a client from the list.</pre>
+  </div>
+
+  <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
+    <div style="font-weight:950">Review queue</div>
+    <div class="muted">Unmatched or low-confidence activities. Confirm or reject.</div>
+    <div class="divider"></div>
+    <div class="list" id="crmReview">Loading…</div>
+  </div>
+
+  <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
+    <div style="font-weight:950">Ask the CRM AI</div>
+    <div class="muted">Example: “What’s the status of John Smith?”</div>
+    <div class="divider"></div>
+    <div class="row">
+      <input id="crmAskInput" placeholder="Ask a CRM question…" style="flex:1;min-width:220px" />
+      <button class="btnGreen" id="crmAskBtn">Ask</button>
+    </div>
+    <pre id="crmAskOut" style="max-height:320px;overflow:auto">—</pre>
+  </div>
+</div>
+
     </div>
 
 <div class="card span12">
@@ -2270,6 +2980,7 @@ app.get("/dashboard.js", (req, res) => {
         const j = await r.json().catch(()=>({}));
         if(!j.ok){ alert(j.error || "Update failed"); return; }
         await loadCRM();
+      await loadCRMv2();
       });
 
       right.appendChild(btn);
@@ -2306,6 +3017,233 @@ app.get("/dashboard.js", (req, res) => {
     }
     renderCRM(box, j.leads || []);
   }
+
+
+// ===== CRM v2 (clients + review + AI) =====
+let crmSelectedClientId = null;
+
+function fmtWhen(iso){
+  try{
+    if(!iso) return "—";
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return String(iso);
+    return d.toISOString().slice(0,19).replace("T"," ");
+  }catch{ return String(iso||"—"); }
+}
+
+function makeListItem(title, sub, right){
+  const item = document.createElement("div");
+  item.className = "item";
+
+  const left = document.createElement("div");
+  left.style.minWidth = "0";
+  left.innerHTML = "<b>" + esc(title) + "</b><div class='muted'>" + esc(sub || "") + "</div>";
+
+  const r = document.createElement("div");
+  r.className = "pill";
+  r.textContent = right || "Open";
+
+  item.appendChild(left);
+  item.appendChild(r);
+  return item;
+}
+
+async function loadCrmClients(q){
+  const box = $("crmClients");
+  if(!box) return;
+  box.textContent = "Loading…";
+  const url = "/crm/clients?token=" + encodeURIComponent(TOKEN) + (q ? "&q=" + encodeURIComponent(q) : "");
+  const r = await fetch(url);
+  const j = await r.json().catch(()=>({}));
+  box.innerHTML = "";
+  if(!j.ok){ box.textContent = j.error || "Failed."; return; }
+
+  if(!j.clients || !j.clients.length){ box.textContent = "No clients yet."; return; }
+
+  for(const c of j.clients){
+    const title = (c.full_name || "(no name)") + (c.stage ? " • " + c.stage : "");
+    const sub = [
+      c.primary_email ? ("email: " + c.primary_email) : null,
+      c.primary_phone ? ("phone: " + c.primary_phone) : null,
+      ("last touch: " + fmtWhen(c.last_touch_at))
+    ].filter(Boolean).join(" • ");
+
+    const item = makeListItem(title, sub, "Select");
+    item.style.cursor = "pointer";
+    item.addEventListener("click", () => {
+      crmSelectedClientId = c.id;
+      loadCrmClientDetail(c.id);
+    });
+    box.appendChild(item);
+  }
+}
+
+async function loadCrmClientDetail(clientId){
+  const pre = $("crmClientDetail");
+  if(!pre) return;
+  pre.textContent = "Loading client…";
+
+  const r = await fetch("/crm/client?token=" + encodeURIComponent(TOKEN) + "&client_id=" + encodeURIComponent(String(clientId)));
+  const j = await r.json().catch(()=>({}));
+  if(!j.ok){ pre.textContent = j.error || "Failed."; return; }
+
+  const c = j.client || {};
+  const acts = Array.isArray(j.activities) ? j.activities : [];
+  const ids = Array.isArray(j.identities) ? j.identities : [];
+
+  const lines = [];
+  lines.push("CLIENT");
+  lines.push("- Name: " + (c.full_name || "—"));
+  lines.push("- Stage: " + (c.stage || "—") + " • Health: " + (c.health || "unknown"));
+  lines.push("- Confidence: " + Math.round((Number(c.confidence||0.5))*100) + "%");
+  lines.push("- Email: " + (c.primary_email || "—"));
+  lines.push("- Phone: " + (c.primary_phone || "—"));
+  lines.push("- Last touch: " + fmtWhen(c.last_touch_at));
+  lines.push("");
+  lines.push("IDENTITIES");
+  if(!ids.length) lines.push("- —");
+  for(const it of ids.slice(0,12)){
+    lines.push("- " + it.kind + ": " + it.value);
+  }
+  lines.push("");
+  lines.push("RECENT ACTIVITY");
+  if(!acts.length) lines.push("- —");
+  for(const a of acts.slice(0,8)){
+    const who = a.type === "email"
+      ? ((a.direction||"") + " " + (a.from_email || "—") + " → " + (a.to_email || "—")).trim()
+      : (a.phone ? ("phone: " + a.phone) : "");
+    const head = fmtWhen(a.occurred_at) + " • " + (a.type || "activity") + (a.match_status ? (" • " + a.match_status) : "");
+    const sub = (a.subject ? ("subject: " + a.subject) : "") || (a.body_preview ? ("notes: " + String(a.body_preview).slice(0,140)) : "");
+    lines.push("- " + head);
+    if(who) lines.push("  " + who);
+    if(sub) lines.push("  " + sub);
+  }
+
+  pre.textContent = lines.join("\n");
+}
+
+async function loadCrmReview(){
+  const box = $("crmReview");
+  if(!box) return;
+  box.textContent = "Loading…";
+
+  const r = await fetch("/crm/review?token=" + encodeURIComponent(TOKEN));
+  const j = await r.json().catch(()=>({}));
+  box.innerHTML = "";
+  if(!j.ok){ box.textContent = j.error || "Failed."; return; }
+
+  const q = Array.isArray(j.queue) ? j.queue : [];
+  if(!q.length){ box.textContent = "Queue is empty ✅"; return; }
+
+  for(const it of q){
+    const title = fmtWhen(it.occurred_at) + " • " + (it.type || "activity");
+    const sub =
+      (it.subject ? ("subject: " + it.subject) : (it.body_preview ? it.body_preview : "")) +
+      (it.phone ? (" • phone: " + it.phone) : "") +
+      (" • conf: " + Math.round((Number(it.confidence||0))*100) + "%");
+
+    const row = makeListItem(title, sub, "Review");
+    row.style.cursor = "pointer";
+
+    row.addEventListener("click", async () => {
+      // quick action: confirm to selected client, else prompt to select first
+      if(!crmSelectedClientId){
+        alert("Select a client first (Clients list) to confirm this activity.");
+        return;
+      }
+      const ok = confirm("Assign this activity to the selected client?");
+      if(!ok) return;
+
+      const rr = await fetch("/crm/review/confirm", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ token: TOKEN, match_id: it.match_id, client_id: crmSelectedClientId })
+      });
+      const jj = await rr.json().catch(()=>({}));
+      if(!jj.ok){ alert(jj.error || "Failed"); return; }
+      await loadCrmReview();
+      if(crmSelectedClientId) await loadCrmClientDetail(crmSelectedClientId);
+    });
+
+    // add a reject button
+    const rejectBtn = document.createElement("button");
+    rejectBtn.className = "btnDanger";
+    rejectBtn.textContent = "Reject";
+    rejectBtn.style.padding = "8px 10px";
+    rejectBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const ok = confirm("Reject this match?");
+      if(!ok) return;
+      const rr = await fetch("/crm/review/reject", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ token: TOKEN, match_id: it.match_id })
+      });
+      const jj = await rr.json().catch(()=>({}));
+      if(!jj.ok){ alert(jj.error || "Failed"); return; }
+      await loadCrmReview();
+    });
+
+    // replace right pill with button group
+    row.removeChild(row.lastChild);
+    const right = document.createElement("div");
+    right.style.display = "flex";
+    right.style.gap = "8px";
+    right.appendChild(rejectBtn);
+    const hint = document.createElement("div");
+    hint.className = "pill";
+    hint.textContent = "Assign";
+    right.appendChild(hint);
+    row.appendChild(right);
+
+    box.appendChild(row);
+  }
+}
+
+async function crmCreateClient(){
+  const n = $("crmNewName") ? $("crmNewName").value.trim() : "";
+  const e = $("crmNewEmail") ? $("crmNewEmail").value.trim() : "";
+  const p = $("crmNewPhone") ? $("crmNewPhone").value.trim() : "";
+  if(!n && !e && !p){ alert("Add at least a name, email, or phone."); return; }
+
+  const r = await fetch("/crm/clients", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ token: TOKEN, full_name: n, email: e, phone: p, stage:"lead" })
+  });
+  const j = await r.json().catch(()=>({}));
+  if(!j.ok){ alert(j.error || "Failed"); return; }
+
+  if ($("crmNewName")) $("crmNewName").value = "";
+  if ($("crmNewEmail")) $("crmNewEmail").value = "";
+  if ($("crmNewPhone")) $("crmNewPhone").value = "";
+
+  await loadCrmClients($("crmClientSearch") ? $("crmClientSearch").value.trim() : "");
+}
+
+async function crmAsk(){
+  const out = $("crmAskOut");
+  const input = $("crmAskInput");
+  if(!out || !input) return;
+
+  const q = input.value.trim();
+  if(!q) return;
+  out.textContent = "Thinking…";
+
+  const r = await fetch("/api/ai/crm/answer", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ token: TOKEN, question: q })
+  });
+  const j = await r.json().catch(()=>({}));
+  if(!j.ok){ out.textContent = j.error || "Failed."; return; }
+  out.textContent = j.reply || "—";
+}
+
+async function loadCRMv2(){
+  await loadCrmClients("");
+  await loadCrmReview();
+}
 
 // ===== Reports =====
   function splitLines(txt){
@@ -2655,6 +3593,25 @@ if ($("chatInput")) {
       }catch(e){
         setStatus("export failed");
       }
+
+// CRM v2 listeners
+if ($("crmClientSearchBtn")) $("crmClientSearchBtn").addEventListener("click", () => {
+  const q = $("crmClientSearch") ? $("crmClientSearch").value.trim() : "";
+  loadCrmClients(q);
+});
+if ($("crmClientSearch")) $("crmClientSearch").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    const q = $("crmClientSearch").value.trim();
+    loadCrmClients(q);
+  }
+});
+
+if ($("crmCreateClient")) $("crmCreateClient").addEventListener("click", crmCreateClient);
+
+if ($("crmAskBtn")) $("crmAskBtn").addEventListener("click", crmAsk);
+if ($("crmAskInput")) $("crmAskInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") crmAsk();
+});
     });
 
     if ($("loadReports")) $("loadReports").addEventListener("click", loadReportsList);
