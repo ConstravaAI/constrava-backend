@@ -1332,6 +1332,9 @@ app.post("/demo/activate-plan", asyncHandler(async (req, res) => {
 /* ---------------------------
    Storefront
 ----------------------------*/
+/* ---------------------------
+   Storefront
+----------------------------*/
 app.get("/storefront", asyncHandler(async (req, res) => {
   setNoStore(res);
 
@@ -1380,6 +1383,7 @@ h1{font-size:18px;margin:0;}
   grid-column: span 6; padding:16px; border-radius: var(--radius);
   border:1px solid var(--border); background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
   box-shadow: var(--shadow);
+  min-width:0;
 }
 @media (max-width: 980px){ .card{grid-column: 1 / -1;} .topbar{flex-direction:column; align-items:flex-start;} }
 .name{font-weight:950;margin:0}
@@ -1418,79 +1422,47 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
   </div>
 
   <div class="grid">
-<div class="grid">
-  <!-- AI Chat (top, below toolbar) -->
-  <div class="card span12" id="chatCard">
-    <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
-      <div>
-        <div style="font-weight:950">Live AI Helper</div>
-        <div class="muted">Ask questions about your traffic, pages, conversions, and next steps.</div>
-      </div>
-      <span class="pill">Chat</span>
+    <div class="card">
+      <h3 class="name">Starter</h3>
+      <div class="price">$0 <span class="muted">/mo</span></div>
+      <div class="muted">Basic dashboard + live counters.</div>
+      <ul>
+        <li>Traffic + top pages</li>
+        <li>Live polling</li>
+        <li>Sim buttons</li>
+      </ul>
+      <button class="btn" onclick="activate('starter')">Activate Starter</button>
     </div>
-
-    <div class="divider"></div>
-
-    <div id="chatBox" style="height:220px;overflow:auto;padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background: rgba(15,23,42,.35);">
-      <div class="muted">Start by asking: “What should I improve first?”</div>
-    </div>
-
-    <div class="row" style="margin-top:10px">
-      <input id="chatInput" placeholder="Type a message…" style="flex:1;min-width:220px" />
-      <button class="btnGreen" id="chatSend">Send</button>
-      <button class="btnGhost" id="chatClear">Clear</button>
-    </div>
-
-    <div class="muted" style="margin-top:8px">
-      Note: Requires the <b>Full AI</b> plan (or your endpoint will return 403).
-    </div>
-  </div>
-
-<!-- AI CHAT CARD -->
-<div class="card span12">
-  <div style="font-weight:950">AI Assistant</div>
-  <div class="muted">Ask about your traffic or how to improve conversions.</div>
-
-  <div class="divider"></div>
-
-  <div id="chatBox" style="
-    height:260px;
-    overflow:auto;
-    padding:10px;
-    border:1px solid rgba(255,255,255,.12);
-    border-radius:14px;
-    background: rgba(15,23,42,.35);
-    font-size:13px;
-  "></div>
-
-  <div class="row" style="margin-top:10px">
-    <input id="chatInput" placeholder="Ask something..." style="flex:1"/>
-    <button class="btnGreen" id="chatSend">Send</button>
-  </div>
-</div>
-
-<div class="card span12">
-  <div style="font-weight:950">Latest AI Report</div>
-
 
     <div class="card">
+      <h3 class="name">Pro</h3>
+      <div class="price">$29 <span class="muted">/mo</span></div>
+      <div class="muted">Reports + email.</div>
+      <ul>
+        <li>Daily reports (non‑AI)</li>
+        <li>Email latest report</li>
+      </ul>
+      <button class="btn" onclick="activate('pro')">Activate Pro</button>
+    </div>
+
+    <div class="card" style="grid-column: 1 / -1">
       <h3 class="name">Full AI</h3>
       <div class="price">$99 <span class="muted">/mo</span></div>
-      <div class="muted">AI summaries + next steps + action plans.</div>
+      <div class="muted">AI summaries + action plans + on‑dashboard AI chat.</div>
       <ul>
         <li>AI report generator</li>
         <li>AI action plan generator</li>
-        <li>On-dashboard AI chat</li>
+        <li>Live AI Helper chat</li>
       </ul>
       <button class="btn btnGreen" onclick="activate('full_ai')">Activate Full AI</button>
+
+      <div class="note">
+        <b>Note:</b> These buttons call a demo activation endpoint. Later, Stripe will call a real webhook after payment.
+      </div>
+
+      <div class="note" id="status">Status: idle</div>
     </div>
   </div>
-
-  <div class="note">
-    <b>Note:</b> These buttons call a demo activation endpoint. Later, Stripe will call a real webhook after payment.
-  </div>
-
-  <div class="note" id="status">Status: idle</div>
 </div>
 
 <script>
@@ -1520,6 +1492,8 @@ async function activate(plan){
 </body>
 </html>`);
 }));
+
+
 
 /* ---------------------------
    Dashboard UI
@@ -1740,6 +1714,28 @@ pre{
   </div>
 
   <div class="grid">
+    <div class="card span12" id="chatCard">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Live AI Helper</div>
+          <div class="muted">Ask questions about your traffic, pages, conversions, and next steps.</div>
+        </div>
+        <span class="pill">Chat</span>
+      </div>
+      <div class="divider"></div>
+      <div id="chatBox" style="height:220px;overflow:auto;padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.10);background: rgba(15,23,42,.35);">
+        <div class="muted">Start by asking: “What should I improve first?”</div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <input id="chatInput" placeholder="Type a message…" style="flex:1;min-width:220px" />
+        <button class="btnGreen" id="chatSend">Send</button>
+        <button class="btnGhost" id="chatClear">Clear</button>
+      </div>
+      <div class="muted" style="margin-top:8px">
+        Note: Requires the <b>Full AI</b> plan (or the endpoint will return 403).
+      </div>
+    </div>
+
     <div class="card span12">
       <div style="font-weight:950">Latest AI Report</div>
       <div class="muted">Your most recent report (or seed sample).</div>
@@ -2321,16 +2317,13 @@ let chatHistory = [];
 
 function addMsg(role, text){
   const box = $("chatBox");
-  if(!box) return;
+  if (!box) return;
 
   const div = document.createElement("div");
   div.style.marginBottom = "8px";
 
-div.innerHTML =
-  (role === "user"
-    ? "<b>You:</b> "
-    : "<b>AI:</b> ") + esc(text);
-
+  div.innerHTML =
+    (role === "user" ? "<b>You:</b> " : "<b>AI:</b> ") + esc(text);
 
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
@@ -2338,61 +2331,66 @@ div.innerHTML =
 
 async function sendChat(){
   const input = $("chatInput");
-  if(!input) return;
+  if (!input) return;
 
   const msg = input.value.trim();
-  if(!msg) return;
+  if (!msg) return;
   input.value = "";
 
   addMsg("user", msg);
-  addMsg("ai", "Thinking...");
+
+  // temporary "thinking…" line
+  const box = $("chatBox");
+  let thinkingEl = null;
+  if (box) {
+    thinkingEl = document.createElement("div");
+    thinkingEl.style.marginBottom = "8px";
+    thinkingEl.innerHTML = "<b>AI:</b> <span class='muted'>Thinking…</span>";
+    box.appendChild(thinkingEl);
+    box.scrollTop = box.scrollHeight;
+  }
 
   try{
     const r = await fetch("/api/ai/chat", {
       method: "POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ token: TOKEN, message: msg, history: [] })
+      body: JSON.stringify({ token: TOKEN, message: msg, history: chatHistory.slice(-12) })
     });
     const j = await r.json().catch(()=>({}));
 
-    // remove the "Thinking..." line (last message)
-    const box = $("chatBox");
-    if (box && box.lastElementChild) box.removeChild(box.lastElementChild);
+    if (thinkingEl && box) box.removeChild(thinkingEl);
 
     if(!j.ok){
       addMsg("ai", j.error || "Chat failed.");
       return;
     }
-    addMsg("ai", j.reply || "(no reply)");
+
+    const reply = j.reply || "(no reply)";
+    addMsg("ai", reply);
+
+    chatHistory.push({ role: "user", content: msg });
+    chatHistory.push({ role: "assistant", content: reply });
   }catch(e){
-    const box = $("chatBox");
-    if (box && box.lastElementChild) box.removeChild(box.lastElementChild);
+    if (thinkingEl && box) box.removeChild(thinkingEl);
     addMsg("ai", "Error: " + (e?.message || "unknown"));
   }
 }
 
-
-  const j = await r.json().catch(()=>({}));
-
-  if(!j.ok){
-    addMsg("ai", j.error || "AI error");
-    return;
-  }
-
-  addMsg("ai", j.reply);
-
-  chatHistory.push({role:"user",content:msg});
-  chatHistory.push({role:"assistant",content:j.reply});
+function clearChat(){
+  const box = $("chatBox");
+  if (!box) return;
+  box.innerHTML = '<div class="muted">Chat cleared.</div>';
+  chatHistory = [];
 }
 
+window.addEventListener("DOMContentLoaded", () => {
 
-  window.addEventListener("DOMContentLoaded", () => {
     if (!TOKEN) { setStatus("missing token"); return; }
 
     if ($("refresh")) $("refresh").addEventListener("click", refresh);
     if ($("days")) $("days").addEventListener("change", refresh);
     if ($("chatSend")) $("chatSend").addEventListener("click", sendChat);
-if ($("chatClear")) $("chatClear").addEventListener("click", () => { $("chatBox").innerHTML = ""; });
+if ($("chatClear")) $("chatClear").addEventListener("click", clearChat);
 
 if ($("chatInput")) {
   $("chatInput").addEventListener("keydown", (e) => {
@@ -2411,15 +2409,6 @@ if ($("chatInput")) {
 
     if ($("loadReports")) $("loadReports").addEventListener("click", loadReportsList);
     if ($("aiReportTopBtn")) $("aiReportTopBtn").addEventListener("click", aiReport);
-    if ($("chatSend")) $("chatSend").addEventListener("click", sendChat);
-
-if ($("chatInput")) {
-  $("chatInput").addEventListener("keydown", e=>{
-    if(e.key === "Enter") sendChat();
-  });
-}
-
-
     if ($("liveToggle")) $("liveToggle").addEventListener("click", () => {
       liveOn = !liveOn;
       $("liveToggle").textContent = liveOn ? "Pause" : "Resume";
