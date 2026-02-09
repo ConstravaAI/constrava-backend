@@ -1418,17 +1418,34 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
   </div>
 
   <div class="grid">
-    <div class="card">
-      <h3 class="name">Starter</h3>
-      <div class="price">$29 <span class="muted">/mo</span></div>
-      <div class="muted">Tracking + charts + insights.</div>
-      <ul>
-        <li>Dashboard charts</li>
-        <li>Top pages + device mix</li>
-        <li>Reports list</li>
-      </ul>
-      <button class="btn" onclick="activate('starter')">Activate Starter</button>
-    </div>
+<div class="grid">
+
+<!-- AI CHAT CARD -->
+<div class="card span12">
+  <div style="font-weight:950">AI Assistant</div>
+  <div class="muted">Ask about your traffic or how to improve conversions.</div>
+
+  <div class="divider"></div>
+
+  <div id="chatBox" style="
+    height:260px;
+    overflow:auto;
+    padding:10px;
+    border:1px solid rgba(255,255,255,.12);
+    border-radius:14px;
+    background: rgba(15,23,42,.35);
+    font-size:13px;
+  "></div>
+
+  <div class="row" style="margin-top:10px">
+    <input id="chatInput" placeholder="Ask something..." style="flex:1"/>
+    <button class="btnGreen" id="chatSend">Send</button>
+  </div>
+</div>
+
+<div class="card span12">
+  <div style="font-weight:950">Latest AI Report</div>
+
 
     <div class="card">
       <h3 class="name">Full AI</h3>
@@ -2273,6 +2290,58 @@ app.get("/dashboard.js", (req, res) => {
     await loadReportsList();
   }
 
+  // ===== AI CHAT =====
+let chatHistory = [];
+
+function addMsg(role, text){
+  const box = $("chatBox");
+  if(!box) return;
+
+  const div = document.createElement("div");
+  div.style.marginBottom = "8px";
+
+  div.innerHTML =
+    role === "user"
+      ? `<b>You:</b> ${esc(text)}`
+      : `<b>AI:</b> ${esc(text)}`;
+
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+async function sendChat(){
+  const input = $("chatInput");
+  if(!input) return;
+
+  const msg = input.value.trim();
+  if(!msg) return;
+
+  input.value = "";
+  addMsg("user", msg);
+
+  const r = await fetch("/api/ai/chat?token=" + encodeURIComponent(TOKEN), {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({
+      message: msg,
+      history: chatHistory
+    })
+  });
+
+  const j = await r.json().catch(()=>({}));
+
+  if(!j.ok){
+    addMsg("ai", j.error || "AI error");
+    return;
+  }
+
+  addMsg("ai", j.reply);
+
+  chatHistory.push({role:"user",content:msg});
+  chatHistory.push({role:"assistant",content:j.reply});
+}
+
+
   window.addEventListener("DOMContentLoaded", () => {
     if (!TOKEN) { setStatus("missing token"); return; }
 
@@ -2289,6 +2358,14 @@ app.get("/dashboard.js", (req, res) => {
 
     if ($("loadReports")) $("loadReports").addEventListener("click", loadReportsList);
     if ($("aiReportTopBtn")) $("aiReportTopBtn").addEventListener("click", aiReport);
+    if ($("chatSend")) $("chatSend").addEventListener("click", sendChat);
+
+if ($("chatInput")) {
+  $("chatInput").addEventListener("keydown", e=>{
+    if(e.key === "Enter") sendChat();
+  });
+}
+
 
     if ($("liveToggle")) $("liveToggle").addEventListener("click", () => {
       liveOn = !liveOn;
