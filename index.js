@@ -1,4 +1,4 @@
-=// index.js (ESM) — Constrava MVP+ backend (FULL + WORKING, HTML RESTORED + FIXED)
+// index.js (ESM) — Constrava MVP+ backend (FULL + WORKING, HTML RESTORED + FIXED)
 // Node 18+ recommended. Uses global fetch.
 //
 // ENV REQUIRED:
