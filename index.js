@@ -631,7 +631,7 @@ await pool.query(`
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS body TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS meta JSONB;`);
 
-  await pool.query(`ALTER TABLE crm_matches ADD COLUMN IF NOT EXISTS reason TEXT;`);
+  await pool.query(`ALTER TABLE crm_activity_matches ADD COLUMN IF NOT EXISTS reason TEXT;`);
 
   console.log("✅ Tables ready");
 }
