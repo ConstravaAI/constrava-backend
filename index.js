@@ -1,4 +1,4 @@
-// index.js (ESM) — Constrava MVP+ backend (FULL + WORKING, HTML RESTORED + FIXED)
+=// index.js (ESM) — Constrava MVP+ backend (FULL + WORKING, HTML RESTORED + FIXED)
 // Node 18+ recommended. Uses global fetch.
 //
 // ENV REQUIRED:
@@ -613,6 +613,25 @@ await pool.query(`
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+
+  // --- Lightweight migrations (safe to re-run) ---
+  // If your DB existed before CRM columns were added, these keep schema compatible.
+  await pool.query(`ALTER TABLE crm_clients ADD COLUMN IF NOT EXISTS company TEXT;`);
+  await pool.query(`ALTER TABLE crm_clients ADD COLUMN IF NOT EXISTS stage TEXT NOT NULL DEFAULT 'lead';`);
+  await pool.query(`ALTER TABLE crm_clients ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';`);
+  await pool.query(`ALTER TABLE crm_clients ADD COLUMN IF NOT EXISTS industry TEXT;`);
+  await pool.query(`ALTER TABLE crm_clients ADD COLUMN IF NOT EXISTS website TEXT;`);
+  await pool.query(`ALTER TABLE crm_clients ADD COLUMN IF NOT EXISTS notes TEXT;`);
+  await pool.query(`ALTER TABLE crm_clients ADD COLUMN IF NOT EXISTS last_touch_at TIMESTAMPTZ;`);
+  await pool.query(`ALTER TABLE crm_clients ADD COLUMN IF NOT EXISTS last_touch_channel TEXT;`);
+  await pool.query(`ALTER TABLE crm_clients ADD COLUMN IF NOT EXISTS last_touch_summary TEXT;`);
+
+  await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS subject TEXT;`);
+  await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS body TEXT;`);
+  await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS meta JSONB;`);
+
+  await pool.query(`ALTER TABLE crm_matches ADD COLUMN IF NOT EXISTS reason TEXT;`);
 
   console.log("✅ Tables ready");
 }
