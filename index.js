@@ -19,10 +19,18 @@
 
 
 
+
+
+
+
 import express from "express";
 import cors from "cors";
 import pkg from "pg";
 import crypto from "crypto";
+
+
+
+
 
 
 
@@ -33,8 +41,16 @@ const app = express();
 
 
 
+
+
+
+
 // IMPORTANT for Render / reverse proxies (req.protocol + secure cookies)
 app.set("trust proxy", 1);
+
+
+
+
 
 
 
@@ -52,14 +68,26 @@ app.use(
 
 
 
+
+
+
+
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 
 
 
+
+
+
+
 const PORT = process.env.PORT || 10000;
 const DATABASE_URL = process.env.DATABASE_URL;
+
+
+
+
 
 
 
@@ -72,10 +100,18 @@ if (!DATABASE_URL) {
 
 
 
+
+
+
+
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: process.env.PGSSL === "true" ? { rejectUnauthorized: false } : undefined
 });
+
+
+
+
 
 
 
@@ -90,6 +126,10 @@ function asyncHandler(fn) {
 
 
 
+
+
+
+
 function setNoStore(res) {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.setHeader("Pragma", "no-cache");
@@ -99,8 +139,16 @@ function setNoStore(res) {
 
 
 
+
+
+
+
 function publicBaseUrl(req) {
   if (process.env.PUBLIC_BASE_URL) return process.env.PUBLIC_BASE_URL;
+
+
+
+
 
 
 
@@ -112,9 +160,17 @@ function publicBaseUrl(req) {
 
 
 
+
+
+
+
   if (host) return `${proto}://${host}`;
   return "https://constrava-backend.onrender.com";
 }
+
+
+
+
 
 
 
@@ -123,6 +179,10 @@ function publicEventsUrl(req) {
   if (process.env.PUBLIC_EVENTS_URL) return process.env.PUBLIC_EVENTS_URL;
   return publicBaseUrl(req);
 }
+
+
+
+
 
 
 
@@ -136,11 +196,19 @@ function requireEnv(name) {
 
 
 
+
+
+
+
 function normalizeDays(input) {
   const n = parseInt(String(input ?? "7"), 10);
   const allowed = new Set([1, 7, 30, 365, 730, 1825]);
   return allowed.has(n) ? n : 7;
 }
+
+
+
+
 
 
 
@@ -152,6 +220,10 @@ function normalizeSiteId(raw) {
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9-]/g, "");
 }
+
+
+
+
 
 
 
@@ -169,6 +241,10 @@ function validateSiteId(site_id) {
 
 
 
+
+
+
+
 function validateCustomToken(token) {
   if (!token) return "access token is required";
   if (token.length < 20) return "access token must be at least 20 characters";
@@ -182,9 +258,17 @@ function validateCustomToken(token) {
 
 
 
+
+
+
+
 function safeEmail(x) {
   return String(x || "").trim().toLowerCase();
 }
+
+
+
+
 
 
 
@@ -194,6 +278,10 @@ function clamp01(n) {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
 }
+
+
+
+
 
 
 
@@ -211,6 +299,10 @@ function planGate(site, allowedPlans) {
 
 
 
+
+
+
+
 /* ---------------------------
    Password hashing (no bcrypt)
 ----------------------------*/
@@ -223,12 +315,20 @@ function hashPassword(password) {
 
 
 
+
+
+
+
 function verifyPassword(password, saltHex, hashHex) {
   const salt = Buffer.from(saltHex, "hex");
   const hash = Buffer.from(hashHex, "hex");
   const test = crypto.scryptSync(String(password), salt, 64);
   return crypto.timingSafeEqual(hash, test);
 }
+
+
+
+
 
 
 
@@ -253,6 +353,10 @@ function getCookie(req, name) {
 
 
 
+
+
+
+
 function setCookie(res, name, value, opts = {}) {
   const {
     httpOnly = true,
@@ -261,6 +365,10 @@ function setCookie(res, name, value, opts = {}) {
     path = "/",
     maxAgeSeconds = 60 * 60 * 24 * 14
   } = opts;
+
+
+
+
 
 
 
@@ -279,9 +387,17 @@ function setCookie(res, name, value, opts = {}) {
 
 
 
+
+
+
+
 function clearCookie(res, name) {
   res.setHeader("Set-Cookie", `${name}=; Path=/; Max-Age=0; SameSite=Lax`);
 }
+
+
+
+
 
 
 
@@ -304,6 +420,10 @@ async function getSiteByToken(token) {
 
 
 
+
+
+
+
 async function getSiteById(site_id) {
   const r = await pool.query(
     `SELECT site_id, site_name, owner_email, dashboard_token, plan
@@ -322,12 +442,24 @@ async function getSiteById(site_id) {
 
 
 
+
+
+
+
+
+
+
+
 /* ---------------------------
    CRM helpers (matching + inference)
 ----------------------------*/
 function normEmail(v){ return String(v||"").trim().toLowerCase(); }
 function normPhone(v){ return String(v||"").replace(/[^0-9+]/g,"").trim(); }
 function normName(v){ return String(v||"").trim().toLowerCase(); }
+
+
+
+
 
 
 
@@ -342,6 +474,10 @@ function diceCoeff(a,b){
   for (const x of A) if (B.has(x)) inter++;
   return (2*inter) / (A.size + B.size);
 }
+
+
+
+
 
 
 
@@ -361,9 +497,17 @@ async function findClientByIdentity(site_id, kind, value){
 
 
 
+
+
+
+
 async function upsertClient(site_id, { full_name, email, phone, stage }){
   const e = email ? normEmail(email) : null;
   const p = phone ? normPhone(phone) : null;
+
+
+
+
 
 
 
@@ -377,11 +521,19 @@ async function upsertClient(site_id, { full_name, email, phone, stage }){
 
 
 
+
+
+
+
   // try phone identity
   if (p){
     const existing = await findClientByIdentity(site_id, "phone", p);
     if (existing) return existing;
   }
+
+
+
+
 
 
 
@@ -394,6 +546,10 @@ async function upsertClient(site_id, { full_name, email, phone, stage }){
     [site_id, full_name ? String(full_name).trim() : null, e, p, stage || "lead"]
   );
   const c = r.rows[0];
+
+
+
+
 
 
 
@@ -440,8 +596,16 @@ async function upsertClient(site_id, { full_name, email, phone, stage }){
 
 
 
+
+
+
+
   return c;
 }
+
+
+
+
 
 
 
@@ -460,8 +624,16 @@ async function addIdentity(site_id, client_id, kind, value){
 
 
 
+
+
+
+
 async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
   const candidates = [];
+
+
+
+
 
 
 
@@ -472,8 +644,14 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
   const nm = name ? normName(name) : "";
 
 
+
+
   const dom1 = e1 && e1.includes("@") ? e1.split("@").pop() : "";
   const dom2 = e2 && e2.includes("@") ? e2.split("@").pop() : "";
+
+
+
+
 
 
 
@@ -486,6 +664,8 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
     const c = await findClientByIdentity(site_id, "email", e2);
     if (c) candidates.push({ client:c, confidence:0.92, reason:"Matched email: " + e2 });
   }
+
+
 
 
   // domain match (useful when aliases change but domain stays)
@@ -501,6 +681,10 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
     const c = await findClientByIdentity(site_id, "phone", ph);
     if (c) candidates.push({ client:c, confidence:0.90, reason:"Matched phone: " + ph });
   }
+
+
+
+
 
 
 
@@ -530,9 +714,17 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
 
 
 
+
+
+
+
   candidates.sort((a,b)=> (b.confidence||0)-(a.confidence||0));
   return candidates[0] || null;
 }
+
+
+
+
 
 
 
@@ -561,7 +753,15 @@ async function createActivityWithMatch(site_id, activity, matchHint){
 
 
 
+
+
+
+
   const act = r.rows[0];
+
+
+
+
 
 
 
@@ -578,12 +778,24 @@ async function createActivityWithMatch(site_id, activity, matchHint){
 
 
 
+
+
+
+
     await pool.query(
       `UPDATE crm_clients
        SET last_touch_at = GREATEST(COALESCE(last_touch_at, '1970-01-01'::timestamptz), $2::timestamptz)
        WHERE id=$1`,
       [best.client.id, act.occurred_at]
     );
+
+
+
+
+
+
+
+
 
 
 
@@ -614,8 +826,16 @@ try {
 
 
 
+
+
+
+
 return { activity: act, match: { ...best, status } };
   }
+
+
+
+
 
 
 
@@ -629,8 +849,16 @@ return { activity: act, match: { ...best, status } };
 
 
 
+
+
+
+
   return { activity: act, match: null };
 }
+
+
+
+
 
 
 
@@ -638,6 +866,10 @@ return { activity: act, match: { ...best, status } };
 async function getSession(req) {
   const sid = getCookie(req, "constrava_session");
   if (!sid) return null;
+
+
+
+
 
 
 
@@ -654,8 +886,16 @@ async function getSession(req) {
 
 
 
+
+
+
+
   const row = r.rows[0];
   if (!row) return null;
+
+
+
+
 
 
 
@@ -666,8 +906,16 @@ async function getSession(req) {
 
 
 
+
+
+
+
   return row;
 }
+
+
+
+
 
 
 
@@ -690,6 +938,10 @@ async function ensureTables() {
 
 
 
+
+
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id BIGSERIAL PRIMARY KEY,
@@ -704,6 +956,10 @@ async function ensureTables() {
 
 
 
+
+
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS sessions (
       session_id TEXT PRIMARY KEY,
@@ -712,6 +968,10 @@ async function ensureTables() {
       expires_at TIMESTAMPTZ NOT NULL
     );
   `);
+
+
+
+
 
 
 
@@ -730,6 +990,10 @@ async function ensureTables() {
 
 
 
+
+
+
+
 await pool.query(`
     
 CREATE TABLE IF NOT EXISTS crm_leads (
@@ -744,6 +1008,10 @@ CREATE TABLE IF NOT EXISTS crm_leads (
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+
+
+
 
 
 
@@ -774,6 +1042,10 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS crm_identities (
       id BIGSERIAL PRIMARY KEY,
@@ -785,6 +1057,10 @@ CREATE TABLE IF NOT EXISTS crm_leads (
       UNIQUE(site_id, kind, value)
     );
   `);
+
+
+
+
 
 
 
@@ -810,6 +1086,10 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS crm_activity_matches (
       id BIGSERIAL PRIMARY KEY,
@@ -826,6 +1106,10 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
   await pool.query(`
     CREATE INDEX IF NOT EXISTS crm_activities_site_time_idx
       ON crm_activities (site_id, occurred_at DESC);
@@ -834,10 +1118,18 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
   await pool.query(`
     CREATE INDEX IF NOT EXISTS crm_matches_site_status_idx
       ON crm_activity_matches (site_id, status, created_at DESC);
   `);
+
+
+
+
 
 
 
@@ -861,6 +1153,10 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS subject TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS body_text TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS meta JSONB;`);
@@ -879,6 +1175,10 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS demo_links (
       code TEXT PRIMARY KEY,
@@ -886,6 +1186,14 @@ CREATE TABLE IF NOT EXISTS crm_leads (
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+
+
+
+
+
+
+
 
 
 
@@ -909,9 +1217,17 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS subject TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS body TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS meta JSONB;`);
+
+
+
+
 
 
 
@@ -921,8 +1237,16 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
   console.log("✅ Tables ready");
 }
+
+
+
+
 
 
 
@@ -935,10 +1259,18 @@ app.get("/", (req, res) => res.send("Backend is running ✅"));
 
 
 
+
+
+
+
 app.get("/health", asyncHandler(async (req, res) => {
   const r = await pool.query("SELECT 1 as ok");
   res.json({ ok: true, db: r.rows[0]?.ok === 1 });
 }));
+
+
+
+
 
 
 
@@ -951,11 +1283,19 @@ app.get("/db-test", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
 app.get("/debug/site", asyncHandler(async (req, res) => {
   const token = req.query.token;
   const site = await getSiteByToken(token);
   res.json({ ok: true, site });
 }));
+
+
+
+
 
 
 
@@ -970,9 +1310,17 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   if (!site_id || !email || !password || !token) {
     return res.status(400).json({ ok: false, error: "site_id, email, password, and token are required" });
   }
+
+
+
+
 
 
 
@@ -984,6 +1332,10 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const e = safeEmail(email);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return res.status(400).json({ ok: false, error: "Invalid email" });
   if (String(password).length < 8) return res.status(400).json({ ok: false, error: "Password must be at least 8 characters" });
@@ -991,7 +1343,15 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const { salt, hash } = hashPassword(password);
+
+
+
+
 
 
 
@@ -1016,6 +1376,10 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
 app.post("/auth/login", asyncHandler(async (req, res) => {
   const { email, password } = req.body || {};
   const e = safeEmail(email);
@@ -1023,7 +1387,15 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   if (!e || !password) return res.status(400).json({ ok: false, error: "email and password required" });
+
+
+
+
 
 
 
@@ -1040,6 +1412,10 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const u = r.rows[0];
   if (!verifyPassword(password, u.password_salt, u.password_hash)) {
     return res.status(401).json({ ok: false, error: "Invalid login" });
@@ -1048,8 +1424,16 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const session_id = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
+
+
+
 
 
 
@@ -1063,6 +1447,10 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   setCookie(res, "constrava_session", session_id, {
     httpOnly: true,
     sameSite: "Lax",
@@ -1072,7 +1460,15 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const site = await getSiteById(u.site_id);
+
+
+
+
 
 
 
@@ -1088,12 +1484,20 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
 app.post("/auth/logout", asyncHandler(async (req, res) => {
   const sid = getCookie(req, "constrava_session");
   if (sid) await pool.query(`DELETE FROM sessions WHERE session_id=$1`, [sid]);
   clearCookie(res, "constrava_session");
   res.json({ ok: true });
 }));
+
+
+
+
 
 
 
@@ -1112,12 +1516,20 @@ app.get("/me", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
 /* ---------------------------
    Onboarding: create a site
    POST /sites { site_id, site_name, owner_email, custom_token? }
 ----------------------------*/
 app.post("/sites", asyncHandler(async (req, res) => {
   const { site_id: rawSiteId, site_name, owner_email, custom_token } = req.body || {};
+
+
+
+
 
 
 
@@ -1129,9 +1541,17 @@ app.post("/sites", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const site_id = normalizeSiteId(rawSiteId);
   const siteIdErr = validateSiteId(site_id);
   if (siteIdErr) return res.status(400).json({ ok: false, error: siteIdErr });
+
+
+
+
 
 
 
@@ -1142,6 +1562,10 @@ app.post("/sites", asyncHandler(async (req, res) => {
     if (tokErr) return res.status(400).json({ ok: false, error: tokErr });
     token = custom_token;
   }
+
+
+
+
 
 
 
@@ -1163,7 +1587,15 @@ app.post("/sites", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const base = publicBaseUrl(req);
+
+
+
+
 
 
 
@@ -1180,6 +1612,10 @@ app.post("/sites", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
 /* ---------------------------
    Tracker script
    GET /tracker.js
@@ -1187,6 +1623,10 @@ app.post("/sites", asyncHandler(async (req, res) => {
 app.get("/tracker.js", (req, res) => {
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
   const endpoint = publicEventsUrl(req) + "/events";
+
+
+
+
 
 
 
@@ -1200,8 +1640,16 @@ app.get("/tracker.js", (req, res) => {
 
 
 
+
+
+
+
     var siteId = script.getAttribute("data-site-id");
     if (!siteId) return;
+
+
+
+
 
 
 
@@ -1227,6 +1675,14 @@ app.get("/tracker.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
 /* ---------------------------
    Receive events
    POST /events
@@ -1238,8 +1694,16 @@ app.post("/events", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const site = await pool.query("SELECT 1 FROM sites WHERE site_id=$1", [site_id]);
   if (site.rows.length === 0) return res.status(403).json({ ok: false, error: "Invalid site_id" });
+
+
+
+
 
 
 
@@ -1249,6 +1713,10 @@ app.post("/events", asyncHandler(async (req, res) => {
      VALUES ($1,$2,$3,$4)`,
     [site_id, String(event_name), page_type || null, device || null]
   );
+
+
+
+
 
 
 
@@ -1263,11 +1731,27 @@ app.post("/events", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
     await pool.query(
       `INSERT INTO crm_leads (site_id, email, name, phone, source_page, status, notes)
        VALUES ($1,$2,$3,$4,$5,'new',$6)`,
       [site_id, email, name, phone, page_type || null, notes]
     );
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1293,10 +1777,18 @@ try {
 
 
 
+
+
+
+
     // keep identities fresh
     if (email) await addIdentity(site_id, client.id, "email", normEmail(email));
     if (phone) await addIdentity(site_id, client.id, "phone", normPhone(phone));
     if (name) await addIdentity(site_id, client.id, "name", normName(name));
+
+
+
+
 
 
 
@@ -1325,6 +1817,10 @@ try {
 
 
 
+
+
+
+
   res.json({ ok: true });
 }));
 /* ---------------------------
@@ -1339,8 +1835,16 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
 
 
 
@@ -1353,11 +1857,19 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   await pool.query(
     `INSERT INTO events_raw (site_id, event_name, page_type, device)
      VALUES ($1,$2,$3,$4)`,
     [site.site_id, event_name, page_type || "/", device || "desktop"]
   );
+
+
+
+
 
 
 
@@ -1372,11 +1884,17 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
     await pool.query(
       `INSERT INTO crm_leads (site_id, email, name, phone, source_page, status, notes)
        VALUES ($1,$2,$3,$4,$5,'new',$6)`,
       [site.site_id, email, name, phone, page_type || "/", notes]
     );
+
+
 
 
     // CRM v2: also create/attach a client + activity (best-effort)
@@ -1389,9 +1907,13 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
       });
 
 
+
+
       if (email) await addIdentity(site.site_id, client.id, "email", normEmail(email));
       if (phone) await addIdentity(site.site_id, client.id, "phone", normPhone(phone));
       if (name) await addIdentity(site.site_id, client.id, "name", normName(name));
+
+
 
 
       await createActivityWithMatch(
@@ -1414,13 +1936,23 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
     }
 
 
+
+
   }
+
+
+
+
 
 
 
 
   res.json({ ok: true });
 }));
+
+
+
+
 
 
 
@@ -1435,6 +1967,10 @@ app.get("/live", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const token = req.query.token;
   const since = req.query.since;
   if (!token) return res.status(400).json({ ok: false, error: "token required" });
@@ -1442,8 +1978,16 @@ app.get("/live", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
 
 
 
@@ -1456,12 +2000,20 @@ app.get("/live", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const params = [site.site_id];
   let whereSince = "";
   if (sinceDate) {
     params.push(sinceDate.toISOString());
     whereSince = " AND created_at > $2";
   }
+
+
+
+
 
 
 
@@ -1480,6 +2032,10 @@ app.get("/live", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const lastEventRes = await pool.query(
     `
     SELECT event_name, page_type, device, created_at
@@ -1490,6 +2046,10 @@ app.get("/live", asyncHandler(async (req, res) => {
     `,
     [site.site_id]
   );
+
+
+
+
 
 
 
@@ -1507,6 +2067,10 @@ app.get("/live", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
 /* ---------------------------
    DEMO: shareable link
    POST /demo/link { token } -> { url }
@@ -1519,8 +2083,16 @@ app.post("/demo/link", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
 
 
 
@@ -1531,9 +2103,17 @@ app.post("/demo/link", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const base = process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
   res.json({ ok: true, code, url: `${base}/d/${code}` });
 }));
+
+
+
+
 
 
 
@@ -1549,12 +2129,20 @@ app.get("/d/:code", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
 /* ---------------------------
    Metrics
    GET /metrics?token=...&days=7
 ----------------------------*/
 app.get("/metrics", asyncHandler(async (req, res) => {
   setNoStore(res);
+
+
+
+
 
 
 
@@ -1566,9 +2154,17 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const site_id = site.site_id;
   const bizEmail = (site.owner_email || "owner@example.com").toLowerCase();
   const days = normalizeDays(req.query.days);
+
+
+
+
 
 
 
@@ -1587,7 +2183,15 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const startDateInterval = `${days - 1} days`;
+
+
+
+
 
 
 
@@ -1609,7 +2213,15 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const visits_range = trendRes.rows.reduce((sum, r) => sum + (r.visits || 0), 0);
+
+
+
+
 
 
 
@@ -1632,6 +2244,10 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const deviceRes = await pool.query(
     `
     SELECT
@@ -1644,6 +2260,10 @@ app.get("/metrics", asyncHandler(async (req, res) => {
     `,
     [site_id, days]
   );
+
+
+
+
 
 
 
@@ -1664,6 +2284,10 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const lastEventRes = await pool.query(
     `
     SELECT event_name, page_type, device, created_at
@@ -1678,9 +2302,17 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const leads = goalsRangeRes.rows[0]?.leads || 0;
   const purchases = goalsRangeRes.rows[0]?.purchases || 0;
   const cta_clicks = goalsRangeRes.rows[0]?.cta_clicks || 0;
+
+
+
+
 
 
 
@@ -1691,12 +2323,20 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const totalRangeViews = topPagesRangeRes.rows.reduce((s, r) => s + (r.views || 0), 0);
   const top_pages_range = topPagesRangeRes.rows.map((r) => ({
     page_type: r.page_type,
     views: r.views,
     share: totalRangeViews ? Math.round((r.views / totalRangeViews) * 100) : 0
   }));
+
+
+
+
 
 
 
@@ -1727,6 +2367,14 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
 /* ---------------------------
    CRM (Leads)
    GET /crm?token=...&limit=100
@@ -1738,6 +2386,10 @@ app.get("/crm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const token = req.query.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
@@ -1745,7 +2397,15 @@ app.get("/crm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const limit = Math.min(parseInt(req.query.limit || "100", 10), 300);
+
+
+
+
 
 
 
@@ -1762,8 +2422,16 @@ app.get("/crm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   res.json({ ok: true, leads: r.rows });
 }));
+
+
+
+
 
 
 
@@ -1776,14 +2444,26 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
 
 
 
+
+
+
+
   const s = status ? String(status).trim().slice(0, 40) : null;
   const n = notes ? String(notes).trim().slice(0, 2000) : null;
+
+
+
+
 
 
 
@@ -1800,9 +2480,21 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   if (!r.rows.length) return res.status(404).json({ ok: false, error: "Lead not found" });
   res.json({ ok: true, lead: r.rows[0] });
 }));
+
+
+
+
+
+
+
+
 
 
 
@@ -1818,11 +2510,19 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
 // List / search clients
 app.get("/crm/clients", asyncHandler(async (req, res) => {
   setNoStore(res);
   const token = req.query.token;
   const q = String(req.query.q || "").trim().toLowerCase();
+
+
+
+
 
 
 
@@ -1833,12 +2533,20 @@ app.get("/crm/clients", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const params = [site.site_id];
   let where = "";
   if (q) {
     params.push("%" + q + "%");
     where = " AND (LOWER(COALESCE(full_name,'')) LIKE $2 OR LOWER(COALESCE(primary_email,'')) LIKE $2 OR LOWER(COALESCE(primary_phone,'')) LIKE $2)";
   }
+
+
+
+
 
 
 
@@ -1855,8 +2563,16 @@ app.get("/crm/clients", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   res.json({ ok: true, clients: r.rows });
 }));
+
+
+
+
 
 
 
@@ -1870,6 +2586,10 @@ app.post("/crm/clients", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const full_name = String(req.body?.full_name || "").trim();
   const email = String(req.body?.email || "").trim();
   const phone = String(req.body?.phone || "").trim();
@@ -1878,9 +2598,17 @@ app.post("/crm/clients", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   if (!full_name && !email && !phone) {
     return res.status(400).json({ ok: false, error: "Provide at least one of: full_name, email, phone" });
   }
+
+
+
+
 
 
 
@@ -1894,8 +2622,16 @@ app.post("/crm/clients", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   res.json({ ok: true, client: c });
 }));
+
+
+
+
 
 
 
@@ -1909,9 +2645,17 @@ app.get("/crm/client", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
   if (!client_id) return res.status(400).json({ ok: false, error: "client_id required" });
+
+
+
+
 
 
 
@@ -1925,10 +2669,18 @@ app.get("/crm/client", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const ids = await pool.query(
     `SELECT kind, value FROM crm_identities WHERE site_id=$1 AND client_id=$2 ORDER BY kind, created_at DESC`,
     [site.site_id, client_id]
   );
+
+
+
+
 
 
 
@@ -1946,8 +2698,16 @@ app.get("/crm/client", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   res.json({ ok: true, client: c.rows[0], identities: ids.rows, activities: acts.rows });
 }));
+
+
+
+
 
 
 
@@ -1958,6 +2718,10 @@ app.get("/crm/review", asyncHandler(async (req, res) => {
   const token = req.query.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
 
 
 
@@ -1977,8 +2741,16 @@ app.get("/crm/review", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   res.json({ ok: true, queue: r.rows });
 }));
+
+
+
+
 
 
 
@@ -1992,6 +2764,10 @@ app.post("/crm/review/confirm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const mid = parseInt(match_id || "0", 10);
   const cid = parseInt(client_id || "0", 10);
   if (!mid || !cid) return res.status(400).json({ ok: false, error: "match_id and client_id required" });
@@ -1999,9 +2775,17 @@ app.post("/crm/review/confirm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   // validate client belongs to site
   const c = await pool.query(`SELECT id FROM crm_clients WHERE site_id=$1 AND id=$2 LIMIT 1`, [site.site_id, cid]);
   if (!c.rows.length) return res.status(404).json({ ok:false, error:"Client not found" });
+
+
+
+
 
 
 
@@ -2017,8 +2801,16 @@ app.post("/crm/review/confirm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   res.json({ ok: true, match: r.rows[0] });
 }));
+
+
+
+
 
 
 
@@ -2032,8 +2824,16 @@ app.post("/crm/review/reject", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const mid = parseInt(match_id || "0", 10);
   if (!mid) return res.status(400).json({ ok: false, error: "match_id required" });
+
+
+
+
 
 
 
@@ -2046,8 +2846,16 @@ app.post("/crm/review/reject", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   res.json({ ok: true, match: r.rows[0] });
 }));
+
+
+
+
 
 
 
@@ -2062,9 +2870,17 @@ app.post("/crm/ingest/email", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const from_email = normEmail(req.body?.from_email);
   const to_email = normEmail(req.body?.to_email);
   if (!from_email && !to_email) return res.status(400).json({ ok:false, error:"from_email or to_email required" });
+
+
+
+
 
 
 
@@ -2087,8 +2903,16 @@ app.post("/crm/ingest/email", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   res.json({ ok:true, ...out });
 }));
+
+
+
+
 
 
 
@@ -2103,8 +2927,16 @@ app.post("/crm/ingest/call", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const phone = normPhone(req.body?.phone);
   if (!phone) return res.status(400).json({ ok:false, error:"phone required" });
+
+
+
+
 
 
 
@@ -2125,8 +2957,20 @@ app.post("/crm/ingest/call", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   res.json({ ok:true, ...out });
 }));
+
+
+
+
+
+
+
+
 
 
 
@@ -2144,8 +2988,16 @@ app.get("/reports", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const site = await getSiteByToken(req.query.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+
+
+
 
 
 
@@ -2165,14 +3017,26 @@ app.get("/reports", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
 app.get("/reports/latest", asyncHandler(async (req, res) => {
   setNoStore(res);
 
 
 
 
+
+
+
+
   const site = await getSiteByToken(req.query.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+
+
+
 
 
 
@@ -2189,9 +3053,17 @@ app.get("/reports/latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
   res.json({ ok: true, report: r.rows[0] });
 }));
+
+
+
+
 
 
 
@@ -2202,8 +3074,16 @@ app.get("/reports/by-date", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const site = await getSiteByToken(req.query.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+
+
+
 
 
 
@@ -2212,6 +3092,10 @@ app.get("/reports/by-date", asyncHandler(async (req, res) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return res.status(400).json({ ok: false, error: "date must be YYYY-MM-DD" });
   }
+
+
+
+
 
 
 
@@ -2228,9 +3112,17 @@ app.get("/reports/by-date", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   if (!r.rows.length) return res.status(404).json({ ok: false, error: "Report not found for that date" });
   res.json({ ok: true, report: r.rows[0] });
 }));
+
+
+
+
 
 
 
@@ -2247,8 +3139,16 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const site = await getSiteByToken(req.query.token || req.body?.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Provide ?token=..." });
+
+
+
+
 
 
 
@@ -2261,6 +3161,10 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const leadRate = clamp01(req.body?.lead_rate ?? 0.02);
   const purchaseRate = clamp01(req.body?.purchase_rate ?? 0.004);
   const ctaRate = clamp01(req.body?.cta_rate ?? 0.06);
@@ -2268,8 +3172,16 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const pages = ["/", "/pricing", "/services", "/about", "/contact", "/blog", "/faq", "/checkout"];
   let inserted = 0;
+
+
+
+
 
 
 
@@ -2282,9 +3194,17 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
     for (let i = 0; i < eventsPerDay; i++) {
       const seconds = Math.floor(Math.random() * 86400);
       const ts = new Date(dayStart.getTime() + seconds * 1000);
+
+
+
+
 
 
 
@@ -2300,7 +3220,15 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
       const device = Math.random() < 0.62 ? "mobile" : "desktop";
+
+
+
+
 
 
 
@@ -2311,6 +3239,10 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
         [site_id, page, device, ts.toISOString()]
       );
       inserted++;
+
+
+
+
 
 
 
@@ -2334,6 +3266,8 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
         inserted++;
 
 
+
+
         // Also seed CRM lead rows so the CRM tab is populated (not just analytics).
         try {
           const leadNames = ["Jordan Lee","Ava Martinez","Noah Patel","Mia Chen","Ethan Brooks","Sophia Rivera","Liam Johnson","Olivia King"];
@@ -2345,11 +3279,15 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           const notes = "Demo lead created by seed. Interested in pricing / next steps.";
 
 
+
+
           await pool.query(
             `INSERT INTO crm_leads (site_id, email, name, phone, source_page, status, notes, created_at)
              VALUES ($1,$2,$3,$4,$5,'new',$6,$7)`,
             [site_id, safeEmail(email), nm, phone, "/contact", notes, ts.toISOString()]
           );
+
+
 
 
           // CRM v2: create client + activity (best-effort)
@@ -2372,6 +3310,8 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
         } catch (e) {}
 
 
+
+
       } else if (roll < purchaseRate + leadRate + ctaRate) {
         await pool.query(
           `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
@@ -2390,12 +3330,22 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
   // ---------------------------
   // CRM demo seed (clients + activities)
   // ---------------------------
   // This makes the CRM tab feel "alive" for demos.
   try {
     const bizEmail = (site.owner_email || "owner@example.com").toLowerCase();
+
+
 
 
     const demoClients = [
@@ -2406,8 +3356,12 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
     ];
 
 
+
+
     const baseNow = new Date();
     const daysAgo = (n) => new Date(baseNow.getTime() - n * 24 * 60 * 60 * 1000);
+
+
 
 
     // Seed clients
@@ -2418,6 +3372,8 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
         phone: c.phone,
         stage: c.stage
       });
+
+
 
 
       await pool.query(
@@ -2441,9 +3397,13 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       );
 
 
+
+
       // ensure name identity too (helps fuzzy matching)
       if (c.name) await addIdentity(site_id, client.id, "name", normName(c.name));
     }
+
+
 
 
     // Seed a handful of activities to populate the CRM views
@@ -2464,6 +3424,8 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
     );
 
 
+
+
     await createActivityWithMatch(
       site_id,
       {
@@ -2481,6 +3443,8 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
     );
 
 
+
+
     await createActivityWithMatch(
       site_id,
       {
@@ -2495,6 +3459,8 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       },
       { phone: "+1 (555) 201-1002", name: "Brightside Dental" }
     );
+
+
 
 
     await createActivityWithMatch(
@@ -2514,6 +3480,8 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
     );
 
 
+
+
     await createActivityWithMatch(
       site_id,
       {
@@ -2529,6 +3497,8 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       },
       { emailA: "manager@northstarfitness.com", emailB: bizEmail, name: "Northstar Fitness" }
     );
+
+
 
 
     await createActivityWithMatch(
@@ -2548,6 +3518,8 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
     );
 
 
+
+
     // unmatched example (shows up in review queue)
     await createActivityWithMatch(
       site_id,
@@ -2563,6 +3535,8 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       },
       { emailA: "someone@unknown-example.com", emailB: bizEmail, name: "Unknown" }
     );
+
+
 
 
     // Sync last_touch_at to latest matched activity per client
@@ -2586,6 +3560,8 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
   }
 
 
+
+
 const sample1 =
     "Summary:\nTraffic is concentrating on Pricing and Services.\n\n" +
     "Trend:\nVisitors are exploring multiple pages.\n\n" +
@@ -2595,11 +3571,19 @@ const sample1 =
 
 
 
+
+
+
+
   const sample2 =
     "Summary:\nYou’re getting steady visits and people are checking Pricing.\n\n" +
     "Trend:\nInterest is consistent — conversion work likely helps.\n\n" +
     "Next steps:\n1) Strongest offer at top of Pricing\n2) Add a 3-step “what happens next”\n3) Shorten forms + speed up pages\n\n" +
     "Metric to watch:\nCTA clicks";
+
+
+
+
 
 
 
@@ -2614,12 +3598,20 @@ const sample1 =
 
 
 
+
+
+
+
   await pool.query(
     `INSERT INTO daily_reports (site_id, report_date, report_text)
      VALUES ($1, CURRENT_DATE, $2)
      ON CONFLICT (site_id, report_date) DO NOTHING`,
     [site_id, sample2]
   );
+
+
+
+
 
 
 
@@ -2639,11 +3631,19 @@ const sample1 =
 
 
 
+
+
+
+
 /* ---------------------------
    AI endpoints (FULL AI only)
 ----------------------------*/
 app.post("/api/ai/chat", asyncHandler(async (req, res) => {
   setNoStore(res);
+
+
+
+
 
 
 
@@ -2655,8 +3655,16 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const gate = planGate(site, ["full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+
+
+
 
 
 
@@ -2669,7 +3677,15 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const days = 30;
+
+
+
+
 
 
 
@@ -2691,6 +3707,10 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const topPagesRes = await pool.query(
     `
     SELECT page_type, COUNT(*)::int AS views
@@ -2704,6 +3724,10 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
     `,
     [site.site_id, days]
   );
+
+
+
+
 
 
 
@@ -2722,6 +3746,10 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const context = {
     site_id: site.site_id,
     plan: site.plan,
@@ -2734,13 +3762,25 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
 const system = `
 You are Constrava's analytics coach.
 
 
 
 
+
+
+
+
 Return plain text formatted like this (keep the line breaks):
+
+
+
+
 
 
 
@@ -2752,9 +3792,17 @@ WHAT'S HAPPENING
 
 
 
+
+
+
+
 WHY IT MATTERS
 - bullet
 - bullet
+
+
+
+
 
 
 
@@ -2767,8 +3815,16 @@ NEXT BEST ACTIONS
 
 
 
+
+
+
+
 KPI TO WATCH
 - KPI: <name> — <why>
+
+
+
+
 
 
 
@@ -2778,6 +3834,18 @@ Rules:
 - Keep bullets short (one line each)
 - No long paragraphs
 `.trim();
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2800,6 +3868,10 @@ Rules:
 
 
 
+
+
+
+
   const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -2816,6 +3888,10 @@ Rules:
 
 
 
+
+
+
+
   const aiData = await aiRes.json();
   const reply = aiData?.choices?.[0]?.message?.content;
   if (!reply) return res.status(500).json({ ok: false, error: "AI response missing" });
@@ -2823,8 +3899,20 @@ Rules:
 
 
 
+
+
+
+
   res.json({ ok: true, reply });
 }));
+
+
+
+
+
+
+
+
 
 
 
@@ -2843,9 +3931,17 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const token = req.query.token || req.body?.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok:false, error:"Unauthorized" });
+
+
+
+
 
 
 
@@ -2856,9 +3952,17 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
   const question = String(req.body?.question || "").trim();
   if (!question) return res.status(400).json({ ok:false, error:"question required" });
+
+
+
+
 
 
 
@@ -2872,6 +3976,10 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
      LIMIT 120`,
     [site.site_id]
   );
+
+
+
+
 
 
 
@@ -2892,12 +4000,20 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const reviewCountRes = await pool.query(
     `SELECT COUNT(*)::int as needs_review
      FROM crm_activity_matches
      WHERE site_id=$1 AND status='needs_review'`,
     [site.site_id]
   );
+
+
+
+
 
 
 
@@ -2913,8 +4029,16 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const system = `
 You are Constrava's CRM autopilot.
+
+
+
+
 
 
 
@@ -2929,6 +4053,10 @@ The user will ask questions like:
 
 
 
+
+
+
+
 You MUST:
 - Answer with structured, scannable text (no wall of text).
 - If client matching is uncertain, say so and show your best guess + confidence.
@@ -2937,7 +4065,15 @@ You MUST:
 
 
 
+
+
+
+
 Return EXACTLY this format:
+
+
+
+
 
 
 
@@ -2948,9 +4084,17 @@ ANSWER
 
 
 
+
+
+
+
 EVIDENCE
 - <2–6 bullets referencing concrete data points (dates/emails/calls/subjects)>
 - If uncertain, include: "Uncertainty: <why>"
+
+
+
+
 
 
 
@@ -2963,8 +4107,16 @@ NEXT ACTIONS
 
 
 
+
+
+
+
 CONFIDENCE
 - <0–100% and one-sentence reason>
+
+
+
+
 
 
 
@@ -2978,11 +4130,19 @@ Rules:
 
 
 
+
+
+
+
   const messages = [
     { role:"system", content: system },
     { role:"user", content: "CRM context JSON:\n" + JSON.stringify(context) },
     { role:"user", content: question }
   ];
+
+
+
+
 
 
 
@@ -3000,6 +4160,10 @@ Rules:
 
 
 
+
+
+
+
   const aiData = await aiRes.json().catch(()=>({}));
   const reply = aiData?.choices?.[0]?.message?.content;
   if (!reply) return res.status(500).json({ ok:false, error:"AI response missing" });
@@ -3007,8 +4171,16 @@ Rules:
 
 
 
+
+
+
+
   res.json({ ok:true, reply });
 }));
+
+
+
+
 
 
 
@@ -3020,13 +4192,25 @@ app.post("/generate-report", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const gate = planGate(site, ["full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
 
 
 
 
+
+
+
+
   const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
+
+
+
+
 
 
 
@@ -3048,7 +4232,15 @@ app.post("/generate-report", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const metrics = metricsRes.rows[0];
+
+
+
+
 
 
 
@@ -3071,6 +4263,10 @@ You are Constrava's analytics assistant.
 
 
 
+
+
+
+
 Write for a busy small-business owner.
 Make it friendly, simple, and easy to scan.
 Avoid jargon unless explained simply.
@@ -3086,7 +4282,15 @@ ${JSON.stringify(metrics)}
 
 
 
+
+
+
+
 Return EXACTLY this format:
+
+
+
+
 
 
 
@@ -3097,8 +4301,16 @@ SUMMARY:
 
 
 
+
+
+
+
 HIGHLIGHTS:
 - (max 3 bullets, short)
+
+
+
+
 
 
 
@@ -3109,8 +4321,16 @@ WHAT HAPPENED:
 
 
 
+
+
+
+
 WHY IT MATTERS:
 - (max 3 bullets)
+
+
+
+
 
 
 
@@ -3119,6 +4339,10 @@ NEXT STEPS:
 1) (step)
 2) (step)
 3) (step)
+
+
+
+
 
 
 
@@ -3133,8 +4357,16 @@ KPI: <name> — <value> (target: <target>)
 
 
 
+
+
+
+
   const aiData = await aiRes.json().catch(() => ({}));
   const reportText = aiData?.choices?.[0]?.message?.content;
+
+
+
+
 
 
 
@@ -3146,6 +4378,14 @@ KPI: <name> — <value> (target: <target>)
       ai_preview: JSON.stringify(aiData).slice(0, 800)
     });
   }
+
+
+
+
+
+
+
+
 
 
 
@@ -3166,14 +4406,26 @@ KPI: <name> — <value> (target: <target>)
 
 
 
+
+
+
+
   res.json({ ok: true, report: saved.rows[0] });
 }));
 
 
 
 
+
+
+
+
 app.post("/generate-action-plan", asyncHandler(async (req, res) => {
   setNoStore(res);
+
+
+
+
 
 
 
@@ -3185,14 +4437,26 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const gate = planGate(site, ["full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
 
 
 
 
+
+
+
+
   const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
   const days = 30;
+
+
+
+
 
 
 
@@ -3209,6 +4473,10 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
     `,
     [site.site_id, days]
   );
+
+
+
+
 
 
 
@@ -3231,6 +4499,10 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const goalsRes = await pool.query(
     `
     SELECT
@@ -3247,6 +4519,10 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const payload = {
     site_id: site.site_id,
     window_days: days,
@@ -3254,6 +4530,10 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
     top_pages: topPagesRes.rows,
     goals: goalsRes.rows[0] || { leads: 0, purchases: 0, cta_clicks: 0 }
   };
+
+
+
+
 
 
 
@@ -3283,9 +4563,17 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const aiData = await aiRes.json();
   const text = aiData?.choices?.[0]?.message?.content;
   if (!text) return res.status(500).json({ ok: false, error: "AI response missing" });
+
+
+
+
 
 
 
@@ -3302,8 +4590,16 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   res.json({ ok: true, report: saved.rows[0] });
 }));
+
+
+
+
 
 
 
@@ -3319,14 +4615,26 @@ app.post("/email-latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Invalid token" });
 
 
 
 
+
+
+
+
   const gate = planGate(site, ["pro", "full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+
+
+
 
 
 
@@ -3344,8 +4652,16 @@ app.post("/email-latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const RESEND_API_KEY = requireEnv("RESEND_API_KEY");
   const from = requireEnv("FROM_EMAIL");
+
+
+
+
 
 
 
@@ -3367,9 +4683,17 @@ app.post("/email-latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const emailData = await emailRes.json();
   res.json({ ok: true, resend: emailData });
 }));
+
+
+
+
 
 
 
@@ -3386,8 +4710,16 @@ app.post("/demo/activate-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const { token, plan } = req.body || {};
   const allowed = new Set(["starter", "pro", "full_ai"]);
+
+
+
+
 
 
 
@@ -3398,8 +4730,16 @@ app.post("/demo/activate-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
 
 
 
@@ -3412,8 +4752,16 @@ app.post("/demo/activate-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   res.json({ ok: true, updated: r.rows[0] });
 }));
+
+
+
+
 
 
 
@@ -3430,6 +4778,10 @@ app.get("/storefront", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const token = req.query.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
@@ -3437,9 +4789,17 @@ app.get("/storefront", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const site_id = site.site_id;
   const bizEmail = (site.owner_email || "owner@example.com").toLowerCase();
   const plan = site.plan || "unpaid";
+
+
+
+
 
 
 
@@ -3523,6 +4883,10 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
 
 
 
+
+
+
+
     <div class="card">
       <h3 class="name">Pro</h3>
       <div class="price">$19 <span class="muted">/mo</span></div>
@@ -3533,6 +4897,10 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
       </ul>
       <button class="btn" onclick="activate('pro')">Activate Pro</button>
     </div>
+
+
+
+
 
 
 
@@ -3551,9 +4919,17 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
 
 
 
+
+
+
+
       <div class="note">
         <b>Note:</b> These buttons call a demo activation endpoint. Later, Stripe will call a real webhook after payment.
       </div>
+
+
+
+
 
 
 
@@ -3566,9 +4942,17 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
 
 
 
+
+
+
+
 <script>
 const token = new URLSearchParams(location.search).get("token");
 const statusEl = document.getElementById("status");
+
+
+
+
 
 
 
@@ -3608,12 +4992,28 @@ async function activate(plan){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    Dashboard UI
    GET /dashboard?token=...
 ----------------------------*/
 app.get("/dashboard", asyncHandler(async (req, res) => {
   setNoStore(res);
+
+
+
+
 
 
 
@@ -3625,13 +5025,25 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   const plan = site.plan || "unpaid";
   if (plan === "unpaid") return res.redirect("/storefront?token=" + encodeURIComponent(token));
 
 
 
 
+
+
+
+
   res.setHeader("Content-Type", "text/html; charset=utf-8");
+
+
+
+
 
 
 
@@ -3689,11 +5101,19 @@ body{
 
 
 
+
+
+
+
 .repWrap{
   display:grid;
   grid-template-columns:repeat(12,1fr);
   gap:12px;
 }
+
+
+
+
 
 
 
@@ -3705,7 +5125,15 @@ body{
 
 
 
+
+
+
+
 @media (max-width: 980px){ .repCard{ grid-column: 1 / -1; } }
+
+
+
+
 
 
 
@@ -3746,6 +5174,10 @@ body{
   background: rgba(96,165,250,.10);
 }
 .repKpi b{ font-size:14px; }
+
+
+
+
 
 
 
@@ -3797,6 +5229,7 @@ input,select{
 }
 select{appearance:none;-webkit-appearance:none;-moz-appearance:none}
 select option{color:var(--text)}
+
 
 button:hover,a:hover,select:hover{border-color: var(--accent2)}
 /* Buttons: purple + white theme (no "greyed" look) */
@@ -3860,6 +5293,8 @@ pre{
 .rightBtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 
 
+
+
 .tabBtn{
   border:1px solid var(--border);
   background: var(--panel2);
@@ -3890,6 +5325,10 @@ pre{
 
 
 
+
+
+
+
     <div class="row">
       <select id="days">
         <option value="1">1 day</option>
@@ -3911,13 +5350,23 @@ pre{
 
 
 
+
+
+
+
+
+
     <div class="tabs" style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 6px">
       <button class="tabBtn active" id="tabAnalytics" type="button">Analytics</button>
       <button class="tabBtn" id="tabCRMTop" type="button">CRM</button>
     </div>
 
 
+
+
     <div id="sectionAnalytics">
+
+
 
 
   <div class="grid">
@@ -3946,11 +5395,19 @@ pre{
 
 
 
+
+
+
+
     <div class="card span12">
       <div style="font-weight:950">Latest AI Report</div>
       <div class="muted">Your most recent report (or seed sample).</div>
       <div class="divider"></div>
       <div id="latestAiReportCards" class="repWrap">Loading latest report…</div>
+
+
+
+
 
 
 
@@ -3963,7 +5420,15 @@ pre{
 
 
 
+
+
+
+
     </div>
+
+
+
+
 
 
 
@@ -3977,11 +5442,19 @@ pre{
 
 
 
+
+
+
+
     <div class="card span3">
       <div class="muted">Visits in range</div>
       <div class="kpi" id="kpiRange">—</div>
       <div class="muted" id="kpiRangeSub"></div>
     </div>
+
+
+
+
 
 
 
@@ -3995,11 +5468,19 @@ pre{
 
 
 
+
+
+
+
     <div class="card span3">
       <div class="muted">Purchase rate</div>
       <div class="kpi" id="kpiPurchaseRate">—</div>
       <div class="muted">Track “purchase” events</div>
     </div>
+
+
+
+
 
 
 
@@ -4019,6 +5500,10 @@ pre{
 
 
 
+
+
+
+
       <div class="chartBox" style="margin-top:10px">
         <svg id="trendSvg" viewBox="0 0 900 260" role="img" aria-label="Traffic trend chart"></svg>
       </div>
@@ -4026,7 +5511,15 @@ pre{
 
 
 
+
+
+
+
       <div class="divider"></div>
+
+
+
+
 
 
 
@@ -4042,10 +5535,18 @@ pre{
 
 
 
+
+
+
+
       <div class="muted" style="margin-top:10px">
         Seeder requires <span class="mono">ENABLE_DEMO_SEED=true</span>. Sim buttons work any time.
       </div>
     </div>
+
+
+
+
 
 
 
@@ -4075,6 +5576,10 @@ pre{
 
 
 
+
+
+
+
     <div class="card span6">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
@@ -4089,6 +5594,10 @@ pre{
 
 
 
+
+
+
+
     <div class="card span6">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
@@ -4097,6 +5606,10 @@ pre{
         </div>
         <span class="pill">Visits → Leads → Purchases</span>
       </div>
+
+
+
+
 
 
 
@@ -4116,6 +5629,10 @@ pre{
 
 
 
+
+
+
+
         <div class="card" style="grid-column: span 6; background: var(--panel2); box-shadow:none">
           <div class="muted">Goals in range</div>
           <div class="row" style="margin-top:6px">
@@ -4129,6 +5646,10 @@ pre{
         </div>
       </div>
     </div>
+
+
+
+
 
 
 
@@ -4157,10 +5678,22 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
 <details style="margin-top:10px">
   <summary class="muted" style="cursor:pointer">Show raw report</summary>
   <pre id="report" class="mono" style="max-height:320px;overflow:auto">Loading…</pre>
 </details>
+
+
+
+
 
 
 
@@ -4175,11 +5708,16 @@ pre{
   </div>
 
 
+
+
 </div>
+
+
 
 
 <div id="sectionCRM" style="display:none">
   <div class="grid">
+
 
     <!-- CRM Tools (always visible above lists) -->
     <div class="card span12" id="crmToolsCard">
@@ -4191,7 +5729,9 @@ pre{
         <span class="pill" id="crmToolsStatus">CRM tools</span>
       </div>
 
+
       <div class="divider"></div>
+
 
       <div class="grid" style="margin-top:0;gap:10px">
         <!-- Lead tools -->
@@ -4206,17 +5746,21 @@ pre{
           </div>
         </div>
 
+
         <!-- Client tools -->
         <div class="card span6" style="background: var(--panel2); box-shadow:none">
           <div style="font-weight:950">Client tools</div>
           <div class="muted">Search on the server, or create a client.</div>
+
 
           <div class="row" style="margin-top:8px">
             <input id="crmClientSearch" placeholder="Search clients by name/email/phone…" style="flex:1;min-width:220px" />
             <button class="btn" id="crmClientSearchBtn" type="button">Search</button>
           </div>
 
+
           <div class="divider"></div>
+
 
           <div class="row">
             <input id="crmNewName" placeholder="Full name" style="flex:1;min-width:140px" />
@@ -4225,6 +5769,7 @@ pre{
             <button class="btnGreen" id="crmCreateClient" type="button">Add</button>
           </div>
         </div>
+
 
         <!-- CRM Chat -->
         <div class="card span12" style="background: var(--panel2); box-shadow:none">
@@ -4235,7 +5780,9 @@ pre{
             </div>
           </div>
 
+
           <div class="divider"></div>
+
 
           <div class="row">
             <input id="crmChatInput" placeholder="Search CRM…" style="flex:1;min-width:240px" />
@@ -4246,6 +5793,7 @@ pre{
         </div>
       </div>
     </div>
+
 
     <!-- Lists / panels -->
     <div class="card span6" id="crmLeadsCard">
@@ -4262,6 +5810,7 @@ pre{
       </div>
     </div>
 
+
     <div class="card span6" id="crmClientsCard">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
@@ -4271,21 +5820,26 @@ pre{
         <span class="pill">AI + Matching</span>
       </div>
 
+
       <div class="divider"></div>
+
 
       <details id="crmClientsPanel" open>
         <summary class="muted" style="cursor:pointer;user-select:none;padding:6px 2px">
           Client list (click to collapse)
         </summary>
 
+
         <div class="row" style="margin-top:8px">
           <input id="crmClientFilter" placeholder="Filter loaded clients…" style="flex:1;min-width:220px" />
           <button class="btnGhost" id="crmClientFilterClear" type="button">Clear</button>
         </div>
 
+
         <div class="list" id="crmClients" style="margin-top:10px">Loading…</div>
       </details>
     </div>
+
 
     <div class="card span6" id="crmDetailCard">
       <div style="font-weight:950">Client status (auto-inferred)</div>
@@ -4294,6 +5848,7 @@ pre{
       <pre id="crmClientDetail">Pick a client from the list.</pre>
     </div>
 
+
     <div class="card span6" id="crmReviewCard">
       <div style="font-weight:950">Review queue</div>
       <div class="muted">Unmatched or low-confidence activities. Confirm or reject.</div>
@@ -4301,11 +5856,20 @@ pre{
       <div class="list" id="crmReview">Loading…</div>
     </div>
 
+
   </div>
 </div>
 window.CONSTRAVA_TOKEN = ${JSON.stringify(String(token || ""))};
 </script>
 <script src="/dashboard.js"></script>
+
+
+
+
+
+
+
+
 
 
 
@@ -4321,1603 +5885,471 @@ window.CONSTRAVA_TOKEN = ${JSON.stringify(String(token || ""))};
 
 
 
+
+
+
+
 /* ---------------------------
    Dashboard client JS
    GET /dashboard.js?token=...
 ----------------------------*/
+
 app.get("/dashboard.js", (req, res) => {
   setNoStore(res);
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
 
-
-
-
+  // IMPORTANT: Do NOT use backticks inside this string.
+  // A single JS parse error here will make ALL dashboard buttons appear dead.
   res.send(String.raw`
 (() => {
   "use strict";
-
-
-
 
   const TOKEN =
     String(window.CONSTRAVA_TOKEN || "") ||
     new URLSearchParams(location.search).get("token") ||
     "";
 
-
-
-
   const $ = (id) => document.getElementById(id);
 
-
-  function setActiveTab(which){
-    const secA = $("sectionAnalytics");
-    const secC = $("sectionCRM");
-    const btnA = $("tabAnalytics");
-    const btnC = $("tabCRMTop");
-    const topC = $("tabCRM");
-
-
-    if (secA) secA.style.display = (which === "analytics") ? "" : "none";
-    if (secC) secC.style.display = (which === "crm") ? "" : "none";
-
-
-    if (btnA) btnA.classList.toggle("active", which === "analytics");
-    if (btnC) btnC.classList.toggle("active", which === "crm");
+  function setText(id, v){
+    const el = $(id);
+    if (el) el.textContent = String(v ?? "");
   }
 
+  function setStatus(t){
+    const el = $("status");
+    if (el) el.textContent = "Status: " + String(t || "ready");
+  }
+
+  async function apiGet(path, params){
+    const u = new URL(path, location.origin);
+    u.searchParams.set("token", TOKEN);
+    if (params){
+      for (const k of Object.keys(params)){
+        if (params[k] !== undefined && params[k] !== null) u.searchParams.set(k, String(params[k]));
+      }
+    }
+    const r = await fetch(u.toString(), { cache: "no-store" });
+    return r.json();
+  }
+
+  async function apiPost(path, body){
+    const u = new URL(path, location.origin);
+    u.searchParams.set("token", TOKEN);
+    const r = await fetch(u.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {})
+    });
+    return r.json();
+  }
+
+  function activeDays(){
+    const sel = $("days");
+    const v = sel ? parseInt(sel.value || "7", 10) : 7;
+    return Number.isFinite(v) ? v : 7;
+  }
 
   function bindTabs(){
     const btnA = $("tabAnalytics");
     const btnC = $("tabCRMTop");
     const topC = $("tabCRM");
-
-
-    if (btnA) btnA.addEventListener("click", () => setActiveTab("analytics"));
-    if (btnC) btnC.addEventListener("click", () => setActiveTab("crm"));
-    if (topC) topC.addEventListener("click", () => setActiveTab("crm"));
-  }
-
-
-
-
-
-
-  function setStatus(t){
-    const el = $("status");
-    if (el) el.textContent = "Status: " + t;
-  }
-
-
-
-
-  function pct(n){
-    return (Math.round((Number(n) || 0) * 10000) / 100).toFixed(2) + "%";
-  }
-
-
-
-
-  function clamp(n, min, max) {
-    n = Number(n) || 0;
-    return Math.max(min, Math.min(max, n));
-  }
-
-
-
-
-  function esc(s) {
-    return String(s || "").replace(/[&<>"']/g, (c) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
-    }[c]));
-  }
-
-
-
-
-  function renderTrend(svgEl, trend) {
-    if (!svgEl) return;
-    const W = 900, H = 260, p = 18;
-    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
-
-
-
-
-    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("x", "0");
-    bg.setAttribute("y", "0");
-    bg.setAttribute("width", String(W));
-    bg.setAttribute("height", String(H));
-    bg.setAttribute("rx", "14");
-    bg.setAttribute("fill", "rgba(15,23,42,.25)");
-    bg.setAttribute("stroke", "rgba(255,255,255,.10)");
-    svgEl.appendChild(bg);
-
-
-
-
-    const n = (trend && trend.length) ? trend.length : 0;
-    if (!n) return;
-
-
-
-
-    let maxV = 0, sumV = 0;
-    for (const r of trend) { maxV = Math.max(maxV, r.visits || 0); sumV += (r.visits || 0); }
-    const avg = sumV / n;
-
-
-
-
-    if ($("maxDay")) $("maxDay").textContent = String(maxV);
-    if ($("avgDay")) $("avgDay").textContent = String(Math.round(avg * 10) / 10);
-
-
-
-
-    const innerW = W - p * 2;
-    const innerH = H - p * 2;
-
-
-
-
-    const x = (i) => (n === 1 ? p + innerW / 2 : p + (i * innerW) / (n - 1));
-    const y = (v) => {
-      const m = Math.max(1, maxV);
-      const t = clamp(v / m, 0, 1);
-      return p + (1 - t) * innerH;
-    };
-
-
-
-
-    let d = "";
-    for (let i = 0; i < n; i++) d += (i === 0 ? "M " : " L ") + x(i) + " " + y(trend[i].visits || 0);
-
-
-
-
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", d);
-    path.setAttribute("stroke", "rgba(96,165,250,.90)");
-    path.setAttribute("stroke-width", "3");
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke-linecap", "round");
-    path.setAttribute("stroke-linejoin", "round");
-    svgEl.appendChild(path);
-  }
-
-
-
-
-  function renderDevice(svgEl, mobile, desktop) {
-    if (!svgEl) return;
-    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
-
-
-
-
-    const cx = 80, cy = 80, r = 50, w = 16;
-    const total = (mobile || 0) + (desktop || 0);
-    const m = total ? mobile / total : 0.5;
-
-
-
-
-    const start = -Math.PI / 2;
-    const mid = start + Math.PI * 2 * m;
-
-
-
-
-    function arc(a0, a1, color) {
-      const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
-      const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
-      const large = (a1 - a0) > Math.PI ? 1 : 0;
-
-
-
-
-      const pth = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      pth.setAttribute("d", "M " + x0 + " " + y0 + " A " + r + " " + r + " 0 " + large + " 1 " + x1 + " " + y1);
-      pth.setAttribute("stroke", color);
-      pth.setAttribute("stroke-width", String(w));
-      pth.setAttribute("fill", "none");
-      pth.setAttribute("stroke-linecap", "round");
-      svgEl.appendChild(pth);
+    const secA = $("sectionAnalytics");
+    const secC = $("sectionCRM");
+
+    function setActive(which){
+      if (secA) secA.style.display = which === "crm" ? "none" : "block";
+      if (secC) secC.style.display = which === "crm" ? "block" : "none";
+      if (btnA) btnA.classList.toggle("active", which !== "crm");
+      if (btnC) btnC.classList.toggle("active", which === "crm");
+      if (topC) topC.classList.toggle("active", which === "crm");
     }
 
+    if (btnA) btnA.addEventListener("click", () => setActive("analytics"));
+    if (btnC) btnC.addEventListener("click", () => setActive("crm"));
+    if (topC) topC.addEventListener("click", () => setActive("crm"));
 
-
-
-    const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    ring.setAttribute("cx", String(cx));
-    ring.setAttribute("cy", String(cy));
-    ring.setAttribute("r", String(r));
-    ring.setAttribute("stroke", "rgba(255,255,255,.12)");
-    ring.setAttribute("stroke-width", String(w));
-    ring.setAttribute("fill", "none");
-    svgEl.appendChild(ring);
-
-
-
-
-    arc(start, mid, "rgba(52,211,153,.90)");
-    arc(mid, start + Math.PI * 2, "rgba(96,165,250,.90)");
+    // default
+    setActive("analytics");
   }
 
+  // -------------------------
+  // Analytics UI
+  // -------------------------
+  async function refreshAnalytics(){
+    if (!TOKEN) return;
+    setStatus("loading...");
+    const days = activeDays();
 
-
-
-  function renderTopPages(container, rows) {
-    if (!container) return;
-    container.innerHTML = "";
-
-
-
-
-    if (!rows || !rows.length) {
-      container.textContent = "No page data yet.";
+    const m = await apiGet("/metrics", { days });
+    if (!m || !m.ok){
+      setStatus("error");
+      console.error(m);
       return;
     }
 
+    setText("kpiToday", m.visits_today ?? 0);
+    setText("kpiRange", m.visits_range ?? 0);
+    setText("kpiLeadRate", Math.round((m.conversion_rate || 0) * 10000) / 100 + "%");
+    setText("kpiPurchaseRate", Math.round((m.purchase_rate || 0) * 10000) / 100 + "%");
+    setText("leads", m.leads ?? 0);
+    setText("purchases", m.purchases ?? 0);
+    setText("cta", m.cta_clicks ?? 0);
 
-
-
-    for (const r of rows) {
-      const item = document.createElement("div");
-      item.className = "item";
-
-
-
-
-      const left = document.createElement("div");
-      left.style.minWidth = "160px";
-      left.style.maxWidth = "55%";
-      left.style.overflow = "hidden";
-      left.style.textOverflow = "ellipsis";
-      left.style.whiteSpace = "nowrap";
-      left.innerHTML =
-        "<b>" + esc(r.page_type || "/") + "</b>" +
-        "<div class='muted'>" + (r.views || 0) + " views • " + (r.share || 0) + "%</div>";
-
-
-
-
-      const barWrap = document.createElement("div");
-      barWrap.className = "barWrap";
-
-
-
-
-      const bar = document.createElement("div");
-      bar.className = "bar";
-
-
-
-
-      const fill = document.createElement("div");
-      fill.style.width = clamp(r.share || 0, 0, 100) + "%";
-
-
-
-
-      bar.appendChild(fill);
-      barWrap.appendChild(bar);
-
-
-
-
-      item.appendChild(left);
-      item.appendChild(barWrap);
-      container.appendChild(item);
-    }
-  }
-
-
-
-
-  
-  // ===== CRM (Leads) =====
-  let crmCache = [];
-
-
-
-
-  function fmtTime(iso){
+    // latest report preview (if present)
     try{
-      const d = new Date(iso);
-      if (isNaN(d.getTime())) return String(iso || "");
-      return d.toLocaleString();
-    }catch{ return String(iso || ""); }
+      const latest = await apiGet("/reports/latest");
+      if (latest && latest.ok && latest.report){
+        const box = $("latestAiReport");
+        if (box) box.textContent = latest.report.report_text || "";
+      }
+    } catch(e){}
+
+    setStatus("ready");
   }
 
-
-
-
-  function renderCRM(container, leads){
-    if (!container) return;
-    container.innerHTML = "";
-
-
-
-
-    const rows = Array.isArray(leads) ? leads : [];
-    crmCache = rows;
-
-
-
-
-    if (!rows.length){
-      container.textContent = "No leads yet.";
+  async function seedDemo(){
+    if (!TOKEN) return;
+    setStatus("seeding...");
+    const days = activeDays();
+    const r = await apiPost("/demo/seed", { days });
+    if (!r || !r.ok){
+      setStatus("error");
+      console.error(r);
+      alert(r && r.error ? r.error : "Seed failed");
       return;
     }
+    await refreshAnalytics();
+    await refreshCrmAll();
+    setStatus("ready");
+  }
 
+  async function genAiReport(){
+    if (!TOKEN) return;
+    setStatus("generating...");
+    const r = await apiPost("/reports/generate", { days: activeDays() });
+    if (!r || !r.ok){
+      setStatus("error");
+      console.error(r);
+      alert(r && r.error ? r.error : "Generate failed");
+      return;
+    }
+    await refreshAnalytics();
+    setStatus("ready");
+  }
 
+  // -------------------------
+  // CRM UI
+  // -------------------------
+  function renderLeads(leads){
+    const wrap = $("crmLeads");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    (leads || []).forEach((l) => {
+      const card = document.createElement("div");
+      card.className = "crmLeadRow";
+      const email = l.email || "(no email)";
+      const name = l.name || "";
+      const phone = l.phone || "";
+      const page = l.source_page || "";
+      const status = l.status || "";
+      const at = l.created_at ? new Date(l.created_at).toLocaleString() : "";
+      const notes = l.notes || "";
 
+      card.innerHTML =
+        '<div class="crmLeadMain">' +
+          '<div class="crmLeadTitle">' + escapeHtml(email) + '</div>' +
+          '<div class="crmLeadMeta">Name: ' + escapeHtml(name) +
+          (phone ? ' • Phone: ' + escapeHtml(phone) : '') +
+          (page ? ' • Page: ' + escapeHtml(page) : '') +
+          (status ? ' • Status: ' + escapeHtml(status) : '') +
+          (at ? ' • At: ' + escapeHtml(at) : '') +
+          '</div>' +
+          '<div class="crmLeadNotes">Notes: ' + escapeHtml(notes) + '</div>' +
+        '</div>' +
+        '<div class="crmLeadActions"><button class="btn" data-edit="' + l.id + '">Edit</button></div>';
 
-    for (const l of rows){
-      const item = document.createElement("div");
-      item.className = "item";
+      wrap.appendChild(card);
+    });
 
-
-
-
-      const left = document.createElement("div");
-      const title = (l.email || l.name || "(no email)") + "";
-      const sub = [
-        l.name ? ("Name: " + l.name) : null,
-        l.phone ? ("Phone: " + l.phone) : null,
-        l.source_page ? ("Page: " + l.source_page) : null,
-        ("Status: " + (l.status || "new")),
-        ("At: " + fmtTime(l.created_at))
-      ].filter(Boolean).join(" • ");
-
-
-
-
-      left.innerHTML =
-        "<b>" + esc(title) + "</b>" +
-        "<div class='muted'>" + esc(sub) + "</div>" +
-        (l.notes ? "<div class='muted' style='margin-top:6px'>Notes: " + esc(l.notes) + "</div>" : "");
-
-
-
-
-      const right = document.createElement("div");
-      right.style.display = "flex";
-      right.style.gap = "8px";
-      right.style.alignItems = "center";
-
-
-
-
-      const btn = document.createElement("button");
-      btn.className = "btnGhost";
-      btn.textContent = "Edit";
-      btn.addEventListener("click", async () => {
-        const newStatus = prompt("Status (e.g. new, contacted, won, lost):", l.status || "new");
+    // bind edit buttons
+    wrap.querySelectorAll("button[data-edit]").forEach((b) => {
+      b.addEventListener("click", async () => {
+        const id = b.getAttribute("data-edit");
+        const newStatus = prompt("Status? (new/contacted/qualified/won/lost)", "new");
         if (newStatus === null) return;
-        const newNotes = prompt("Notes (optional):", l.notes || "");
-        if (newNotes === null) return;
+        const newNotes = prompt("Notes (optional)", "");
+        const r = await apiPost("/crm/update", { lead_id: id, status: newStatus, notes: newNotes });
+        if (!r || !r.ok) alert(r && r.error ? r.error : "Update failed");
+        await refreshCrmLeads();
+      });
+    });
+  }
 
+  function renderClients(clients){
+    const wrap = $("crmClients");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    (clients || []).forEach((c) => {
+      const row = document.createElement("div");
+      row.className = "crmClientRow";
+      const name = c.full_name || "(unnamed)";
+      const email = c.primary_email || "";
+      const phone = c.primary_phone || "";
+      const stage = c.stage || "";
+      const health = c.health || "";
+      const last = c.last_touch_at ? new Date(c.last_touch_at).toLocaleString() : "";
 
+      row.innerHTML =
+        '<div class="crmClientMain">' +
+          '<div class="crmClientTitle">' + escapeHtml(name) + ' <span class="crmTag">' + escapeHtml(stage) + '</span></div>' +
+          '<div class="crmClientMeta">' +
+            (email ? "email: " + escapeHtml(email) + " • " : "") +
+            (phone ? "phone: " + escapeHtml(phone) + " • " : "") +
+            (health ? "health: " + escapeHtml(health) + " • " : "") +
+            (last ? "last touch: " + escapeHtml(last) : "") +
+          '</div>' +
+        '</div>' +
+        '<div class="crmClientActions"><button class="btnGhost" data-open="' + c.id + '">Select</button></div>';
 
+      wrap.appendChild(row);
+    });
 
-        const r = await fetch("/crm/update", {
-          method: "POST",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({ token: TOKEN, lead_id: l.id, status: newStatus, notes: newNotes })
+    wrap.querySelectorAll("button[data-open]").forEach((b) => {
+      b.addEventListener("click", async () => {
+        const id = b.getAttribute("data-open");
+        const r = await apiGet("/crm/client", { client_id: id });
+        const out = $("crmClientDetail");
+        if (!out) return;
+        if (!r || !r.ok){
+          out.textContent = (r && r.error) ? r.error : "Client load failed";
+          return;
+        }
+        const c = r.client || {};
+        const lines = [];
+        lines.push("Client: " + (c.full_name || "(unnamed)"));
+        lines.push("Stage: " + (c.stage || "") + " • Health: " + (c.health || ""));
+        lines.push("Email: " + (c.primary_email || "") + " • Phone: " + (c.primary_phone || ""));
+        lines.push("");
+        lines.push("Recent activity:");
+        (r.activities || []).slice(0, 10).forEach((a) => {
+          const t = a.occurred_at ? new Date(a.occurred_at).toLocaleString() : "";
+          const s = (a.subject || a.type || "").slice(0, 90);
+          lines.push("- " + t + " • " + s);
         });
-        const j = await r.json().catch(()=>({}));
-        if(!j.ok){ alert(j.error || "Update failed"); return; }
-        await loadCRM();
-      await loadCRMv2();
+        out.textContent = lines.join("\n");
       });
-
-
-
-
-      right.appendChild(btn);
-
-
-
-
-      item.appendChild(left);
-      item.appendChild(right);
-      container.appendChild(item);
-    }
+    });
   }
 
+  function escapeHtml(s){
+    return String(s ?? "")
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;")
+      .replace(/'/g,"&#039;");
+  }
 
+  async function refreshCrmLeads(){
+    const r = await apiGet("/crm", { limit: 120 });
+    if (r && r.ok) renderLeads(r.leads || []);
+  }
 
+  async function refreshCrmClients(q){
+    const r = await apiGet("/crm/clients", q ? { q } : null);
+    if (r && r.ok) renderClients(r.clients || []);
+  }
 
-  function leadsToCSV(rows){
-    const cols = ["id","email","name","phone","source_page","status","notes","created_at"];
-    const escCsv = (v) => {
+  async function refreshCrmAll(){
+    await Promise.all([refreshCrmLeads(), refreshCrmClients("")]);
+  }
+
+  function bindCrm(){
+    const refreshBtn = $("crmRefresh");
+    const exportBtn = $("crmExport");
+    const leadSearch = $("crmLeadSearch");
+    const leadClear = $("crmLeadClear");
+
+    const clientSearch = $("crmClientSearch");
+    const clientSearchBtn = $("crmClientSearchBtn");
+    const createBtn = $("crmCreateClient");
+
+    const clientsCard = $("crmClientsCard");
+    const filterInput = $("crmClientFilter");
+    const filterClear = $("crmClientFilterClear");
+
+    // leads refresh/export
+    if (refreshBtn) refreshBtn.addEventListener("click", refreshCrmAll);
+
+    if (exportBtn) exportBtn.addEventListener("click", async () => {
+      const r = await apiGet("/crm", { limit: 500 });
+      if (!r || !r.ok) return alert("Export failed");
+      const rows = r.leads || [];
+      const headers = ["id","email","name","phone","source_page","status","notes","created_at"];
+      const csv = [headers.join(",")].concat(rows.map((x) => headers.map((h) => csvCell(x[h])).join(","))).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "crm_leads.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
+
+    function csvCell(v){
       const s = String(v ?? "");
-      if (/["\n,]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+      if (/[,"\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
       return s;
-    };
-    const out = [];
-    out.push(cols.join(","));
-    for (const r of (rows || [])){
-      out.push(cols.map(c => escCsv(r[c])).join(","));
-    }
-    return out.join("\n");
-  }
-
-
-
-
-  async function loadCRM(){
-    const box = $("crmLeads");
-    if (box) box.textContent = "Loading…";
-    const r = await fetch("/crm?token=" + encodeURIComponent(TOKEN) + "&limit=200");
-    const j = await r.json().catch(()=>({}));
-    if(!j.ok){
-      if (box) box.textContent = j.error || "Failed to load CRM.";
-      return;
-    }
-    renderCRM(box, j.leads || []);
-    // If a filter is set, re-render filtered view
-    try{ applyLeadFilter(); }catch{}
-  }
-
-
-  function leadMatches(l, q){
-    q = String(q||"").trim().toLowerCase();
-    if(!q) return true;
-    const hay = [
-      l.email, l.name, l.phone, l.source_page, l.status, l.notes
-    ].filter(Boolean).join(" ").toLowerCase();
-    return hay.includes(q);
-  }
-
-  function applyLeadFilter(){
-    const q = $("crmLeadSearch") ? $("crmLeadSearch").value : "";
-    const box = $("crmLeads");
-    if(!box) return;
-    const rows = (crmCache || []).filter(l => leadMatches(l, q));
-    renderCRM(box, rows);
-  }
-
-  function applyClientFilter(){
-    const box = $("crmClients");
-    const q = $("crmClientFilter") ? $("crmClientFilter").value.trim().toLowerCase() : "";
-    if(!box) return;
-    const items = Array.from(box.querySelectorAll(".item"));
-    for(const it of items){
-      const txt = (it.textContent || "").toLowerCase();
-      it.style.display = (!q || txt.includes(q)) ? "" : "none";
-    }
-  }
-
-  async function crmChatRun(){
-    const out = $("crmChatOut");
-    const inp = $("crmChatInput");
-    if(!out || !inp) return;
-    const qRaw = inp.value.trim();
-    if(!qRaw){ out.textContent = "—"; return; }
-
-    out.textContent = "Searching…";
-
-    // Ensure leads loaded once (so local search works)
-    if(!Array.isArray(crmCache) || crmCache.length === 0){
-      try{ await loadCRM(); }catch{}
     }
 
-    const q = qRaw.toLowerCase();
-    const leadHits = (crmCache || []).filter(l => leadMatches(l, qRaw)).slice(0, 12);
-
-    // Client search (server)
-    let clientHits = [];
-    try{
-      const r = await fetch("/crm/clients?token=" + encodeURIComponent(TOKEN) + "&q=" + encodeURIComponent(qRaw));
-      const j = await r.json().catch(()=>({}));
-      if(j.ok && Array.isArray(j.clients)) clientHits = j.clients.slice(0, 12);
-    }catch{}
-
-    const lines = [];
-    lines.push("QUERY: " + qRaw);
-    lines.push("");
-
-    lines.push("LEADS (" + leadHits.length + (leadHits.length === 12 ? "+": "") + ")");
-    if(!leadHits.length) lines.push("- —");
-    for(const l of leadHits){
-      const who = (l.email || l.name || "(no email)") + "";
-      const sub = [
-        l.name ? ("name: " + l.name) : null,
-        l.phone ? ("phone: " + l.phone) : null,
-        l.status ? ("status: " + l.status) : null,
-        l.source_page ? ("page: " + l.source_page) : null,
-        l.created_at ? ("at: " + fmtTime(l.created_at)) : null
-      ].filter(Boolean).join(" • ");
-      lines.push("- " + who);
-      if(sub) lines.push("  " + sub);
+    // lead search (client-side filter on loaded leads)
+    if (leadSearch){
+      leadSearch.addEventListener("input", () => {
+        const q = leadSearch.value.trim().toLowerCase();
+        const wrap = $("crmLeads");
+        if (!wrap) return;
+        wrap.querySelectorAll(".crmLeadRow").forEach((row) => {
+          row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
+        });
+      });
     }
+    if (leadClear) leadClear.addEventListener("click", () => { if (leadSearch) leadSearch.value = ""; if (leadSearch) leadSearch.dispatchEvent(new Event("input")); });
 
-    lines.push("");
-    lines.push("CLIENTS (" + clientHits.length + (clientHits.length === 12 ? "+": "") + ")");
-    if(!clientHits.length) lines.push("- —");
-    for(const c of clientHits){
-      const title = (c.full_name || "(no name)") + (c.stage ? (" • " + c.stage) : "");
-      const sub = [
-        c.primary_email ? ("email: " + c.primary_email) : null,
-        c.primary_phone ? ("phone: " + c.primary_phone) : null,
-        c.last_touch_at ? ("last touch: " + fmtWhen(c.last_touch_at)) : null
-      ].filter(Boolean).join(" • ");
-      lines.push("- " + title);
-      if(sub) lines.push("  " + sub);
-    }
-
-    lines.push("");
-    lines.push("Tip: Click a client in the list to open status + activity.");
-
-    out.textContent = lines.join("\n");
-  }
-
-
-
-
-
-
-
-
-// ===== CRM v2 (clients + review + AI) =====
-let crmSelectedClientId = null;
-
-
-
-
-function fmtWhen(iso){
-  try{
-    if(!iso) return "—";
-    const d = new Date(iso);
-    if(isNaN(d.getTime())) return String(iso);
-    return d.toISOString().slice(0,19).replace("T"," ");
-  }catch{ return String(iso||"—"); }
-}
-
-
-
-
-function makeListItem(title, sub, right){
-  const item = document.createElement("div");
-  item.className = "item";
-
-
-
-
-  const left = document.createElement("div");
-  left.style.minWidth = "0";
-  left.innerHTML = "<b>" + esc(title) + "</b><div class='muted'>" + esc(sub || "") + "</div>";
-
-
-
-
-  const r = document.createElement("div");
-  r.className = "pill";
-  r.textContent = right || "Open";
-
-
-
-
-  item.appendChild(left);
-  item.appendChild(r);
-  return item;
-}
-
-
-
-
-async function loadCrmClients(q){
-  const box = $("crmClients");
-  if(!box) return;
-  box.textContent = "Loading…";
-  const url = "/crm/clients?token=" + encodeURIComponent(TOKEN) + (q ? "&q=" + encodeURIComponent(q) : "");
-  const r = await fetch(url);
-  const j = await r.json().catch(()=>({}));
-  box.innerHTML = "";
-  if(!j.ok){ box.textContent = j.error || "Failed."; return; }
-
-
-
-
-  if(!j.clients || !j.clients.length){ box.textContent = "No clients yet."; return; }
-
-
-
-
-  for(const c of j.clients){
-    const title = (c.full_name || "(no name)") + (c.stage ? " • " + c.stage : "");
-    const sub = [
-      c.primary_email ? ("email: " + c.primary_email) : null,
-      c.primary_phone ? ("phone: " + c.primary_phone) : null,
-      ("last touch: " + fmtWhen(c.last_touch_at))
-    ].filter(Boolean).join(" • ");
-
-
-
-
-    const item = makeListItem(title, sub, "Select");
-    item.style.cursor = "pointer";
-    item.addEventListener("click", () => {
-      crmSelectedClientId = c.id;
-      loadCrmClientDetail(c.id);
+    // server client search (top tools)
+    if (clientSearchBtn) clientSearchBtn.addEventListener("click", async () => {
+      const q = clientSearch ? clientSearch.value.trim() : "";
+      await refreshCrmClients(q);
     });
-    box.appendChild(item);
-  }
-}
 
+    // create client
+    if (createBtn) createBtn.addEventListener("click", async () => {
+      const nm = ($("crmNewName") && $("crmNewName").value) ? $("crmNewName").value.trim() : "";
+      const em = ($("crmNewEmail") && $("crmNewEmail").value) ? $("crmNewEmail").value.trim() : "";
+      const ph = ($("crmNewPhone") && $("crmNewPhone").value) ? $("crmNewPhone").value.trim() : "";
+      const r = await apiPost("/crm/clients", { token: TOKEN, full_name: nm, email: em, phone: ph, stage: "lead" });
+      if (!r || !r.ok) return alert(r && r.error ? r.error : "Create failed");
+      await refreshCrmClients("");
+    });
 
-
-
-async function loadCrmClientDetail(clientId){
-  const pre = $("crmClientDetail");
-  if(!pre) return;
-  pre.textContent = "Loading client…";
-
-
-
-
-  const r = await fetch("/crm/client?token=" + encodeURIComponent(TOKEN) + "&client_id=" + encodeURIComponent(String(clientId)));
-  const j = await r.json().catch(()=>({}));
-  if(!j.ok){ pre.textContent = j.error || "Failed."; return; }
-
-
-
-
-  const c = j.client || {};
-  const acts = Array.isArray(j.activities) ? j.activities : [];
-  const ids = Array.isArray(j.identities) ? j.identities : [];
-
-
-
-
-  const lines = [];
-  lines.push("CLIENT");
-  lines.push("- Name: " + (c.full_name || "—"));
-  lines.push("- Stage: " + (c.stage || "—") + " • Health: " + (c.health || "unknown"));
-  lines.push("- Confidence: " + Math.round((Number(c.confidence||0.5))*100) + "%");
-  lines.push("- Email: " + (c.primary_email || "—"));
-  lines.push("- Phone: " + (c.primary_phone || "—"));
-  lines.push("- Last touch: " + fmtWhen(c.last_touch_at));
-  lines.push("");
-  lines.push("IDENTITIES");
-  if(!ids.length) lines.push("- —");
-  for(const it of ids.slice(0,12)){
-    lines.push("- " + it.kind + ": " + it.value);
-  }
-  lines.push("");
-  lines.push("RECENT ACTIVITY");
-  if(!acts.length) lines.push("- —");
-  for(const a of acts.slice(0,8)){
-    const who = a.type === "email"
-      ? ((a.direction||"") + " " + (a.from_email || "—") + " → " + (a.to_email || "—")).trim()
-      : (a.phone ? ("phone: " + a.phone) : "");
-    const head = fmtWhen(a.occurred_at) + " • " + (a.type || "activity") + (a.match_status ? (" • " + a.match_status) : "");
-    const sub = (a.subject ? ("subject: " + a.subject) : "") || (a.body_preview ? ("notes: " + String(a.body_preview).slice(0,140)) : "");
-    lines.push("- " + head);
-    if(who) lines.push("  " + who);
-    if(sub) lines.push("  " + sub);
-  }
-
-  try{ applyClientFilter(); }catch{}
-
-
-
-  pre.textContent = lines.join("\n");
-}
-
-
-
-
-async function loadCrmReview(){
-  const box = $("crmReview");
-  if(!box) return;
-  box.textContent = "Loading…";
-
-
-
-
-  const r = await fetch("/crm/review?token=" + encodeURIComponent(TOKEN));
-  const j = await r.json().catch(()=>({}));
-  box.innerHTML = "";
-  if(!j.ok){ box.textContent = j.error || "Failed."; return; }
-
-
-
-
-  const q = Array.isArray(j.queue) ? j.queue : [];
-  if(!q.length){ box.textContent = "Queue is empty ✅"; return; }
-
-
-
-
-  for(const it of q){
-    const title = fmtWhen(it.occurred_at) + " • " + (it.type || "activity");
-    const sub =
-      (it.subject ? ("subject: " + it.subject) : (it.body_preview ? it.body_preview : "")) +
-      (it.phone ? (" • phone: " + it.phone) : "") +
-      (" • conf: " + Math.round((Number(it.confidence||0))*100) + "%");
-
-
-
-
-    const row = makeListItem(title, sub, "Review");
-    row.style.cursor = "pointer";
-
-
-
-
-    row.addEventListener("click", async () => {
-      // quick action: confirm to selected client, else prompt to select first
-      if(!crmSelectedClientId){
-        alert("Select a client first (Clients list) to confirm this activity.");
-        return;
+    // collapsible clients card
+    if (clientsCard){
+      const hdr = clientsCard.querySelector(".cardHead");
+      const body = clientsCard.querySelector(".cardBody");
+      if (hdr && body){
+        hdr.style.cursor = "pointer";
+        hdr.addEventListener("click", (e) => {
+          // prevent collapsing when clicking buttons inside header (if any)
+          if (e.target && (e.target.tagName === "BUTTON" || e.target.closest("button"))) return;
+          const isHidden = body.style.display === "none";
+          body.style.display = isHidden ? "" : "none";
+        });
       }
-      const ok = confirm("Assign this activity to the selected client?");
-      if(!ok) return;
+    }
 
-
-
-
-      const rr = await fetch("/crm/review/confirm", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ token: TOKEN, match_id: it.match_id, client_id: crmSelectedClientId })
+    // local filter on loaded clients
+    if (filterInput){
+      filterInput.addEventListener("input", () => {
+        const q = filterInput.value.trim().toLowerCase();
+        const wrap = $("crmClients");
+        if (!wrap) return;
+        wrap.querySelectorAll(".crmClientRow").forEach((row) => {
+          row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
+        });
       });
-      const jj = await rr.json().catch(()=>({}));
-      if(!jj.ok){ alert(jj.error || "Failed"); return; }
-      await loadCrmReview();
-      if(crmSelectedClientId) await loadCrmClientDetail(crmSelectedClientId);
-    });
+    }
+    if (filterClear) filterClear.addEventListener("click", () => { if (filterInput) filterInput.value = ""; if (filterInput) filterInput.dispatchEvent(new Event("input")); });
 
+    // CRM chat (search + summary)
+    const crmSend = $("crmChatSend");
+    const crmIn = $("crmChatInput");
+    const crmOut = $("crmChatOut");
+    const crmClear = $("crmChatClear");
 
+    async function crmChatRun(){
+      const q = crmIn ? crmIn.value.trim() : "";
+      if (!q) return;
+      if (crmOut) crmOut.textContent = "Searching...";
+      const [leads, clients] = await Promise.all([
+        apiGet("/crm", { limit: 200 }),
+        apiGet("/crm/clients", { q })
+      ]);
 
+      const out = [];
+      out.push('Search: "' + q + '"');
+      out.push("");
 
-    // add a reject button
-    const rejectBtn = document.createElement("button");
-    rejectBtn.className = "btnDanger";
-    rejectBtn.textContent = "Reject";
-    rejectBtn.style.padding = "8px 10px";
-    rejectBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const ok = confirm("Reject this match?");
-      if(!ok) return;
-      const rr = await fetch("/crm/review/reject", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ token: TOKEN, match_id: it.match_id })
-      });
-      const jj = await rr.json().catch(()=>({}));
-      if(!jj.ok){ alert(jj.error || "Failed"); return; }
-      await loadCrmReview();
-    });
-
-
-
-
-    // replace right pill with button group
-    row.removeChild(row.lastChild);
-    const right = document.createElement("div");
-    right.style.display = "flex";
-    right.style.gap = "8px";
-    right.appendChild(rejectBtn);
-    const hint = document.createElement("div");
-    hint.className = "pill";
-    hint.textContent = "Assign";
-    right.appendChild(hint);
-    row.appendChild(right);
-
-
-
-
-    box.appendChild(row);
-  }
-}
-
-
-
-
-async function crmCreateClient(){
-  const n = $("crmNewName") ? $("crmNewName").value.trim() : "";
-  const e = $("crmNewEmail") ? $("crmNewEmail").value.trim() : "";
-  const p = $("crmNewPhone") ? $("crmNewPhone").value.trim() : "";
-  if(!n && !e && !p){ alert("Add at least a name, email, or phone."); return; }
-
-
-
-
-  const r = await fetch("/crm/clients", {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ token: TOKEN, full_name: n, email: e, phone: p, stage:"lead" })
-  });
-  const j = await r.json().catch(()=>({}));
-  if(!j.ok){ alert(j.error || "Failed"); return; }
-
-
-
-
-  if ($("crmNewName")) $("crmNewName").value = "";
-  if ($("crmNewEmail")) $("crmNewEmail").value = "";
-  if ($("crmNewPhone")) $("crmNewPhone").value = "";
-
-
-
-
-  await loadCrmClients($("crmClientSearch") ? $("crmClientSearch").value.trim() : "");
-}
-
-
-
-
-async function crmAsk(){
-  const out = $("crmAskOut");
-  const input = $("crmAskInput");
-  if(!out || !input) return;
-
-
-
-
-  const q = input.value.trim();
-  if(!q) return;
-  out.textContent = "Thinking…";
-
-
-
-
-  const r = await fetch("/api/ai/crm/answer", {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ token: TOKEN, question: q })
-  });
-  const j = await r.json().catch(()=>({}));
-  if(!j.ok){ out.textContent = j.error || "Failed."; return; }
-  out.textContent = j.reply || "—";
-}
-
-
-
-
-async function loadCRMv2(){
-  await loadCrmClients("");
-  await loadCrmReview();
-}
-
-
-
-
-// ===== Reports =====
-  function splitLines(txt){
-    return String(txt || "").replace(/\r\n/g,"\n").split("\n").map(s => s.trim()).filter(Boolean);
-  }
-
-
-
-
-  function parseReportSections(text){
-    const lines = splitLines(text);
-    const sections = { summary: "", highlights: [], steps: [], kpi: "" };
-    let mode = "";
-
-
-
-
-    for (const line0 of lines){
-      const line = line0.replace(/\*\*/g,"");
-
-
-
-
-      if (/^SUMMARY:/i.test(line)) { mode="summary"; continue; }
-      if (/^HIGHLIGHTS:/i.test(line)) { mode="highlights"; continue; }
-      if (/^NEXT STEPS:/i.test(line)) { mode="steps"; continue; }
-      if (/^KPI:/i.test(line)){
-        sections.kpi = line.replace(/^KPI:\s*/i,"").trim();
-        mode="";
-        continue;
+      if (clients && clients.ok){
+        out.push("Clients matched: " + (clients.clients || []).length);
+        (clients.clients || []).slice(0, 8).forEach((c) => {
+          out.push("- " + (c.full_name || "(unnamed)") + " • " + (c.primary_email || "") + " • " + (c.stage || ""));
+        });
       }
 
+      out.push("");
 
+      if (leads && leads.ok){
+        const rows = (leads.leads || []).filter((l) => {
+          const s = (l.email || "") + " " + (l.name || "") + " " + (l.phone || "") + " " + (l.notes || "");
+          return s.toLowerCase().includes(q.toLowerCase());
+        });
+        out.push("Leads matched (local search): " + rows.length);
+        rows.slice(0, 8).forEach((l) => {
+          out.push("- " + (l.email || "(no email)") + " • " + (l.status || "new") + " • " + (l.source_page || ""));
+        });
+      }
 
-
-      const cleaned = line.replace(/^[-•]\s*/,"").replace(/^\d+\)\s*/,"").trim();
-      if (!cleaned) continue;
-
-
-
-
-      if (mode==="summary") sections.summary += (sections.summary?" ":"") + cleaned;
-      if (mode==="highlights") sections.highlights.push(cleaned);
-      if (mode==="steps") sections.steps.push(cleaned);
+      if (crmOut) crmOut.textContent = out.join("\n");
     }
 
-
-
-
-    return sections;
+    if (crmSend) crmSend.addEventListener("click", crmChatRun);
+    if (crmIn) crmIn.addEventListener("keydown", (e) => { if (e.key === "Enter") crmChatRun(); });
+    if (crmClear) crmClear.addEventListener("click", () => { if (crmIn) crmIn.value = ""; if (crmOut) crmOut.textContent = ""; });
   }
 
+  function bindTopControls(){
+    const seedBtn = $("seedBtn");
+    const refreshBtn = $("refresh");
+    const aiBtn = $("aiReportTopBtn");
+    const daysSel = $("days");
 
-
-
-  function renderReportCards(containerEl, text){
-    if (!containerEl) return;
-
-
-
-
-    const s = parseReportSections(text);
-    const escHtml = (v) => String(v || "").replace(/[&<>"']/g, (c) => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-    }[c]));
-
-
-
-
-    function ul(items, cap){
-      cap = cap || 3;
-      const list = Array.isArray(items) ? items : [];
-      const shown = list.slice(0, cap);
-      const hiddenCount = Math.max(0, list.length - shown.length);
-
-
-
-
-      if (!shown.length) return '<div class="muted">—</div>';
-
-
-
-
-      const lis = shown.map((x) => '<li>' + escHtml(x) + '</li>').join("");
-      const more = hiddenCount
-        ? '<div class="muted" style="margin-top:6px">+' + hiddenCount + ' more (see raw report)</div>'
-        : "";
-
-
-
-
-      return '<ul class="repList">' + lis + '</ul>' + more;
-    }
-
-
-
-
-    const kpiHtml = s.kpi ? '<div class="repKpi"><b>' + escHtml(s.kpi) + '</b></div>' : "";
-
-
-
-
-    containerEl.innerHTML =
-      '<div class="repCard"><div class="repTitle">Summary</div><div class="repText">' + escHtml(s.summary) + '</div>' + kpiHtml + '</div>' +
-      '<div class="repCard"><div class="repTitle">Highlights</div>' + ul(s.highlights, 3) + '</div>' +
-      '<div class="repCard repFull"><div class="repTitle">Next Steps</div>' + ul(s.steps, 3) + '</div>';
+    if (seedBtn) seedBtn.addEventListener("click", seedDemo);
+    if (refreshBtn) refreshBtn.addEventListener("click", refreshAnalytics);
+    if (aiBtn) aiBtn.addEventListener("click", genAiReport);
+    if (daysSel) daysSel.addEventListener("change", refreshAnalytics);
   }
 
-
-
-
-  async function loadLatestReport() {
-    const pre1 = $("latestAiReport");
-    const cards1 = $("latestAiReportCards");
-    if (pre1) pre1.textContent = "Loading latest report...";
-
-
-
-
-    const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
-    const jj = await rr.json().catch(()=>({}));
-
-
-
-
-    const text = (jj.ok && jj.report && jj.report.report_text) ? jj.report.report_text : "";
-    if (pre1) pre1.textContent = text || "No report yet.";
-    renderReportCards(cards1, text);
-  }
-
-
-
-
-  async function loadReportsList() {
-    const list = $("reportsList");
-    if (!list) return;
-
-
-
-
-    list.textContent = "Loading...";
-    const r = await fetch("/reports?token=" + encodeURIComponent(TOKEN) + "&limit=30");
-    const j = await r.json().catch(() => ({}));
-
-
-
-
-    list.innerHTML = "";
-    if (!j.ok) { list.textContent = j.error || "Failed to load reports"; return; }
-    if (!j.reports || !j.reports.length) { list.textContent = "No reports yet."; return; }
-
-
-
-
-    for (const rep of j.reports) {
-      const item = document.createElement("div");
-      item.className = "item";
-
-
-
-
-      const left = document.createElement("div");
-      left.innerHTML = "<b>" + esc(rep.report_date) + "</b><div class='muted'>" + esc(rep.preview || "") + "</div>";
-
-
-
-
-      const right = document.createElement("div");
-      right.className = "pill";
-      right.textContent = "Open";
-
-
-
-
-      item.appendChild(left);
-      item.appendChild(right);
-      list.appendChild(item);
-    }
-  }
-
-
-
-
-  async function refresh() {
-    try {
-      const days = $("days") ? $("days").value : "7";
-      setStatus("loading metrics…");
-
-
-
-
-      const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
-      const j = await r.json().catch(() => ({}));
-      if (!j.ok) { setStatus(j.error || "error"); return; }
-
-
-
-
-      if ($("kpiToday")) $("kpiToday").textContent = j.visits_today;
-      if ($("kpiRange")) $("kpiRange").textContent = j.visits_range;
-      if ($("kpiLeadRate")) $("kpiLeadRate").textContent = pct(j.conversion_rate || 0);
-      if ($("kpiPurchaseRate")) $("kpiPurchaseRate").textContent = pct(j.purchase_rate || 0);
-
-
-
-
-      if ($("leads")) $("leads").textContent = j.leads || 0;
-      if ($("purchases")) $("purchases").textContent = j.purchases || 0;
-      if ($("cta")) $("cta").textContent = j.cta_clicks || 0;
-
-
-
-
-      const mob = (j.device_mix && j.device_mix.mobile) ? j.device_mix.mobile : 0;
-      const desk = (j.device_mix && j.device_mix.desktop) ? j.device_mix.desktop : 0;
-      if ($("mob")) $("mob").textContent = mob;
-      if ($("desk")) $("desk").textContent = desk;
-
-
-
-
-      if ($("lastEvent")) $("lastEvent").textContent = j.last_event ? JSON.stringify(j.last_event, null, 2) : "No events yet.";
-
-
-
-
-      renderTrend($("trendSvg"), j.trend || []);
-      renderDevice($("deviceSvg"), mob, desk);
-      renderTopPages($("topPages"), j.top_pages_range || []);
-
-
-
-
-      await loadCRM();
-      await loadLatestReport();
-      await loadReportsList();
-
-
-
-
-      setStatus("ready");
-    } catch (e) {
-      setStatus("error: " + (e && e.message ? e.message : "unknown"));
-    }
-  }
-
-
-
-
-  async function fire(eventName) {
-    setStatus("sending " + eventName + "…");
-    const r = await fetch("/demo/fire-event", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        token: TOKEN,
-        event_name: eventName,
-        page_type: location.pathname,
-        device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop"
-      })
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!d.ok) { setStatus(d.error || "error"); return; }
-    setStatus("sent ✅");
-    setTimeout(refresh, 300);
-  }
-
-
-
-
-  async function seed() {
-    setStatus("seeding…");
-    const r = await fetch("/demo/seed?token=" + encodeURIComponent(TOKEN), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ days: 14, events_per_day: 60 })
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!j.ok) { setStatus(j.error || "seed failed"); return; }
-    setStatus("seeded ✅");
-    // Refresh both Analytics and CRM so the CRM tab isn't empty after seeding.
-    setTimeout(() => { refresh(); loadCRM(); loadCrmClients(""); }, 350);
-  }
-
-
-
-
-  async function share() {
-    setStatus("creating share link…");
-    const r = await fetch("/demo/link", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: TOKEN })
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!d.ok) { setStatus(d.error || "error"); return; }
-
-
-
-
-    try { await navigator.clipboard.writeText(d.url); setStatus("copied ✅"); }
-    catch { setStatus("share link: " + d.url); }
-  }
-
-
-
-
-  // live polling
-  let liveSince = new Date().toISOString();
-  let liveOn = true;
-  let liveTimer = null;
-
-
-
-
-  async function liveCheck() {
-    try {
-      const url = "/live?token=" + encodeURIComponent(TOKEN) + "&since=" + encodeURIComponent(liveSince);
-      const r = await fetch(url);
-      const j = await r.json().catch(() => ({}));
-      if (!j.ok) return;
-      if ($("liveNew")) $("liveNew").textContent = String(j.new_page_views || 0);
-      if ($("liveLast")) $("liveLast").textContent = j.last_event ? (j.last_event.event_name || "—") : "—";
-      if ($("liveJson")) $("liveJson").textContent = JSON.stringify(j, null, 2);
-      liveSince = j.now || new Date().toISOString();
-    } catch {}
-  }
-
-
-
-
-  function startLive() {
-    if (liveTimer) clearInterval(liveTimer);
-    liveTimer = setInterval(() => { if (liveOn) liveCheck(); }, 3500);
-  }
-
-
-
-
-  async function aiReport() {
-    setStatus("generating AI report…");
-    const r = await fetch("/generate-report?token=" + encodeURIComponent(TOKEN), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: TOKEN })
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!j.ok) { setStatus(j.error || "AI report failed"); return; }
-    setStatus("AI report saved ✅");
-    await loadLatestReport();
-    await loadReportsList();
-  }
-
-
-
-
-  // ===== AI CHAT =====
-let chatHistory = [];
-
-
-
-
-function addMsg(role, text){
-  const box = $("chatBox");
-  if(!box) return;
-
-
-
-
-  const div = document.createElement("div");
-  div.style.marginBottom = "10px";
-  div.style.lineHeight = "1.45";
-
-
-
-
-  const label = (role === "user") ? "You" : "AI";
-
-
-
-
-  // escape HTML, then turn newlines into <br>
-  const safe = esc(text).replace(/\n/g, "<br>");
-
-
-
-
-  div.innerHTML =
-    "<b>" + label + ":</b> " +
-    "<span style=\"white-space:normal\">" + safe + "</span>";
-
-
-
-
-  box.appendChild(div);
-  box.scrollTop = box.scrollHeight;
-}
-
-
-
-
-
-
-
-
-async function sendChat(){
-  const input = $("chatInput");
-  if (!input) return;
-
-
-
-
-  const msg = input.value.trim();
-  if (!msg) return;
-  input.value = "";
-
-
-
-
-  addMsg("user", msg);
-
-
-
-
-  // temporary "thinking…" line
-  const box = $("chatBox");
-  let thinkingEl = null;
-  if (box) {
-    thinkingEl = document.createElement("div");
-    thinkingEl.style.marginBottom = "8px";
-    thinkingEl.innerHTML = "<b>AI:</b> <span class='muted'>Thinking…</span>";
-    box.appendChild(thinkingEl);
-    box.scrollTop = box.scrollHeight;
-  }
-
-
-
-
-  try{
-    const r = await fetch("/api/ai/chat", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ token: TOKEN, message: msg, history: chatHistory.slice(-12) })
-    });
-    const j = await r.json().catch(()=>({}));
-
-
-
-
-    if (thinkingEl && box) box.removeChild(thinkingEl);
-
-
-
-
-    if(!j.ok){
-      addMsg("ai", j.error || "Chat failed.");
+  function boot(){
+    if (!TOKEN){
+      setStatus("missing token");
+      console.warn("Missing token in URL. Add ?token=...");
       return;
     }
-
-
-
-
-    const reply = j.reply || "(no reply)";
-    addMsg("ai", reply);
-
-
-
-
-    chatHistory.push({ role: "user", content: msg });
-    chatHistory.push({ role: "assistant", content: reply });
-  }catch(e){
-    if (thinkingEl && box) box.removeChild(thinkingEl);
-    addMsg("ai", "Error: " + (e?.message || "unknown"));
-  }
-}
-
-
-
-
-function clearChat(){
-  const box = $("chatBox");
-  if (!box) return;
-  box.innerHTML = '<div class="muted">Chat cleared.</div>';
-  chatHistory = [];
-}
-
-
-
-
-window.addEventListener("DOMContentLoaded", () => {
-
-
-
-
-    if (!TOKEN) { setStatus("missing token"); return; }
-
-
-    // Tabs: Analytics vs CRM
     bindTabs();
-    setActiveTab("analytics");
-
-
-    if ($("refresh")) $("refresh").addEventListener("click", refresh);
-    if ($("days")) $("days").addEventListener("change", refresh);
-    if ($("chatSend")) $("chatSend").addEventListener("click", sendChat);
-if ($("chatClear")) $("chatClear").addEventListener("click", clearChat);
-
-
-
-
-if ($("chatInput")) {
-  $("chatInput").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") sendChat();
-  });
-}
-
-
-
-
-
-
-
-
-    if ($("simView")) $("simView").addEventListener("click", () => fire("page_view"));
-    if ($("simLead")) $("simLead").addEventListener("click", () => fire("lead"));
-    if ($("simPurchase")) $("simPurchase").addEventListener("click", () => fire("purchase"));
-    if ($("simCta")) $("simCta").addEventListener("click", () => fire("cta_click"));
-
-
-
-
-    if ($("share")) $("share").addEventListener("click", share);
-    if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
-
-
-
-
-    if ($("crmRefresh")) $("crmRefresh").addEventListener("click", async () => { await loadCRM(); applyLeadFilter(); });
-if ($("crmLeadSearch")) $("crmLeadSearch").addEventListener("input", applyLeadFilter);
-if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($("crmLeadSearch")) $("crmLeadSearch").value=""; applyLeadFilter(); });
-    if ($("crmExport")) $("crmExport").addEventListener("click", () => {
-      try{
-        const csv = leadsToCSV(crmCache);
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "crm_leads.csv";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        setStatus("exported CSV ✅");
-      }catch(e){
-        setStatus("export failed");
-      }
-    });
-
-
-
-// CRM v2 listeners
-if ($("crmClientSearchBtn")) $("crmClientSearchBtn").addEventListener("click", () => {
-  const q = $("crmClientSearch") ? $("crmClientSearch").value.trim() : "";
-  loadCrmClients(q);
-});
-if ($("crmClientSearch")) $("crmClientSearch").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    const q = $("crmClientSearch").value.trim();
-    loadCrmClients(q);
-  }
-});
-
-if ($("crmClientFilter")) $("crmClientFilter").addEventListener("input", applyClientFilter);
-if ($("crmClientFilterClear")) $("crmClientFilterClear").addEventListener("click", () => { if ($("crmClientFilter")) $("crmClientFilter").value=""; applyClientFilter(); });
-
-
-
-
-if ($("crmCreateClient")) $("crmCreateClient").addEventListener("click", crmCreateClient);
-
-
-
-
-if ($("crmChatSend")) $("crmChatSend").addEventListener("click", crmChatRun);
-if ($("crmChatClear")) $("crmChatClear").addEventListener("click", () => { if ($("crmChatInput")) $("crmChatInput").value=""; if ($("crmChatOut")) $("crmChatOut").textContent="—"; });
-if ($("crmChatInput")) $("crmChatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") crmChatRun(); });
-    });
-
-
-
-
-    if ($("loadReports")) $("loadReports").addEventListener("click", loadReportsList);
-    if ($("aiReportTopBtn")) $("aiReportTopBtn").addEventListener("click", aiReport);
-    if ($("liveToggle")) $("liveToggle").addEventListener("click", () => {
-      liveOn = !liveOn;
-      $("liveToggle").textContent = liveOn ? "Pause" : "Resume";
-      setStatus(liveOn ? "live on" : "live paused");
-    });
-    if ($("liveNow")) $("liveNow").addEventListener("click", liveCheck);
-
-
-
-
-    startLive();
-    liveCheck();
-    refresh();
-  });
-})();`.trim());
-  });
-
-
-
-
-
-
-
-
-/* ---------------------------
-   “Daily job” utilities
-----------------------------*/
-async function generateNonAiDailyReport(site_id) {
-  const metricsRes = await pool.query(
-    `
-    SELECT
-      COUNT(*)::int AS total_events,
-      SUM(CASE WHEN event_name='page_view' THEN 1 ELSE 0 END)::int AS page_views,
-      SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
-      SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases
-    FROM events_raw
-    WHERE site_id=$1 AND created_at >= NOW() - INTERVAL '1 day'
-    `,
-    [site_id]
-  );
-
-
-
-
-  const m = metricsRes.rows[0] || { total_events: 0, page_views: 0, leads: 0, purchases: 0 };
-
-
-
-
-  const topRes = await pool.query(
-    `
-    SELECT page_type, COUNT(*)::int AS views
-    FROM events_raw
-    WHERE site_id=$1 AND event_name='page_view' AND created_at >= NOW() - INTERVAL '7 days'
-    GROUP BY page_type
-    ORDER BY views DESC
-    LIMIT 3
-    `,
-    [site_id]
-  );
-
-
-
-
-  const lines = [];
-  lines.push("Summary:");
-  lines.push(`In the last 24 hours you recorded ${m.page_views || 0} page views.`);
-  lines.push(`Leads: ${m.leads || 0} • Purchases: ${m.purchases || 0}`);
-  lines.push("");
-  lines.push("Top pages (7d):");
-  if (!topRes.rows.length) lines.push("- (no data yet)");
-  for (const r of topRes.rows) lines.push(`- ${r.page_type || "/"}: ${r.views}`);
-  lines.push("");
-  lines.push("Next steps:");
-  lines.push("1) Put your strongest CTA on the top page");
-  lines.push("2) Add a lead capture (form / booking / email)");
-  lines.push("3) Track a conversion event next");
-  lines.push("");
-  lines.push("Metric to watch:");
-  lines.push("Lead rate (leads / visits)");
-
-
-
-
-  return lines.join("\n");
-}
-
-
-
-
-async function runDailyForAllSites() {
-  const sites = await pool.query(`SELECT site_id, plan FROM sites`);
-  let made = 0;
-
-
-
-
-  for (const s of sites.rows) {
-    const plan = s.plan || "unpaid";
-    if (plan !== "pro" && plan !== "full_ai") continue;
-
-
-
-
-    const txt = await generateNonAiDailyReport(s.site_id);
-
-
-
-
-    await pool.query(
-      `INSERT INTO daily_reports (site_id, report_date, report_text)
-       VALUES ($1, CURRENT_DATE, $2)
-       ON CONFLICT (site_id, report_date)
-       DO UPDATE SET report_text = EXCLUDED.report_text`,
-      [s.site_id, txt]
-    );
-    made++;
+    bindTopControls();
+    bindCrm();
+    refreshAnalytics();
+    refreshCrmAll();
+    setStatus("ready");
   }
 
-
-
-
-  return { ok: true, updated_sites: made };
-}
-
-
-
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
+})();
+  `);
+});
 
 app.post("/jobs/run-daily", asyncHandler(async (req, res) => {
   const result = await runDailyForAllSites();
   res.json(result);
 }));
+
+
+
+
 
 
 
@@ -5931,6 +6363,10 @@ if (process.env.ENABLE_SCHEDULER === "true") {
 
 
 
+
+
+
+
 /* ---------------------------
    Errors
 ----------------------------*/
@@ -5938,6 +6374,10 @@ app.use((err, req, res, next) => {
   console.error("ERROR:", err && err.stack ? err.stack : err);
   res.status(500).json({ ok: false, error: String(err.message || err) });
 });
+
+
+
+
 
 
 
