@@ -1271,6 +1271,7 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
   const site_id = site.site_id;
+  const bizEmail = (site.owner_email || "owner@example.com").toLowerCase();
   const days = normalizeDays(req.query.days);
 
 
@@ -1803,6 +1804,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
   const site_id = site.site_id;
+  const bizEmail = (site.owner_email || "owner@example.com").toLowerCase();
   const days = Math.max(1, Math.min(parseInt(req.body?.days || "7", 10), 3650));
   const eventsPerDay = Math.max(5, Math.min(parseInt(req.body?.events_per_day || "40", 10), 500));
 
@@ -1862,7 +1864,45 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           [site_id, "/contact", device, ts.toISOString()]
         );
         inserted++;
-      } else if (roll < purchaseRate + leadRate + ctaRate) {
+      
+        inserted++;
+
+        // Also seed CRM lead rows so the CRM tab is populated (not just analytics).
+        try {
+          const leadNames = ["Jordan Lee","Ava Martinez","Noah Patel","Mia Chen","Ethan Brooks","Sophia Rivera","Liam Johnson","Olivia King"];
+          const nm = leadNames[Math.floor(Math.random() * leadNames.length)];
+          const local = nm.toLowerCase().replace(/[^a-z]+/g, ".");
+          const doms = ["example.com","mail.com","acme.co","brightside.io","northstar.fit","summit.group"];
+          const email = `${local}${Math.floor(Math.random()*90+10)}@${doms[Math.floor(Math.random()*doms.length)]}`;
+          const phone = `+1 (555) 30${Math.floor(Math.random()*10)}-${Math.floor(Math.random()*9000+1000)}`;
+          const notes = "Demo lead created by seed. Interested in pricing / next steps.";
+
+          await pool.query(
+            `INSERT INTO crm_leads (site_id, email, name, phone, source_page, status, notes, created_at)
+             VALUES ($1,$2,$3,$4,$5,'new',$6,$7)`,
+            [site_id, safeEmail(email), nm, phone, "/contact", notes, ts.toISOString()]
+          );
+
+          // CRM v2: create client + activity (best-effort)
+          const client = await upsertClient(site_id, { full_name: nm, email, phone, stage: "lead" });
+          await createActivityWithMatch(
+            site_id,
+            {
+              type: "form_lead",
+              direction: "in",
+              occurred_at: ts.toISOString(),
+              from_email: email,
+              to_email: bizEmail,
+              subject: "New lead captured (demo seed)",
+              body_text: notes,
+              phone,
+              meta: { demo: true, source_page: "/contact" }
+            },
+            { emailA: email, emailB: bizEmail, phone, name: nm }
+          );
+        } catch (e) {}
+
+      }} else if (roll < purchaseRate + leadRate + ctaRate) {
         await pool.query(
           `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
            VALUES ($1, 'cta_click', $2, $3, $4)`,
@@ -2720,6 +2760,7 @@ app.get("/storefront", asyncHandler(async (req, res) => {
 
 
   const site_id = site.site_id;
+  const bizEmail = (site.owner_email || "owner@example.com").toLowerCase();
   const plan = site.plan || "unpaid";
 
 
@@ -3030,11 +3071,33 @@ button,select,a,input{
   text-decoration:none;
   outline:none;
 }
-button:hover,a:hover,select:hover{border-color: rgba(96,165,250,.55)}
-.btn{background: rgba(96,165,250,.14)}
-.btnGreen{background: rgba(52,211,153,.14)}
-.btnDanger{background: rgba(251,113,133,.10)}
-.btnGhost{background: rgba(255,255,255,.04)}
+button:hover,a:hover,select:hover{border-color: var(--accent2)}
+/* Buttons: purple + white theme (no "greyed" look) */
+.btn{
+  background: var(--accent);
+  color: #fff;
+  border-color: rgba(124,58,237,.55);
+  box-shadow: 0 10px 24px rgba(124,58,237,.18);
+}
+.btnGreen{
+  background: rgba(124,58,237,.12);
+  color: var(--accent);
+  border-color: rgba(124,58,237,.30);
+}
+.btnDanger{
+  background: rgba(124,58,237,.10);
+  color: var(--accent);
+  border-color: rgba(124,58,237,.35);
+}
+.btnGhost{
+  background: #fff;
+  color: var(--accent);
+  border-color: rgba(124,58,237,.25);
+}
+button:disabled, select:disabled, input:disabled{
+  opacity: .70;
+  cursor: not-allowed;
+}
 .divider{height:1px;background: rgba(255,255,255,.10);margin:12px 0;}
 .span12{grid-column:1 / -1}
 .span8{grid-column: span 8}
@@ -4261,7 +4324,8 @@ async function loadCRMv2(){
     const j = await r.json().catch(() => ({}));
     if (!j.ok) { setStatus(j.error || "seed failed"); return; }
     setStatus("seeded ✅");
-    setTimeout(refresh, 350);
+    // Refresh both Analytics and CRM so the CRM tab isn't empty after seeding.
+    setTimeout(() => { refresh(); loadCRM(); loadCrmClients(""); }, 350);
   }
 
 
