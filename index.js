@@ -717,7 +717,8 @@ CREATE TABLE IF NOT EXISTS crm_leads (
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS body_text TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS meta JSONB;`);
   await pool.query(`ALTER TABLE crm_activity_matches ADD COLUMN IF NOT EXISTS reason TEXT;`);
-CREATE TABLE IF NOT EXISTS daily_reports (
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS daily_reports (
       id BIGSERIAL PRIMARY KEY,
       site_id TEXT NOT NULL REFERENCES sites(site_id) ON DELETE CASCADE,
       report_date DATE NOT NULL,
