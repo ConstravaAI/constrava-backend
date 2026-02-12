@@ -5899,8 +5899,8 @@ app.get("/dashboard.js", (req, res) => {
   setNoStore(res);
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
 
-  // IMPORTANT: Do NOT use backticks inside this string.
-  // A single JS parse error here will make ALL dashboard buttons appear dead.
+  // NOTE: Keep this response free of backticks inside the served JS.
+  // A parse error here makes all dashboard buttons appear dead.
   res.send(String.raw`
 (() => {
   "use strict";
@@ -5936,7 +5936,7 @@ app.get("/dashboard.js", (req, res) => {
     u.searchParams.set("token", TOKEN);
     if (params){
       for (const k of Object.keys(params)){
-        if (params[k] !== undefined && params[k] !== null && params[k] !== "") u.searchParams.set(k, String(params[k]));
+        if (params[k] !== undefined && params[k] !== null) u.searchParams.set(k, String(params[k]));
       }
     }
     const r = await fetch(u.toString(), { cache: "no-store" });
@@ -5960,229 +5960,81 @@ app.get("/dashboard.js", (req, res) => {
     return Number.isFinite(v) ? v : 7;
   }
 
-  // -------------------------
-  // Charts (SVG)
-  // -------------------------
-  function clearSvg(svg){
-    while(svg.firstChild) svg.removeChild(svg.firstChild);
+  function setSvg(id, svg){
+    const el = $(id);
+    if (!el) return;
+    el.innerHTML = svg;
   }
 
-  function drawTrendSvg(data){
-    const svg = $("trendSvg");
-    if (!svg) return;
-    clearSvg(svg);
+  function renderTrendSvg(points){
+    // points: [{day:'YYYY-MM-DD', visits:n}]
+    const w = 640, h = 240, pad = 18;
+    const vals = (points || []).map(p => Number(p.visits || 0));
+    const n = vals.length || 1;
+    const maxV = Math.max(1, ...vals);
 
-    const W = 900, H = 260;
-    const padL = 42, padR = 18, padT = 14, padB = 30;
-    const innerW = W - padL - padR;
-    const innerH = H - padT - padB;
+    const x = (i) => pad + (i * (w - pad*2)) / Math.max(1, n-1);
+    const y = (v) => (h - pad) - (v * (h - pad*2)) / maxV;
 
-    const pts = (Array.isArray(data) ? data : []).map((d) => ({
-      day: d.day,
-      visits: Number(d.visits || 0)
-    }));
-
-    const maxV = Math.max(1, ...pts.map(p => p.visits));
-    const minV = 0;
-
-    const x = (i) => padL + (pts.length <= 1 ? 0 : (i/(pts.length-1))*innerW);
-    const y = (v) => padT + innerH - ((v - minV) / (maxV - minV)) * innerH;
-
-    // axis
-    const mk = (tag) => document.createElementNS("http://www.w3.org/2000/svg", tag);
-
-    const axis = mk("line");
-    axis.setAttribute("x1", padL);
-    axis.setAttribute("y1", padT + innerH);
-    axis.setAttribute("x2", padL + innerW);
-    axis.setAttribute("y2", padT + innerH);
-    axis.setAttribute("stroke", "rgba(124,58,237,.25)");
-    axis.setAttribute("stroke-width", "2");
-    svg.appendChild(axis);
-
-    // grid + labels
-    for (let g=0; g<=4; g++){
-      const v = Math.round((maxV * (4-g))/4);
-      const ly = y(v);
-
-      const gl = mk("line");
-      gl.setAttribute("x1", padL);
-      gl.setAttribute("y1", ly);
-      gl.setAttribute("x2", padL + innerW);
-      gl.setAttribute("y2", ly);
-      gl.setAttribute("stroke", "rgba(124,58,237,.10)");
-      gl.setAttribute("stroke-width", "1");
-      svg.appendChild(gl);
-
-      const tx = mk("text");
-      tx.setAttribute("x", 6);
-      tx.setAttribute("y", ly + 4);
-      tx.setAttribute("font-size", "12");
-      tx.setAttribute("fill", "rgba(17,24,39,.65)");
-      tx.textContent = String(v);
-      svg.appendChild(tx);
-    }
-
-    if (!pts.length){
-      const tx = mk("text");
-      tx.setAttribute("x", padL);
-      tx.setAttribute("y", padT + 24);
-      tx.setAttribute("font-size", "14");
-      tx.setAttribute("fill", "rgba(17,24,39,.65)");
-      tx.textContent = "No data yet — seed demo data or install tracking.";
-      svg.appendChild(tx);
-      return;
-    }
-
-    // line path
     let d = "";
-    pts.forEach((p,i) => {
-      d += (i===0 ? "M" : "L") + x(i) + " " + y(p.visits) + " ";
-    });
-
-    const path = mk("path");
-    path.setAttribute("d", d.trim());
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke", "rgba(124,58,237,.95)");
-    path.setAttribute("stroke-width", "4");
-    path.setAttribute("stroke-linecap", "round");
-    path.setAttribute("stroke-linejoin", "round");
-    svg.appendChild(path);
-
-    // points
-    pts.forEach((p,i) => {
-      const c = mk("circle");
-      c.setAttribute("cx", x(i));
-      c.setAttribute("cy", y(p.visits));
-      c.setAttribute("r", "5");
-      c.setAttribute("fill", "rgba(255,255,255,.95)");
-      c.setAttribute("stroke", "rgba(124,58,237,.95)");
-      c.setAttribute("stroke-width", "3");
-      svg.appendChild(c);
-    });
-
-    // x labels (show first/last, and mid if enough)
-    const labelIdx = pts.length <= 2 ? [0, pts.length-1] : [0, Math.floor((pts.length-1)/2), pts.length-1];
-    labelIdx.forEach((i) => {
-      if (i < 0 || i >= pts.length) return;
-      const tx = mk("text");
-      tx.setAttribute("x", x(i));
-      tx.setAttribute("y", padT + innerH + 22);
-      tx.setAttribute("text-anchor", "middle");
-      tx.setAttribute("font-size", "12");
-      tx.setAttribute("fill", "rgba(17,24,39,.65)");
-      tx.textContent = String(pts[i].day || "").slice(5);
-      svg.appendChild(tx);
-    });
-  }
-
-  function drawDeviceSvg(mobile, desktop){
-    const svg = $("deviceSvg");
-    if (!svg) return;
-    clearSvg(svg);
-
-    const mk = (tag) => document.createElementNS("http://www.w3.org/2000/svg", tag);
-    const cx = 80, cy = 80, r = 52;
-    const total = Math.max(1, (mobile||0) + (desktop||0));
-    const mobPct = (mobile||0)/total;
-    const deskPct = (desktop||0)/total;
-
-    function arcPath(frac, startAngle){
-      const endAngle = startAngle + frac * Math.PI * 2;
-      const x1 = cx + r*Math.cos(startAngle);
-      const y1 = cy + r*Math.sin(startAngle);
-      const x2 = cx + r*Math.cos(endAngle);
-      const y2 = cy + r*Math.sin(endAngle);
-      const large = frac > 0.5 ? 1 : 0;
-      return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`;
+    for (let i=0;i<n;i++){
+      const xi = x(i);
+      const yi = y(vals[i] || 0);
+      d += (i===0 ? "M" : " L") + xi.toFixed(2) + " " + yi.toFixed(2);
     }
 
-    // background ring
-    const bg = mk("circle");
-    bg.setAttribute("cx", cx);
-    bg.setAttribute("cy", cy);
-    bg.setAttribute("r", r);
-    bg.setAttribute("fill", "none");
-    bg.setAttribute("stroke", "rgba(124,58,237,.14)");
-    bg.setAttribute("stroke-width", "14");
-    svg.appendChild(bg);
+    // grid
+    let grid = "";
+    for (let k=0;k<=4;k++){
+      const gy = pad + (k * (h-pad*2))/4;
+      grid += '<line x1="'+pad+'" y1="'+gy.toFixed(2)+'" x2="'+(w-pad)+'" y2="'+gy.toFixed(2)+'" stroke="rgba(120,80,200,0.18)" stroke-width="1"/>';
+    }
 
-    // mobile arc
-    const a1 = mk("path");
-    a1.setAttribute("d", arcPath(mobPct, -Math.PI/2));
-    a1.setAttribute("fill", "none");
-    a1.setAttribute("stroke", "rgba(124,58,237,.95)");
-    a1.setAttribute("stroke-width", "14");
-    a1.setAttribute("stroke-linecap", "round");
-    svg.appendChild(a1);
+    return (
+      '<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">' +
+      '<rect x="0" y="0" width="'+w+'" height="'+h+'" rx="16" fill="rgba(255,255,255,0.55)"/>' +
+      grid +
+      '<path d="'+d+'" fill="none" stroke="rgba(120,60,220,0.95)" stroke-width="3" stroke-linecap="round" />' +
+      '</svg>'
+    );
+  }
 
-    // desktop arc
-    const a2 = mk("path");
-    a2.setAttribute("d", arcPath(deskPct, -Math.PI/2 + mobPct*2*Math.PI));
-    a2.setAttribute("fill", "none");
-    a2.setAttribute("stroke", "rgba(17,24,39,.35)");
-    a2.setAttribute("stroke-width", "14");
-    a2.setAttribute("stroke-linecap", "round");
-    svg.appendChild(a2);
+  function renderDonutSvg(mobile, desktop){
+    const w=320,h=220,cx=110,cy=110,r=70,sw=22;
+    const a = Math.max(0, Number(mobile||0));
+    const b = Math.max(0, Number(desktop||0));
+    const t = Math.max(1, a+b);
+    const frac = a/t;
+    const circ = 2*Math.PI*r;
+    const dashA = (circ*frac).toFixed(2);
+    const dashB = (circ*(1-frac)).toFixed(2);
 
-    // labels
-    const t1 = mk("text");
-    t1.setAttribute("x", 160);
-    t1.setAttribute("y", 68);
-    t1.setAttribute("font-size", "13");
-    t1.setAttribute("fill", "rgba(17,24,39,.75)");
-    t1.textContent = "Mobile";
-    svg.appendChild(t1);
+    const label = 'Mobile: '+a+' • Desktop: '+b;
 
-    const t1v = mk("text");
-    t1v.setAttribute("x", 160);
-    t1v.setAttribute("y", 86);
-    t1v.setAttribute("font-size", "18");
-    t1v.setAttribute("font-weight", "800");
-    t1v.setAttribute("fill", "rgba(124,58,237,.95)");
-    t1v.textContent = Math.round(mobPct*100) + "%";
-    svg.appendChild(t1v);
-
-    const t2 = mk("text");
-    t2.setAttribute("x", 160);
-    t2.setAttribute("y", 112);
-    t2.setAttribute("font-size", "13");
-    t2.setAttribute("fill", "rgba(17,24,39,.75)");
-    t2.textContent = "Desktop";
-    svg.appendChild(t2);
-
-    const t2v = mk("text");
-    t2v.setAttribute("x", 160);
-    t2v.setAttribute("y", 130);
-    t2v.setAttribute("font-size", "18");
-    t2v.setAttribute("font-weight", "800");
-    t2v.setAttribute("fill", "rgba(17,24,39,.70)");
-    t2v.textContent = Math.round(deskPct*100) + "%";
-    svg.appendChild(t2v);
+    return (
+      '<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">' +
+      '<rect x="0" y="0" width="'+w+'" height="'+h+'" rx="16" fill="rgba(255,255,255,0.55)"/>' +
+      '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="rgba(120,80,200,0.20)" stroke-width="'+sw+'"/>' +
+      '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="rgba(120,60,220,0.95)" stroke-width="'+sw+'" ' +
+        'stroke-dasharray="'+dashA+' '+dashB+'" transform="rotate(-90 '+cx+' '+cy+')" stroke-linecap="round"/>' +
+      '<text x="'+cx+'" y="'+(cy+6)+'" text-anchor="middle" font-size="12" fill="rgba(20,20,30,0.85)">'+escapeHtml(label)+'</text>' +
+      '</svg>'
+    );
   }
 
   function renderTopPages(rows){
     const wrap = $("topPages");
     if (!wrap) return;
-    wrap.innerHTML = "";
-    const arr = Array.isArray(rows) ? rows : [];
-    if (!arr.length){
-      wrap.innerHTML = '<div class="muted">No page data yet.</div>';
-      return;
-    }
-    arr.forEach((r) => {
-      const div = document.createElement("div");
-      div.className = "item";
-      div.innerHTML =
-        '<div style="font-weight:800">' + escapeHtml(r.page_type) + '</div>' +
-        '<div class="muted">' + escapeHtml(String(r.views)) + ' views • ' + escapeHtml(String(r.share)) + '%</div>';
-      wrap.appendChild(div);
-    });
+    const r = rows || [];
+    if (!r.length){ wrap.innerHTML = "<div class='muted'>No data.</div>"; return; }
+    wrap.innerHTML = r.slice(0,10).map((p) => {
+      const name = escapeHtml(p.page_type || "");
+      const views = Number(p.views||0);
+      const share = Number(p.share||0);
+      return "<div class='rowLine'><div class='rowLeft'>"+name+"</div><div class='rowRight'>"+views+" ("+share+"%)</div></div>";
+    }).join("");
   }
 
-  // -------------------------
-  // Tabs
-  // -------------------------
   function bindTabs(){
     const btnA = $("tabAnalytics");
     const btnC = $("tabCRMTop");
@@ -6202,60 +6054,12 @@ app.get("/dashboard.js", (req, res) => {
     if (btnC) btnC.addEventListener("click", () => setActive("crm"));
     if (topC) topC.addEventListener("click", () => setActive("crm"));
 
-    // default
     setActive("analytics");
   }
 
   // -------------------------
   // Analytics UI
   // -------------------------
-  function appendChat(role, text){
-    const box = $("chatBox");
-    if (!box) return;
-    const div = document.createElement("div");
-    div.style.margin = "8px 0";
-    div.innerHTML =
-      '<div class="muted" style="font-size:12px;margin-bottom:2px">' +
-        escapeHtml(role) +
-      "</div>" +
-      '<div style="white-space:pre-wrap">' + escapeHtml(text) + "</div>";
-    box.appendChild(div);
-    box.scrollTop = box.scrollHeight;
-  }
-
-  const chatHistory = [];
-
-  async function runAnalyticsChat(){
-    const input = $("chatInput");
-    const msg = input ? input.value.trim() : "";
-    if (!msg) return;
-
-    if (input) input.value = "";
-    appendChat("You", msg);
-
-    chatHistory.push({ role: "user", content: msg });
-
-    // show placeholder
-    appendChat("AI", "…");
-
-    const box = $("chatBox");
-    const last = box ? box.lastElementChild : null;
-
-    try{
-      const r = await apiPost("/api/ai/chat", { token: TOKEN, message: msg, history: chatHistory });
-      if (!r || !r.ok){
-        if (last) last.querySelector("div:nth-child(2)").textContent = (r && r.error) ? r.error : "Chat failed";
-        return;
-      }
-      const answer = String(r.answer || r.reply || r.message || "").trim() || "(no reply)";
-      if (last) last.querySelector("div:nth-child(2)").textContent = answer;
-      chatHistory.push({ role: "assistant", content: answer });
-    } catch(e){
-      if (last) last.querySelector("div:nth-child(2)").textContent = "Network error";
-      console.error(e);
-    }
-  }
-
   async function refreshAnalytics(){
     if (!TOKEN) return;
     setStatus("loading...");
@@ -6270,54 +6074,30 @@ app.get("/dashboard.js", (req, res) => {
 
     setText("kpiToday", m.visits_today ?? 0);
     setText("kpiRange", m.visits_range ?? 0);
-
-    // Rates
-    const leadRate = (m.conversion_rate || 0);
-    const buyRate = (m.purchase_rate || 0);
-    setText("kpiLeadRate", (Math.round(leadRate * 10000) / 100) + "%");
-    setText("kpiPurchaseRate", (Math.round(buyRate * 10000) / 100) + "%");
-
+    setText("kpiLeadRate", Math.round((m.conversion_rate || 0) * 10000) / 100 + "%");
+    setText("kpiPurchaseRate", Math.round((m.purchase_rate || 0) * 10000) / 100 + "%");
     setText("leads", m.leads ?? 0);
     setText("purchases", m.purchases ?? 0);
     setText("cta", m.cta_clicks ?? 0);
 
-    // trend + device + top pages
-    drawTrendSvg(m.trend || []);
-    const dm = m.device_mix || { mobile: 0, desktop: 0 };
-    setText("mob", dm.mobile ?? 0);
-    setText("desk", dm.desktop ?? 0);
-    drawDeviceSvg(dm.mobile || 0, dm.desktop || 0);
-    renderTopPages(m.top_pages_range || []);
-
-    // max/avg
-    const t = Array.isArray(m.trend) ? m.trend : [];
-    const visits = t.map(x => Number(x.visits||0));
-    const maxDay = visits.length ? Math.max(...visits) : 0;
-    const avgDay = visits.length ? (visits.reduce((a,b)=>a+b,0)/visits.length) : 0;
-    setText("maxDay", maxDay || "—");
-    setText("avgDay", visits.length ? (Math.round(avgDay*10)/10) : "—");
-
-    // live section
-    if (m.last_event){
-      setText("liveJson", JSON.stringify(m.last_event, null, 2));
+    // charts
+    try{
+      setSvg("trendSvg", renderTrendSvg(m.trend || []));
+      const dm = m.device_mix || { mobile: 0, desktop: 0 };
+      setSvg("deviceSvg", renderDonutSvg(dm.mobile || 0, dm.desktop || 0));
+      renderTopPages(m.top_pages_range || []);
+    }catch(e){
+      console.warn("Chart render failed", e);
     }
 
-    // latest report preview (if present)
+    // latest report preview
     try{
       const latest = await apiGet("/reports/latest");
       if (latest && latest.ok && latest.report){
-        const raw = $("latestAiReport");
-        if (raw) raw.textContent = latest.report.report_text || "";
-
-        const cards = $("latestAiReportCards");
-        if (cards){
-          const txt = latest.report.report_text || "";
-          // simple split into bullets/cards
-          const parts = txt.split("\n").map(s=>s.trim()).filter(Boolean).slice(0, 18);
-          cards.innerHTML = parts.map(p => '<div class="repCard">' + escapeHtml(p) + '</div>').join("");
-        }
+        const box = $("latestAiReport");
+        if (box) box.textContent = latest.report.report_text || "";
       }
-    } catch(e){}
+    }catch(e){}
 
     setStatus("ready");
   }
@@ -6325,7 +6105,8 @@ app.get("/dashboard.js", (req, res) => {
   async function seedDemo(){
     if (!TOKEN) return;
     setStatus("seeding...");
-    const r = await apiPost("/demo/seed", { days: activeDays() });
+    const days = activeDays();
+    const r = await apiPost("/demo/seed", { days });
     if (!r || !r.ok){
       setStatus("error");
       console.error(r);
@@ -6340,42 +6121,50 @@ app.get("/dashboard.js", (req, res) => {
   async function genAiReport(){
     if (!TOKEN) return;
     setStatus("generating...");
-    const r = await apiPost("/reports/generate", { days: activeDays() });
+    // keep compatibility: if /reports/generate exists, use it; else fallback /api/ai/daily-report etc.
+    const r = await apiPost("/reports/generate", { days: activeDays() }).catch(() => null);
     if (!r || !r.ok){
-      setStatus("error");
-      console.error(r);
-      alert(r && r.error ? r.error : "Generate failed");
+      // show error but don't crash
+      alert((r && r.error) ? r.error : "Generate failed (endpoint may require Full AI plan).");
+      setStatus("ready");
       return;
     }
     await refreshAnalytics();
     setStatus("ready");
   }
 
-  // -------------------------
-  // Live poll
-  // -------------------------
-  let liveOn = true;
-  let liveTimer = null;
+  // Analytics chat
+  function bindAnalyticsChat(){
+    const btn = $("chatSend");
+    const input = $("chatInput");
+    const out = $("chatOut");
+    const clear = $("chatClear");
 
-  async function pollLive(){
-    if (!liveOn) return;
-    try{
-      const m = await apiGet("/metrics", { days: activeDays() });
-      if (m && m.ok && m.last_event){
-        setText("liveJson", JSON.stringify(m.last_event, null, 2));
+    async function run(){
+      const q = input ? input.value.trim() : "";
+      if (!q) return;
+      if (out) out.textContent = "Thinking...";
+      const r = await apiPost("/api/ai/chat", { token: TOKEN, message: q, days: activeDays() });
+      if (!r || !r.ok){
+        if (out) out.textContent = (r && r.error) ? r.error : "Chat failed (may require Full AI plan).";
+        return;
       }
-    } catch(e){}
-  }
+      if (out) out.textContent = r.reply || r.text || JSON.stringify(r);
+    }
 
-  function startLive(){
-    if (liveTimer) clearInterval(liveTimer);
-    liveTimer = setInterval(pollLive, 5000);
+    if (btn) btn.addEventListener("click", run);
+    if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
+    if (clear) clear.addEventListener("click", () => { if (input) input.value=""; if (out) out.textContent=""; });
   }
 
   // -------------------------
   // CRM UI
   // -------------------------
+  let _lastLeads = [];
+  let _lastClients = [];
+
   function renderLeads(leads){
+    _lastLeads = leads || [];
     const wrap = $("crmLeads");
     if (!wrap) return;
     wrap.innerHTML = "";
@@ -6406,7 +6195,6 @@ app.get("/dashboard.js", (req, res) => {
       wrap.appendChild(card);
     });
 
-    // bind edit buttons
     wrap.querySelectorAll("button[data-edit]").forEach((b) => {
       b.addEventListener("click", async () => {
         const id = b.getAttribute("data-edit");
@@ -6421,6 +6209,7 @@ app.get("/dashboard.js", (req, res) => {
   }
 
   function renderClients(clients){
+    _lastClients = clients || [];
     const wrap = $("crmClients");
     if (!wrap) return;
     wrap.innerHTML = "";
@@ -6466,7 +6255,7 @@ app.get("/dashboard.js", (req, res) => {
         lines.push("Email: " + (c.primary_email || "") + " • Phone: " + (c.primary_phone || ""));
         lines.push("");
         lines.push("Recent activity:");
-        (r.activities || []).slice(0, 10).forEach((a) => {
+        (r.activities || []).slice(0, 12).forEach((a) => {
           const t = a.occurred_at ? new Date(a.occurred_at).toLocaleString() : "";
           const s = (a.subject || a.type || "").slice(0, 90);
           lines.push("- " + t + " • " + s);
@@ -6477,7 +6266,7 @@ app.get("/dashboard.js", (req, res) => {
   }
 
   async function refreshCrmLeads(){
-    const r = await apiGet("/crm", { limit: 200 });
+    const r = await apiGet("/crm", { limit: 180 });
     if (r && r.ok) renderLeads(r.leads || []);
   }
 
@@ -6488,24 +6277,6 @@ app.get("/dashboard.js", (req, res) => {
 
   async function refreshCrmAll(){
     await Promise.all([refreshCrmLeads(), refreshCrmClients("")]);
-  }
-
-  function applyLeadFilter(q){
-    const leadSearch = $("crmLeadSearch");
-    const query = (q !== undefined) ? String(q) : (leadSearch ? leadSearch.value : "");
-    const wrap = $("crmLeads");
-    if (!wrap) return;
-    const low = query.trim().toLowerCase();
-    wrap.querySelectorAll(".crmLeadRow").forEach((row) => {
-      row.style.display = !low || row.textContent.toLowerCase().includes(low) ? "" : "none";
-    });
-  }
-
-  function expandClientsCard(){
-    const clientsCard = $("crmClientsCard");
-    if (!clientsCard) return;
-    const body = clientsCard.querySelector(".cardBody");
-    if (body && body.style.display === "none") body.style.display = "";
   }
 
   function bindCrm(){
@@ -6523,11 +6294,7 @@ app.get("/dashboard.js", (req, res) => {
     const filterClear = $("crmClientFilterClear");
 
     // leads refresh/export
-    if (refreshBtn) refreshBtn.addEventListener("click", async () => {
-      await refreshCrmAll();
-      const card = $("crmLeadsCard");
-      if (card) card.scrollIntoView({ behavior:"smooth", block:"start" });
-    });
+    if (refreshBtn) refreshBtn.addEventListener("click", refreshCrmAll);
 
     if (exportBtn) exportBtn.addEventListener("click", async () => {
       const r = await apiGet("/crm", { limit: 500 });
@@ -6550,25 +6317,34 @@ app.get("/dashboard.js", (req, res) => {
       return s;
     }
 
-    // lead search (filter leads list)
-    if (leadSearch) leadSearch.addEventListener("input", () => {
-      applyLeadFilter();
-      const card = $("crmLeadsCard");
-      if (card) card.scrollIntoView({ behavior:"smooth", block:"start" });
-    });
-
+    // lead search (filters the SAME lead list)
+    if (leadSearch){
+      leadSearch.addEventListener("input", () => {
+        const q = leadSearch.value.trim().toLowerCase();
+        const wrap = $("crmLeads");
+        if (!wrap) return;
+        wrap.querySelectorAll(".crmLeadRow").forEach((row) => {
+          row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
+        });
+      });
+    }
     if (leadClear) leadClear.addEventListener("click", () => {
       if (leadSearch) leadSearch.value = "";
-      applyLeadFilter("");
+      if (leadSearch) leadSearch.dispatchEvent(new Event("input"));
     });
 
-    // server client search (updates the SAME clients list below)
+    // server client search (updates SAME client list)
     if (clientSearchBtn) clientSearchBtn.addEventListener("click", async () => {
       const q = clientSearch ? clientSearch.value.trim() : "";
-      expandClientsCard();
       await refreshCrmClients(q);
-      const card = $("crmClientsCard");
-      if (card) card.scrollIntoView({ behavior:"smooth", block:"start" });
+      // expand if collapsed
+      try{
+        const body = clientsCard ? clientsCard.querySelector(".cardBody") : null;
+        if (body) body.style.display = "";
+      }catch(e){}
+      // scroll to list for feedback
+      const list = $("crmClients");
+      if (list) list.scrollIntoView({ behavior: "smooth", block: "start" });
     });
 
     // create client
@@ -6578,7 +6354,6 @@ app.get("/dashboard.js", (req, res) => {
       const ph = ($("crmNewPhone") && $("crmNewPhone").value) ? $("crmNewPhone").value.trim() : "";
       const r = await apiPost("/crm/clients", { token: TOKEN, full_name: nm, email: em, phone: ph, stage: "lead" });
       if (!r || !r.ok) return alert(r && r.error ? r.error : "Create failed");
-      expandClientsCard();
       await refreshCrmClients("");
     });
 
@@ -6596,7 +6371,7 @@ app.get("/dashboard.js", (req, res) => {
       }
     }
 
-    // local filter on loaded clients (within the clients list section)
+    // local filter on loaded clients (filters SAME list)
     if (filterInput){
       filterInput.addEventListener("input", () => {
         const q = filterInput.value.trim().toLowerCase();
@@ -6612,7 +6387,7 @@ app.get("/dashboard.js", (req, res) => {
       if (filterInput) filterInput.dispatchEvent(new Event("input"));
     });
 
-    // CRM chat (search + ALSO drive the lists)
+    // CRM chat: drives BOTH lists + shows summary
     const crmSend = $("crmChatSend");
     const crmIn = $("crmChatInput");
     const crmOut = $("crmChatOut");
@@ -6623,45 +6398,42 @@ app.get("/dashboard.js", (req, res) => {
       if (!q) return;
       if (crmOut) crmOut.textContent = "Searching...";
 
-      // Drive the SAME UI sections:
-      // - filter leads list locally
-      // - server search clients list
-      applyLeadFilter(q);
-      expandClientsCard();
+      // 1) server client search updates client list
       await refreshCrmClients(q);
 
-      // Also show a text summary in the chat output
-      const leads = await apiGet("/crm", { limit: 200 });
-      const clients = await apiGet("/crm/clients", { q });
+      // 2) lead list filters locally (no extra request needed)
+      const leadWrap = $("crmLeads");
+      if (leadWrap){
+        const qq = q.toLowerCase();
+        leadWrap.querySelectorAll(".crmLeadRow").forEach((row) => {
+          row.style.display = row.textContent.toLowerCase().includes(qq) ? "" : "none";
+        });
+      }
+
+      const matchedClients = _lastClients || [];
+      const matchedLeads = (_lastLeads || []).filter((l) => {
+        const s = (l.email || "") + " " + (l.name || "") + " " + (l.phone || "") + " " + (l.notes || "");
+        return s.toLowerCase().includes(q.toLowerCase());
+      });
 
       const out = [];
       out.push('Search: "' + q + '"');
       out.push("");
-
-      if (clients && clients.ok){
-        out.push("Clients matched: " + (clients.clients || []).length);
-        (clients.clients || []).slice(0, 8).forEach((c) => {
-          out.push("- " + (c.full_name || "(unnamed)") + " • " + (c.primary_email || "") + " • " + (c.stage || ""));
-        });
-      }
-
+      out.push("Clients matched: " + matchedClients.length);
+      matchedClients.slice(0, 8).forEach((c) => {
+        out.push("- " + (c.full_name || "(unnamed)") + " • " + (c.primary_email || "") + " • " + (c.stage || ""));
+      });
       out.push("");
-
-      if (leads && leads.ok){
-        const rows = (leads.leads || []).filter((l) => {
-          const s = (l.email || "") + " " + (l.name || "") + " " + (l.phone || "") + " " + (l.notes || "");
-          return s.toLowerCase().includes(q.toLowerCase());
-        });
-        out.push("Leads matched: " + rows.length);
-        rows.slice(0, 8).forEach((l) => {
-          out.push("- " + (l.email || "(no email)") + " • " + (l.status || "new") + " • " + (l.source_page || ""));
-        });
-      }
+      out.push("Leads matched: " + matchedLeads.length);
+      matchedLeads.slice(0, 8).forEach((l) => {
+        out.push("- " + (l.email || "(no email)") + " • " + (l.status || "new") + " • " + (l.source_page || ""));
+      });
 
       if (crmOut) crmOut.textContent = out.join("\n");
 
-      const leadCard = $("crmLeadsCard");
-      if (leadCard) leadCard.scrollIntoView({ behavior:"smooth", block:"start" });
+      // scroll to results for visibility
+      const list = $("crmLeads");
+      if (list) list.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
     if (crmSend) crmSend.addEventListener("click", crmChatRun);
@@ -6679,29 +6451,6 @@ app.get("/dashboard.js", (req, res) => {
     if (refreshBtn) refreshBtn.addEventListener("click", refreshAnalytics);
     if (aiBtn) aiBtn.addEventListener("click", genAiReport);
     if (daysSel) daysSel.addEventListener("change", refreshAnalytics);
-
-    // analytics chat
-    const chatSend = $("chatSend");
-    const chatClear = $("chatClear");
-    const chatInput = $("chatInput");
-
-    if (chatSend) chatSend.addEventListener("click", runAnalyticsChat);
-    if (chatInput) chatInput.addEventListener("keydown", (e) => { if (e.key === "Enter") runAnalyticsChat(); });
-    if (chatClear) chatClear.addEventListener("click", () => {
-      const box = $("chatBox");
-      if (box) box.innerHTML = '<div class="muted">Start by asking: “What should I improve first?”</div>';
-      chatHistory.length = 0;
-    });
-
-    // live controls
-    const liveToggle = $("liveToggle");
-    const liveNow = $("liveNow");
-    if (liveToggle) liveToggle.addEventListener("click", () => {
-      liveOn = !liveOn;
-      liveToggle.textContent = liveOn ? "Pause" : "Resume";
-      if (liveOn) pollLive();
-    });
-    if (liveNow) liveNow.addEventListener("click", pollLive);
   }
 
   function boot(){
@@ -6712,10 +6461,10 @@ app.get("/dashboard.js", (req, res) => {
     }
     bindTabs();
     bindTopControls();
+    bindAnalyticsChat();
     bindCrm();
     refreshAnalytics();
     refreshCrmAll();
-    startLive();
     setStatus("ready");
   }
 
