@@ -4858,8 +4858,7 @@ app.get("/dashboard.js", (req, res) => {
     lines.push("");
     lines.push("Tip: Click a client in the list to open status + activity.");
 
-    out.textContent = lines.join("
-");
+    out.textContent = lines.join("\n");
   }
 
 
