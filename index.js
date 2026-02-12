@@ -2515,6 +2515,93 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 // List / search clients
+
+
+// CRM AI Search (deterministic; works without OPENAI_API_KEY).
+// Interprets simple phrases/filters and returns matching leads + clients.
+app.post("/crm/ai_search", asyncHandler(async (req, res) => {
+  const token = req.body.token || req.query.token;
+  const query = String(req.body.query || "").trim();
+  const days = Number(req.body.days || 30) || 30;
+
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+  const q = query.toLowerCase();
+  const limit = 180;
+
+  const has = (s) => q.includes(s);
+  const pickInt = (re_, fallback) => {
+    const m = q.match(re_);
+    const n = m ? parseInt(m[1], 10) : NaN;
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  // ---- Leads ----
+  const leadDays = has("recent") ? pickInt(/recent\\s+(\\d+)/i, 7) : days;
+
+  const statusMatch = q.match(/status\\s*:\\s*([a-z_\\-]+)/i);
+  const pageMatch = q.match(/(?:from\\s+)(\\/[^\\s]+)|page\\s*:\\s*([^\\s]+)/i);
+
+  let leadWhere = "site_id=$1 AND created_at >= NOW() - ($2::int || ' days')::interval";
+  const leadVals = [site.site_id, leadDays];
+
+  if (statusMatch){
+    leadVals.push(statusMatch[1]);
+    leadWhere += ` AND status=$${leadVals.length}`;
+  }
+  if (pageMatch){
+    const p = (pageMatch[1] || pageMatch[2] || "").trim();
+    if (p){
+      leadVals.push(p);
+      leadWhere += ` AND source_page ILIKE '%' || $${leadVals.length} || '%'`;
+    }
+  }
+
+  if (query){
+    leadVals.push(query);
+    leadWhere += ` AND (email ILIKE '%' || $${leadVals.length} || '%' OR name ILIKE '%' || $${leadVals.length} || '%' OR phone ILIKE '%' || $${leadVals.length} || '%' OR notes ILIKE '%' || $${leadVals.length} || '%')`;
+  }
+
+  const leads = (await pool.query(
+    `SELECT * FROM crm_leads WHERE ${leadWhere} ORDER BY created_at DESC LIMIT ${limit}`,
+    leadVals
+  )).rows;
+
+  // ---- Clients ----
+  const stageMatch = q.match(/stage\\s*:\\s*([a-z_\\-]+)/i);
+  const healthMatch = q.match(/health\\s*:\\s*([a-z_\\-]+)/i);
+  const idleDays = (has("idle") || has("no touch") || has("not touched")) ? pickInt(/(?:idle|touch)\\s+(\\d+)/i, 14) : null;
+
+  let clientWhere = "site_id=$1";
+  const clientVals = [site.site_id];
+
+  if (stageMatch){
+    clientVals.push(stageMatch[1]);
+    clientWhere += ` AND stage=$${clientVals.length}`;
+  }
+  if (healthMatch){
+    clientVals.push(healthMatch[1]);
+    clientWhere += ` AND health=$${clientVals.length}`;
+  }
+  if (idleDays !== null){
+    clientVals.push(idleDays);
+    clientWhere += ` AND (last_touch_at IS NULL OR last_touch_at < NOW() - ($${clientVals.length}::int || ' days')::interval)`;
+  }
+
+  if (query){
+    clientVals.push(query);
+    clientWhere += ` AND (full_name ILIKE '%' || $${clientVals.length} || '%' OR primary_email ILIKE '%' || $${clientVals.length} || '%' OR primary_phone ILIKE '%' || $${clientVals.length} || '%' OR notes ILIKE '%' || $${clientVals.length} || '%')`;
+  }
+
+  const clients = (await pool.query(
+    `SELECT * FROM crm_clients WHERE ${clientWhere} ORDER BY last_touch_at DESC NULLS LAST, created_at DESC LIMIT ${limit}`,
+    clientVals
+  )).rows;
+
+  res.json({ ok: true, leads, clients });
+}));
+
 app.get("/crm/clients", asyncHandler(async (req, res) => {
   setNoStore(res);
   const token = req.query.token;
@@ -5735,68 +5822,35 @@ pre{
 
       <div class="grid" style="margin-top:0;gap:10px">
         <!-- Lead tools -->
-        <div class="card span6" style="background: var(--panel2); box-shadow:none">
-          <div style="font-weight:950">Lead inbox tools</div>
-          <div class="muted">Filter leads instantly (no scrolling).</div>
-          <div class="row" style="margin-top:8px">
-            <input id="crmLeadSearch" placeholder="Search leads by email/name/phone/page/status…" style="flex:1;min-width:240px" />
-            <button class="btnGhost" id="crmLeadClear" type="button">Clear</button>
-            <button class="btnGhost" id="crmRefresh" type="button">Refresh</button>
-            <button class="btnGhost" id="crmExport" type="button">Export CSV</button>
-          </div>
-        </div>
-
-
-        <!-- Client tools -->
-        <div class="card span6" style="background: var(--panel2); box-shadow:none">
-          <div style="font-weight:950">Client tools</div>
-          <div class="muted">Search on the server, or create a client.</div>
-
-
-          <div class="row" style="margin-top:8px">
-            <input id="crmClientSearch" placeholder="Search clients by name/email/phone…" style="flex:1;min-width:220px" />
-            <button class="btn" id="crmClientSearchBtn" type="button">Search</button>
-          </div>
-
-
-          <div class="divider"></div>
-
-
-          <div class="row">
-            <input id="crmNewName" placeholder="Full name" style="flex:1;min-width:140px" />
-            <input id="crmNewEmail" placeholder="Email" style="flex:1;min-width:140px" />
-            <input id="crmNewPhone" placeholder="Phone" style="flex:1;min-width:120px" />
-            <button class="btnGreen" id="crmCreateClient" type="button">Add</button>
-          </div>
-        </div>
-
-
-        <!-- CRM Chat -->
+        
+        <!-- CRM AI Search (single interface) -->
         <div class="card span12" style="background: var(--panel2); box-shadow:none">
           <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
             <div>
-              <div style="font-weight:950">CRM chat (search)</div>
-              <div class="muted">Ask things like: “show recent leads”, “find noah”, “clients at risk”, “lead noah.patel42@northstar.fit”.</div>
+              <div style="font-weight:950">CRM AI Search</div>
+              <div class="muted">
+                Ask things like: <span class="mono">find ava</span>, <span class="mono">recent leads</span>,
+                <span class="mono">status:new</span>, <span class="mono">clients idle 14</span>, <span class="mono">leads from /contact</span>.
+              </div>
+            </div>
+            <div class="row" style="gap:10px;flex-wrap:wrap">
+              <button class="btnGhost" id="crmRefresh" type="button">Refresh</button>
+              <button class="btnGhost" id="crmExport" type="button">Export CSV</button>
             </div>
           </div>
 
-
-          <div class="divider"></div>
-
-
-          <div class="row">
-            <input id="crmChatInput" placeholder="Search CRM…" style="flex:1;min-width:240px" />
-            <button class="btnGreen" id="crmChatSend" type="button">Search</button>
-            <button class="btnGhost" id="crmChatClear" type="button">Clear</button>
+          <div class="row" style="margin-top:10px;gap:10px;align-items:stretch;flex-wrap:wrap">
+            <input id="crmAiInput" placeholder='Try: "find noah" or "clients idle 30"' style="flex:1;min-width:260px" />
+            <button class="btn" id="crmAiSend" type="button">Search</button>
+            <button class="btnGhost" id="crmAiClear" type="button">Clear</button>
           </div>
-          <pre id="crmChatOut" style="max-height:260px;overflow:auto">—</pre>
+
+          <pre id="crmAiOut" class="mono" style="margin-top:10px;white-space:pre-wrap;background:rgba(20,20,30,0.08);border:1px solid var(--line);border-radius:14px;padding:12px;max-height:220px;overflow:auto"></pre>
+
+          <div class="muted" style="margin-top:10px">Results populate the Leads + Clients lists below.</div>
         </div>
-      </div>
-    </div>
 
-
-    <!-- Lists / panels -->
-    <div class="card span6" id="crmLeadsCard">
+<div class="card span6" id="crmLeadsCard">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
           <div style="font-weight:950">CRM — Leads</div>
@@ -5893,589 +5947,2367 @@ window.CONSTRAVA_TOKEN = ${JSON.stringify(String(token || ""))};
    Dashboard client JS
    GET /dashboard.js?token=...
 ----------------------------*/
-
-
 app.get("/dashboard.js", (req, res) => {
   setNoStore(res);
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
 
-  // NOTE: Keep this response free of backticks inside the served JS.
-  // A parse error here makes all dashboard buttons appear dead.
+
+
+
+
+
+
+
   res.send(String.raw`
 (() => {
   "use strict";
+
+
+
+
+
+
+
 
   const TOKEN =
     String(window.CONSTRAVA_TOKEN || "") ||
     new URLSearchParams(location.search).get("token") ||
     "";
 
+
+
+
+
+
+
+
   const $ = (id) => document.getElementById(id);
 
-  function setText(id, v){
-    const el = $(id);
-    if (el) el.textContent = String(v ?? "");
+
+
+
+  function setActiveTab(which){
+    const secA = $("sectionAnalytics");
+    const secC = $("sectionCRM");
+    const btnA = $("tabAnalytics");
+    const btnC = $("tabCRMTop");
+    const topC = $("tabCRM");
+
+
+
+
+    if (secA) secA.style.display = (which === "analytics") ? "" : "none";
+    if (secC) secC.style.display = (which === "crm") ? "" : "none";
+
+
+
+
+    if (btnA) btnA.classList.toggle("active", which === "analytics");
+    if (btnC) btnC.classList.toggle("active", which === "crm");
   }
 
-  function setStatus(t){
-    const el = $("status");
-    if (el) el.textContent = "Status: " + String(t || "ready");
-  }
 
-  function escapeHtml(s){
-    return String(s ?? "")
-      .replace(/&/g,"&amp;")
-      .replace(/</g,"&lt;")
-      .replace(/>/g,"&gt;")
-      .replace(/"/g,"&quot;")
-      .replace(/'/g,"&#039;");
-  }
 
-  async function apiGet(path, params){
-    const u = new URL(path, location.origin);
-    u.searchParams.set("token", TOKEN);
-    if (params){
-      for (const k of Object.keys(params)){
-        if (params[k] !== undefined && params[k] !== null) u.searchParams.set(k, String(params[k]));
-      }
-    }
-    const r = await fetch(u.toString(), { cache: "no-store" });
-    return r.json();
-  }
-
-  async function apiPost(path, body){
-    const u = new URL(path, location.origin);
-    u.searchParams.set("token", TOKEN);
-    const r = await fetch(u.toString(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body || {})
-    });
-    return r.json();
-  }
-
-  function activeDays(){
-    const sel = $("days");
-    const v = sel ? parseInt(sel.value || "7", 10) : 7;
-    return Number.isFinite(v) ? v : 7;
-  }
-
-  function setSvg(id, svg){
-    const el = $(id);
-    if (!el) return;
-    el.innerHTML = svg;
-  }
-
-  function renderTrendSvg(points){
-    // points: [{day:'YYYY-MM-DD', visits:n}]
-    const w = 640, h = 240, pad = 18;
-    const vals = (points || []).map(p => Number(p.visits || 0));
-    const n = vals.length || 1;
-    const maxV = Math.max(1, ...vals);
-
-    const x = (i) => pad + (i * (w - pad*2)) / Math.max(1, n-1);
-    const y = (v) => (h - pad) - (v * (h - pad*2)) / maxV;
-
-    let d = "";
-    for (let i=0;i<n;i++){
-      const xi = x(i);
-      const yi = y(vals[i] || 0);
-      d += (i===0 ? "M" : " L") + xi.toFixed(2) + " " + yi.toFixed(2);
-    }
-
-    // grid
-    let grid = "";
-    for (let k=0;k<=4;k++){
-      const gy = pad + (k * (h-pad*2))/4;
-      grid += '<line x1="'+pad+'" y1="'+gy.toFixed(2)+'" x2="'+(w-pad)+'" y2="'+gy.toFixed(2)+'" stroke="rgba(120,80,200,0.18)" stroke-width="1"/>';
-    }
-
-    return (
-      '<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">' +
-      '<rect x="0" y="0" width="'+w+'" height="'+h+'" rx="16" fill="rgba(255,255,255,0.55)"/>' +
-      grid +
-      '<path d="'+d+'" fill="none" stroke="rgba(120,60,220,0.95)" stroke-width="3" stroke-linecap="round" />' +
-      '</svg>'
-    );
-  }
-
-  function renderDonutSvg(mobile, desktop){
-    const w=320,h=220,cx=110,cy=110,r=70,sw=22;
-    const a = Math.max(0, Number(mobile||0));
-    const b = Math.max(0, Number(desktop||0));
-    const t = Math.max(1, a+b);
-    const frac = a/t;
-    const circ = 2*Math.PI*r;
-    const dashA = (circ*frac).toFixed(2);
-    const dashB = (circ*(1-frac)).toFixed(2);
-
-    const label = 'Mobile: '+a+' • Desktop: '+b;
-
-    return (
-      '<svg viewBox="0 0 '+w+' '+h+'" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">' +
-      '<rect x="0" y="0" width="'+w+'" height="'+h+'" rx="16" fill="rgba(255,255,255,0.55)"/>' +
-      '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="rgba(120,80,200,0.20)" stroke-width="'+sw+'"/>' +
-      '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="rgba(120,60,220,0.95)" stroke-width="'+sw+'" ' +
-        'stroke-dasharray="'+dashA+' '+dashB+'" transform="rotate(-90 '+cx+' '+cy+')" stroke-linecap="round"/>' +
-      '<text x="'+cx+'" y="'+(cy+6)+'" text-anchor="middle" font-size="12" fill="rgba(20,20,30,0.85)">'+escapeHtml(label)+'</text>' +
-      '</svg>'
-    );
-  }
-
-  function renderTopPages(rows){
-    const wrap = $("topPages");
-    if (!wrap) return;
-    const r = rows || [];
-    if (!r.length){ wrap.innerHTML = "<div class='muted'>No data.</div>"; return; }
-    wrap.innerHTML = r.slice(0,10).map((p) => {
-      const name = escapeHtml(p.page_type || "");
-      const views = Number(p.views||0);
-      const share = Number(p.share||0);
-      return "<div class='rowLine'><div class='rowLeft'>"+name+"</div><div class='rowRight'>"+views+" ("+share+"%)</div></div>";
-    }).join("");
-  }
 
   function bindTabs(){
     const btnA = $("tabAnalytics");
     const btnC = $("tabCRMTop");
     const topC = $("tabCRM");
-    const secA = $("sectionAnalytics");
-    const secC = $("sectionCRM");
 
-    function setActive(which){
-      if (secA) secA.style.display = which === "crm" ? "none" : "block";
-      if (secC) secC.style.display = which === "crm" ? "block" : "none";
-      if (btnA) btnA.classList.toggle("active", which !== "crm");
-      if (btnC) btnC.classList.toggle("active", which === "crm");
-      if (topC) topC.classList.toggle("active", which === "crm");
-    }
 
-    if (btnA) btnA.addEventListener("click", () => setActive("analytics"));
-    if (btnC) btnC.addEventListener("click", () => setActive("crm"));
-    if (topC) topC.addEventListener("click", () => setActive("crm"));
 
-    setActive("analytics");
+
+    if (btnA) btnA.addEventListener("click", () => setActiveTab("analytics"));
+    if (btnC) btnC.addEventListener("click", () => setActiveTab("crm"));
+    if (topC) topC.addEventListener("click", () => setActiveTab("crm"));
   }
 
-  // -------------------------
-  // Analytics UI
-  // -------------------------
-  async function refreshAnalytics(){
-    if (!TOKEN) return;
-    setStatus("loading...");
-    const days = activeDays();
 
-    const m = await apiGet("/metrics", { days });
-    if (!m || !m.ok){
-      setStatus("error");
-      console.error(m);
+
+
+
+
+
+
+
+
+
+
+  function setStatus(t){
+    const el = $("status");
+    if (el) el.textContent = "Status: " + t;
+  }
+
+
+
+
+
+
+
+
+  function pct(n){
+    return (Math.round((Number(n) || 0) * 10000) / 100).toFixed(2) + "%";
+  }
+
+
+
+
+
+
+
+
+  function clamp(n, min, max) {
+    n = Number(n) || 0;
+    return Math.max(min, Math.min(max, n));
+  }
+
+
+
+
+
+
+
+
+  function esc(s) {
+    return String(s || "").replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    }[c]));
+  }
+
+
+
+
+
+
+
+
+  function renderTrend(svgEl, trend) {
+    if (!svgEl) return;
+    const W = 900, H = 260, p = 18;
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+
+
+
+
+
+
+
+    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bg.setAttribute("x", "0");
+    bg.setAttribute("y", "0");
+    bg.setAttribute("width", String(W));
+    bg.setAttribute("height", String(H));
+    bg.setAttribute("rx", "14");
+    bg.setAttribute("fill", "rgba(15,23,42,.25)");
+    bg.setAttribute("stroke", "rgba(255,255,255,.10)");
+    svgEl.appendChild(bg);
+
+
+
+
+
+
+
+
+    const n = (trend && trend.length) ? trend.length : 0;
+    if (!n) return;
+
+
+
+
+
+
+
+
+    let maxV = 0, sumV = 0;
+    for (const r of trend) { maxV = Math.max(maxV, r.visits || 0); sumV += (r.visits || 0); }
+    const avg = sumV / n;
+
+
+
+
+
+
+
+
+    if ($("maxDay")) $("maxDay").textContent = String(maxV);
+    if ($("avgDay")) $("avgDay").textContent = String(Math.round(avg * 10) / 10);
+
+
+
+
+
+
+
+
+    const innerW = W - p * 2;
+    const innerH = H - p * 2;
+
+
+
+
+
+
+
+
+    const x = (i) => (n === 1 ? p + innerW / 2 : p + (i * innerW) / (n - 1));
+    const y = (v) => {
+      const m = Math.max(1, maxV);
+      const t = clamp(v / m, 0, 1);
+      return p + (1 - t) * innerH;
+    };
+
+
+
+
+
+
+
+
+    let d = "";
+    for (let i = 0; i < n; i++) d += (i === 0 ? "M " : " L ") + x(i) + " " + y(trend[i].visits || 0);
+
+
+
+
+
+
+
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    path.setAttribute("stroke", "rgba(96,165,250,.90)");
+    path.setAttribute("stroke-width", "3");
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    svgEl.appendChild(path);
+  }
+
+
+
+
+
+
+
+
+  function renderDevice(svgEl, mobile, desktop) {
+    if (!svgEl) return;
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+
+
+
+
+
+
+
+    const cx = 80, cy = 80, r = 50, w = 16;
+    const total = (mobile || 0) + (desktop || 0);
+    const m = total ? mobile / total : 0.5;
+
+
+
+
+
+
+
+
+    const start = -Math.PI / 2;
+    const mid = start + Math.PI * 2 * m;
+
+
+
+
+
+
+
+
+    function arc(a0, a1, color) {
+      const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+      const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+      const large = (a1 - a0) > Math.PI ? 1 : 0;
+
+
+
+
+
+
+
+
+      const pth = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      pth.setAttribute("d", "M " + x0 + " " + y0 + " A " + r + " " + r + " 0 " + large + " 1 " + x1 + " " + y1);
+      pth.setAttribute("stroke", color);
+      pth.setAttribute("stroke-width", String(w));
+      pth.setAttribute("fill", "none");
+      pth.setAttribute("stroke-linecap", "round");
+      svgEl.appendChild(pth);
+    }
+
+
+
+
+
+
+
+
+    const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    ring.setAttribute("cx", String(cx));
+    ring.setAttribute("cy", String(cy));
+    ring.setAttribute("r", String(r));
+    ring.setAttribute("stroke", "rgba(255,255,255,.12)");
+    ring.setAttribute("stroke-width", String(w));
+    ring.setAttribute("fill", "none");
+    svgEl.appendChild(ring);
+
+
+
+
+
+
+
+
+    arc(start, mid, "rgba(52,211,153,.90)");
+    arc(mid, start + Math.PI * 2, "rgba(96,165,250,.90)");
+  }
+
+
+
+
+
+
+
+
+  function renderTopPages(container, rows) {
+    if (!container) return;
+    container.innerHTML = "";
+
+
+
+
+
+
+
+
+    if (!rows || !rows.length) {
+      container.textContent = "No page data yet.";
       return;
     }
 
-    setText("kpiToday", m.visits_today ?? 0);
-    setText("kpiRange", m.visits_range ?? 0);
-    setText("kpiLeadRate", Math.round((m.conversion_rate || 0) * 10000) / 100 + "%");
-    setText("kpiPurchaseRate", Math.round((m.purchase_rate || 0) * 10000) / 100 + "%");
-    setText("leads", m.leads ?? 0);
-    setText("purchases", m.purchases ?? 0);
-    setText("cta", m.cta_clicks ?? 0);
 
-    // charts
+
+
+
+
+
+
+    for (const r of rows) {
+      const item = document.createElement("div");
+      item.className = "item";
+
+
+
+
+
+
+
+
+      const left = document.createElement("div");
+      left.style.minWidth = "160px";
+      left.style.maxWidth = "55%";
+      left.style.overflow = "hidden";
+      left.style.textOverflow = "ellipsis";
+      left.style.whiteSpace = "nowrap";
+      left.innerHTML =
+        "<b>" + esc(r.page_type || "/") + "</b>" +
+        "<div class='muted'>" + (r.views || 0) + " views • " + (r.share || 0) + "%</div>";
+
+
+
+
+
+
+
+
+      const barWrap = document.createElement("div");
+      barWrap.className = "barWrap";
+
+
+
+
+
+
+
+
+      const bar = document.createElement("div");
+      bar.className = "bar";
+
+
+
+
+
+
+
+
+      const fill = document.createElement("div");
+      fill.style.width = clamp(r.share || 0, 0, 100) + "%";
+
+
+
+
+
+
+
+
+      bar.appendChild(fill);
+      barWrap.appendChild(bar);
+
+
+
+
+
+
+
+
+      item.appendChild(left);
+      item.appendChild(barWrap);
+      container.appendChild(item);
+    }
+  }
+
+
+
+
+
+
+
+
+  
+  // ===== CRM (Leads) =====
+  let crmCache = [];
+
+
+
+
+
+
+
+
+  function fmtTime(iso){
     try{
-      setSvg("trendSvg", renderTrendSvg(m.trend || []));
-      const dm = m.device_mix || { mobile: 0, desktop: 0 };
-      setSvg("deviceSvg", renderDonutSvg(dm.mobile || 0, dm.desktop || 0));
-      renderTopPages(m.top_pages_range || []);
-    }catch(e){
-      console.warn("Chart render failed", e);
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso || "");
+      return d.toLocaleString();
+    }catch{ return String(iso || ""); }
+  }
+
+
+
+
+
+
+
+
+  function renderCRM(container, leads){
+    if (!container) return;
+    container.innerHTML = "";
+
+
+
+
+
+
+
+
+    const rows = Array.isArray(leads) ? leads : [];
+    crmCache = rows;
+
+
+
+
+
+
+
+
+    if (!rows.length){
+      container.textContent = "No leads yet.";
+      return;
     }
 
-    // latest report preview
+
+
+
+
+
+
+
+    for (const l of rows){
+      const item = document.createElement("div");
+      item.className = "item";
+
+
+
+
+
+
+
+
+      const left = document.createElement("div");
+      const title = (l.email || l.name || "(no email)") + "";
+      const sub = [
+        l.name ? ("Name: " + l.name) : null,
+        l.phone ? ("Phone: " + l.phone) : null,
+        l.source_page ? ("Page: " + l.source_page) : null,
+        ("Status: " + (l.status || "new")),
+        ("At: " + fmtTime(l.created_at))
+      ].filter(Boolean).join(" • ");
+
+
+
+
+
+
+
+
+      left.innerHTML =
+        "<b>" + esc(title) + "</b>" +
+        "<div class='muted'>" + esc(sub) + "</div>" +
+        (l.notes ? "<div class='muted' style='margin-top:6px'>Notes: " + esc(l.notes) + "</div>" : "");
+
+
+
+
+
+
+
+
+      const right = document.createElement("div");
+      right.style.display = "flex";
+      right.style.gap = "8px";
+      right.style.alignItems = "center";
+
+
+
+
+
+
+
+
+      const btn = document.createElement("button");
+      btn.className = "btnGhost";
+      btn.textContent = "Edit";
+      btn.addEventListener("click", async () => {
+        const newStatus = prompt("Status (e.g. new, contacted, won, lost):", l.status || "new");
+        if (newStatus === null) return;
+        const newNotes = prompt("Notes (optional):", l.notes || "");
+        if (newNotes === null) return;
+
+
+
+
+
+
+
+
+        const r = await fetch("/crm/update", {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ token: TOKEN, lead_id: l.id, status: newStatus, notes: newNotes })
+        });
+        const j = await r.json().catch(()=>({}));
+        if(!j.ok){ alert(j.error || "Update failed"); return; }
+        await loadCRM();
+      await loadCRMv2();
+      });
+
+
+
+
+
+
+
+
+      right.appendChild(btn);
+
+
+
+
+
+
+
+
+      item.appendChild(left);
+      item.appendChild(right);
+      container.appendChild(item);
+    }
+  }
+
+
+
+
+
+
+
+
+  function leadsToCSV(rows){
+    const cols = ["id","email","name","phone","source_page","status","notes","created_at"];
+    const escCsv = (v) => {
+      const s = String(v ?? "");
+      if (/["\n,]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+      return s;
+    };
+    const out = [];
+    out.push(cols.join(","));
+    for (const r of (rows || [])){
+      out.push(cols.map(c => escCsv(r[c])).join(","));
+    }
+    return out.join("\n");
+  }
+
+
+
+
+
+
+
+
+  async function loadCRM(){
+    const box = $("crmLeads");
+    if (box) box.textContent = "Loading…";
+    const r = await fetch("/crm?token=" + encodeURIComponent(TOKEN) + "&limit=200");
+    const j = await r.json().catch(()=>({}));
+    if(!j.ok){
+      if (box) box.textContent = j.error || "Failed to load CRM.";
+      return;
+    }
+    renderCRM(box, j.leads || []);
+    // If a filter is set, re-render filtered view
+    try{ applyLeadFilter(); }catch{}
+  }
+
+
+
+
+  function leadMatches(l, q){
+    q = String(q||"").trim().toLowerCase();
+    if(!q) return true;
+    const hay = [
+      l.email, l.name, l.phone, l.source_page, l.status, l.notes
+    ].filter(Boolean).join(" ").toLowerCase();
+    return hay.includes(q);
+  }
+
+
+  function applyLeadFilter(){
+    const q = $("crmLeadSearch") ? $("crmLeadSearch").value : "";
+    const box = $("crmLeads");
+    if(!box) return;
+    const rows = (crmCache || []).filter(l => leadMatches(l, q));
+    renderCRM(box, rows);
+  }
+
+
+  function applyClientFilter(){
+    const box = $("crmClients");
+    const q = $("crmClientFilter") ? $("crmClientFilter").value.trim().toLowerCase() : "";
+    if(!box) return;
+    const items = Array.from(box.querySelectorAll(".item"));
+    for(const it of items){
+      const txt = (it.textContent || "").toLowerCase();
+      it.style.display = (!q || txt.includes(q)) ? "" : "none";
+    }
+  }
+
+
+  async function crmChatRun(){
+    const out = $("crmChatOut");
+    const inp = $("crmChatInput");
+    if(!out || !inp) return;
+    const qRaw = inp.value.trim();
+    if(!qRaw){ out.textContent = "—"; return; }
+
+
+    out.textContent = "Searching…";
+
+
+    // Ensure leads loaded once (so local search works)
+    if(!Array.isArray(crmCache) || crmCache.length === 0){
+      try{ await loadCRM(); }catch{}
+    }
+
+
+    const q = qRaw.toLowerCase();
+    const leadHits = (crmCache || []).filter(l => leadMatches(l, qRaw)).slice(0, 12);
+
+
+    // Client search (server)
+    let clientHits = [];
     try{
-      const latest = await apiGet("/reports/latest");
-      if (latest && latest.ok && latest.report){
-        const box = $("latestAiReport");
-        if (box) box.textContent = latest.report.report_text || "";
-      }
-    }catch(e){}
+      const r = await fetch("/crm/clients?token=" + encodeURIComponent(TOKEN) + "&q=" + encodeURIComponent(qRaw));
+      const j = await r.json().catch(()=>({}));
+      if(j.ok && Array.isArray(j.clients)) clientHits = j.clients.slice(0, 12);
+    }catch{}
 
-    setStatus("ready");
-  }
 
-  async function seedDemo(){
-    if (!TOKEN) return;
-    setStatus("seeding...");
-    const days = activeDays();
-    const r = await apiPost("/demo/seed", { days });
-    if (!r || !r.ok){
-      setStatus("error");
-      console.error(r);
-      alert(r && r.error ? r.error : "Seed failed");
-      return;
+    const lines = [];
+    lines.push("QUERY: " + qRaw);
+    lines.push("");
+
+
+    lines.push("LEADS (" + leadHits.length + (leadHits.length === 12 ? "+": "") + ")");
+    if(!leadHits.length) lines.push("- —");
+    for(const l of leadHits){
+      const who = (l.email || l.name || "(no email)") + "";
+      const sub = [
+        l.name ? ("name: " + l.name) : null,
+        l.phone ? ("phone: " + l.phone) : null,
+        l.status ? ("status: " + l.status) : null,
+        l.source_page ? ("page: " + l.source_page) : null,
+        l.created_at ? ("at: " + fmtTime(l.created_at)) : null
+      ].filter(Boolean).join(" • ");
+      lines.push("- " + who);
+      if(sub) lines.push("  " + sub);
     }
-    await refreshAnalytics();
-    await refreshCrmAll();
-    setStatus("ready");
-  }
 
-  async function genAiReport(){
-    if (!TOKEN) return;
-    setStatus("generating...");
-    // keep compatibility: if /reports/generate exists, use it; else fallback /api/ai/daily-report etc.
-    const r = await apiPost("/reports/generate", { days: activeDays() }).catch(() => null);
-    if (!r || !r.ok){
-      // show error but don't crash
-      alert((r && r.error) ? r.error : "Generate failed (endpoint may require Full AI plan).");
-      setStatus("ready");
-      return;
+
+    lines.push("");
+    lines.push("CLIENTS (" + clientHits.length + (clientHits.length === 12 ? "+": "") + ")");
+    if(!clientHits.length) lines.push("- —");
+    for(const c of clientHits){
+      const title = (c.full_name || "(no name)") + (c.stage ? (" • " + c.stage) : "");
+      const sub = [
+        c.primary_email ? ("email: " + c.primary_email) : null,
+        c.primary_phone ? ("phone: " + c.primary_phone) : null,
+        c.last_touch_at ? ("last touch: " + fmtWhen(c.last_touch_at)) : null
+      ].filter(Boolean).join(" • ");
+      lines.push("- " + title);
+      if(sub) lines.push("  " + sub);
     }
-    await refreshAnalytics();
-    setStatus("ready");
+
+
+    lines.push("");
+    lines.push("Tip: Click a client in the list to open status + activity.");
+
+
+    out.textContent = lines.join("\n");
   }
 
-  // Analytics chat
-  function bindAnalyticsChat(){
-    const btn = $("chatSend");
-    const input = $("chatInput");
-    const out = $("chatOut");
-    const clear = $("chatClear");
 
-    async function run(){
-      const q = input ? input.value.trim() : "";
-      if (!q) return;
-      if (out) out.textContent = "Thinking...";
-      const r = await apiPost("/api/ai/chat", { token: TOKEN, message: q, days: activeDays() });
-      if (!r || !r.ok){
-        if (out) out.textContent = (r && r.error) ? r.error : "Chat failed (may require Full AI plan).";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ===== CRM v2 (clients + review + AI) =====
+let crmSelectedClientId = null;
+
+
+
+
+
+
+
+
+function fmtWhen(iso){
+  try{
+    if(!iso) return "—";
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return String(iso);
+    return d.toISOString().slice(0,19).replace("T"," ");
+  }catch{ return String(iso||"—"); }
+}
+
+
+
+
+
+
+
+
+function makeListItem(title, sub, right){
+  const item = document.createElement("div");
+  item.className = "item";
+
+
+
+
+
+
+
+
+  const left = document.createElement("div");
+  left.style.minWidth = "0";
+  left.innerHTML = "<b>" + esc(title) + "</b><div class='muted'>" + esc(sub || "") + "</div>";
+
+
+
+
+
+
+
+
+  const r = document.createElement("div");
+  r.className = "pill";
+  r.textContent = right || "Open";
+
+
+
+
+
+
+
+
+  item.appendChild(left);
+  item.appendChild(r);
+  return item;
+}
+
+
+
+
+
+
+
+
+async function loadCrmClients(q){
+  const box = $("crmClients");
+  if(!box) return;
+  box.textContent = "Loading…";
+  const url = "/crm/clients?token=" + encodeURIComponent(TOKEN) + (q ? "&q=" + encodeURIComponent(q) : "");
+  const r = await fetch(url);
+  const j = await r.json().catch(()=>({}));
+  box.innerHTML = "";
+  if(!j.ok){ box.textContent = j.error || "Failed."; return; }
+
+
+
+
+
+
+
+
+  if(!j.clients || !j.clients.length){ box.textContent = "No clients yet."; return; }
+
+
+
+
+
+
+
+
+  for(const c of j.clients){
+    const title = (c.full_name || "(no name)") + (c.stage ? " • " + c.stage : "");
+    const sub = [
+      c.primary_email ? ("email: " + c.primary_email) : null,
+      c.primary_phone ? ("phone: " + c.primary_phone) : null,
+      ("last touch: " + fmtWhen(c.last_touch_at))
+    ].filter(Boolean).join(" • ");
+
+
+
+
+
+
+
+
+    const item = makeListItem(title, sub, "Select");
+    item.style.cursor = "pointer";
+    item.addEventListener("click", () => {
+      crmSelectedClientId = c.id;
+      loadCrmClientDetail(c.id);
+    });
+    box.appendChild(item);
+  }
+}
+
+
+
+
+
+
+
+
+async function loadCrmClientDetail(clientId){
+  const pre = $("crmClientDetail");
+  if(!pre) return;
+  pre.textContent = "Loading client…";
+
+
+
+
+
+
+
+
+  const r = await fetch("/crm/client?token=" + encodeURIComponent(TOKEN) + "&client_id=" + encodeURIComponent(String(clientId)));
+  const j = await r.json().catch(()=>({}));
+  if(!j.ok){ pre.textContent = j.error || "Failed."; return; }
+
+
+
+
+
+
+
+
+  const c = j.client || {};
+  const acts = Array.isArray(j.activities) ? j.activities : [];
+  const ids = Array.isArray(j.identities) ? j.identities : [];
+
+
+
+
+
+
+
+
+  const lines = [];
+  lines.push("CLIENT");
+  lines.push("- Name: " + (c.full_name || "—"));
+  lines.push("- Stage: " + (c.stage || "—") + " • Health: " + (c.health || "unknown"));
+  lines.push("- Confidence: " + Math.round((Number(c.confidence||0.5))*100) + "%");
+  lines.push("- Email: " + (c.primary_email || "—"));
+  lines.push("- Phone: " + (c.primary_phone || "—"));
+  lines.push("- Last touch: " + fmtWhen(c.last_touch_at));
+  lines.push("");
+  lines.push("IDENTITIES");
+  if(!ids.length) lines.push("- —");
+  for(const it of ids.slice(0,12)){
+    lines.push("- " + it.kind + ": " + it.value);
+  }
+  lines.push("");
+  lines.push("RECENT ACTIVITY");
+  if(!acts.length) lines.push("- —");
+  for(const a of acts.slice(0,8)){
+    const who = a.type === "email"
+      ? ((a.direction||"") + " " + (a.from_email || "—") + " → " + (a.to_email || "—")).trim()
+      : (a.phone ? ("phone: " + a.phone) : "");
+    const head = fmtWhen(a.occurred_at) + " • " + (a.type || "activity") + (a.match_status ? (" • " + a.match_status) : "");
+    const sub = (a.subject ? ("subject: " + a.subject) : "") || (a.body_preview ? ("notes: " + String(a.body_preview).slice(0,140)) : "");
+    lines.push("- " + head);
+    if(who) lines.push("  " + who);
+    if(sub) lines.push("  " + sub);
+  }
+
+
+  try{ applyClientFilter(); }catch{}
+
+
+
+
+
+
+  pre.textContent = lines.join("\n");
+}
+
+
+
+
+
+
+
+
+async function loadCrmReview(){
+  const box = $("crmReview");
+  if(!box) return;
+  box.textContent = "Loading…";
+
+
+
+
+
+
+
+
+  const r = await fetch("/crm/review?token=" + encodeURIComponent(TOKEN));
+  const j = await r.json().catch(()=>({}));
+  box.innerHTML = "";
+  if(!j.ok){ box.textContent = j.error || "Failed."; return; }
+
+
+
+
+
+
+
+
+  const q = Array.isArray(j.queue) ? j.queue : [];
+  if(!q.length){ box.textContent = "Queue is empty ✅"; return; }
+
+
+
+
+
+
+
+
+  for(const it of q){
+    const title = fmtWhen(it.occurred_at) + " • " + (it.type || "activity");
+    const sub =
+      (it.subject ? ("subject: " + it.subject) : (it.body_preview ? it.body_preview : "")) +
+      (it.phone ? (" • phone: " + it.phone) : "") +
+      (" • conf: " + Math.round((Number(it.confidence||0))*100) + "%");
+
+
+
+
+
+
+
+
+    const row = makeListItem(title, sub, "Review");
+    row.style.cursor = "pointer";
+
+
+
+
+
+
+
+
+    row.addEventListener("click", async () => {
+      // quick action: confirm to selected client, else prompt to select first
+      if(!crmSelectedClientId){
+        alert("Select a client first (Clients list) to confirm this activity.");
         return;
       }
-      if (out) out.textContent = r.reply || r.text || JSON.stringify(r);
-    }
+      const ok = confirm("Assign this activity to the selected client?");
+      if(!ok) return;
 
-    if (btn) btn.addEventListener("click", run);
-    if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
-    if (clear) clear.addEventListener("click", () => { if (input) input.value=""; if (out) out.textContent=""; });
-  }
 
-  // -------------------------
-  // CRM UI
-  // -------------------------
-  let _lastLeads = [];
-  let _lastClients = [];
 
-  function renderLeads(leads){
-    _lastLeads = leads || [];
-    const wrap = $("crmLeads");
-    if (!wrap) return;
-    wrap.innerHTML = "";
-    (leads || []).forEach((l) => {
-      const card = document.createElement("div");
-      card.className = "crmLeadRow";
-      const email = l.email || "(no email)";
-      const name = l.name || "";
-      const phone = l.phone || "";
-      const page = l.source_page || "";
-      const status = l.status || "";
-      const at = l.created_at ? new Date(l.created_at).toLocaleString() : "";
-      const notes = l.notes || "";
 
-      card.innerHTML =
-        '<div class="crmLeadMain">' +
-          '<div class="crmLeadTitle">' + escapeHtml(email) + '</div>' +
-          '<div class="crmLeadMeta">Name: ' + escapeHtml(name) +
-          (phone ? ' • Phone: ' + escapeHtml(phone) : '') +
-          (page ? ' • Page: ' + escapeHtml(page) : '') +
-          (status ? ' • Status: ' + escapeHtml(status) : '') +
-          (at ? ' • At: ' + escapeHtml(at) : '') +
-          '</div>' +
-          '<div class="crmLeadNotes">Notes: ' + escapeHtml(notes) + '</div>' +
-        '</div>' +
-        '<div class="crmLeadActions"><button class="btn" data-edit="' + l.id + '">Edit</button></div>';
 
-      wrap.appendChild(card);
-    });
 
-    wrap.querySelectorAll("button[data-edit]").forEach((b) => {
-      b.addEventListener("click", async () => {
-        const id = b.getAttribute("data-edit");
-        const newStatus = prompt("Status? (new/contacted/qualified/won/lost)", "new");
-        if (newStatus === null) return;
-        const newNotes = prompt("Notes (optional)", "");
-        const r = await apiPost("/crm/update", { lead_id: id, status: newStatus, notes: newNotes });
-        if (!r || !r.ok) alert(r && r.error ? r.error : "Update failed");
-        await refreshCrmLeads();
+
+
+      const rr = await fetch("/crm/review/confirm", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ token: TOKEN, match_id: it.match_id, client_id: crmSelectedClientId })
       });
-    });
-  }
-
-  function renderClients(clients){
-    _lastClients = clients || [];
-    const wrap = $("crmClients");
-    if (!wrap) return;
-    wrap.innerHTML = "";
-    (clients || []).forEach((c) => {
-      const row = document.createElement("div");
-      row.className = "crmClientRow";
-      const name = c.full_name || "(unnamed)";
-      const email = c.primary_email || "";
-      const phone = c.primary_phone || "";
-      const stage = c.stage || "";
-      const health = c.health || "";
-      const last = c.last_touch_at ? new Date(c.last_touch_at).toLocaleString() : "";
-
-      row.innerHTML =
-        '<div class="crmClientMain">' +
-          '<div class="crmClientTitle">' + escapeHtml(name) + ' <span class="crmTag">' + escapeHtml(stage) + '</span></div>' +
-          '<div class="crmClientMeta">' +
-            (email ? "email: " + escapeHtml(email) + " • " : "") +
-            (phone ? "phone: " + escapeHtml(phone) + " • " : "") +
-            (health ? "health: " + escapeHtml(health) + " • " : "") +
-            (last ? "last touch: " + escapeHtml(last) : "") +
-          '</div>' +
-        '</div>' +
-        '<div class="crmClientActions"><button class="btnGhost" data-open="' + c.id + '">Select</button></div>';
-
-      wrap.appendChild(row);
+      const jj = await rr.json().catch(()=>({}));
+      if(!jj.ok){ alert(jj.error || "Failed"); return; }
+      await loadCrmReview();
+      if(crmSelectedClientId) await loadCrmClientDetail(crmSelectedClientId);
     });
 
-    wrap.querySelectorAll("button[data-open]").forEach((b) => {
-      b.addEventListener("click", async () => {
-        const id = b.getAttribute("data-open");
-        const r = await apiGet("/crm/client", { client_id: id });
-        const out = $("crmClientDetail");
-        if (!out) return;
-        if (!r || !r.ok){
-          out.textContent = (r && r.error) ? r.error : "Client load failed";
-          return;
-        }
-        const c = r.client || {};
-        const lines = [];
-        lines.push("Client: " + (c.full_name || "(unnamed)"));
-        lines.push("Stage: " + (c.stage || "") + " • Health: " + (c.health || ""));
-        lines.push("Email: " + (c.primary_email || "") + " • Phone: " + (c.primary_phone || ""));
-        lines.push("");
-        lines.push("Recent activity:");
-        (r.activities || []).slice(0, 12).forEach((a) => {
-          const t = a.occurred_at ? new Date(a.occurred_at).toLocaleString() : "";
-          const s = (a.subject || a.type || "").slice(0, 90);
-          lines.push("- " + t + " • " + s);
-        });
-        out.textContent = lines.join("\n");
+
+
+
+
+
+
+
+    // add a reject button
+    const rejectBtn = document.createElement("button");
+    rejectBtn.className = "btnDanger";
+    rejectBtn.textContent = "Reject";
+    rejectBtn.style.padding = "8px 10px";
+    rejectBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const ok = confirm("Reject this match?");
+      if(!ok) return;
+      const rr = await fetch("/crm/review/reject", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ token: TOKEN, match_id: it.match_id })
       });
+      const jj = await rr.json().catch(()=>({}));
+      if(!jj.ok){ alert(jj.error || "Failed"); return; }
+      await loadCrmReview();
     });
+
+
+
+
+
+
+
+
+    // replace right pill with button group
+    row.removeChild(row.lastChild);
+    const right = document.createElement("div");
+    right.style.display = "flex";
+    right.style.gap = "8px";
+    right.appendChild(rejectBtn);
+    const hint = document.createElement("div");
+    hint.className = "pill";
+    hint.textContent = "Assign";
+    right.appendChild(hint);
+    row.appendChild(right);
+
+
+
+
+
+
+
+
+    box.appendChild(row);
+  }
+}
+
+
+
+
+
+
+
+
+async function crmCreateClient(){
+  const n = $("crmNewName") ? $("crmNewName").value.trim() : "";
+  const e = $("crmNewEmail") ? $("crmNewEmail").value.trim() : "";
+  const p = $("crmNewPhone") ? $("crmNewPhone").value.trim() : "";
+  if(!n && !e && !p){ alert("Add at least a name, email, or phone."); return; }
+
+
+
+
+
+
+
+
+  const r = await fetch("/crm/clients", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ token: TOKEN, full_name: n, email: e, phone: p, stage:"lead" })
+  });
+  const j = await r.json().catch(()=>({}));
+  if(!j.ok){ alert(j.error || "Failed"); return; }
+
+
+
+
+
+
+
+
+  if ($("crmNewName")) $("crmNewName").value = "";
+  if ($("crmNewEmail")) $("crmNewEmail").value = "";
+  if ($("crmNewPhone")) $("crmNewPhone").value = "";
+
+
+
+
+
+
+
+
+  await loadCrmClients($("crmClientSearch") ? $("crmClientSearch").value.trim() : "");
+}
+
+
+
+
+
+
+
+
+async function crmAsk(){
+  const out = $("crmAskOut");
+  const input = $("crmAskInput");
+  if(!out || !input) return;
+
+
+
+
+
+
+
+
+  const q = input.value.trim();
+  if(!q) return;
+  out.textContent = "Thinking…";
+
+
+
+
+
+
+
+
+  const r = await fetch("/api/ai/crm/answer", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ token: TOKEN, question: q })
+  });
+  const j = await r.json().catch(()=>({}));
+  if(!j.ok){ out.textContent = j.error || "Failed."; return; }
+  out.textContent = j.reply || "—";
+}
+
+
+
+
+
+
+
+
+async function loadCRMv2(){
+  await loadCrmClients("");
+  await loadCrmReview();
+}
+
+
+
+
+
+
+
+
+// ===== Reports =====
+  function splitLines(txt){
+    return String(txt || "").replace(/\r\n/g,"\n").split("\n").map(s => s.trim()).filter(Boolean);
   }
 
-  async function refreshCrmLeads(){
-    const r = await apiGet("/crm", { limit: 180 });
-    if (r && r.ok) renderLeads(r.leads || []);
-  }
 
-  async function refreshCrmClients(q){
-    const r = await apiGet("/crm/clients", q ? { q } : null);
-    if (r && r.ok) renderClients(r.clients || []);
-  }
 
-  async function refreshCrmAll(){
-    await Promise.all([refreshCrmLeads(), refreshCrmClients("")]);
-  }
 
-  function bindCrm(){
-    const refreshBtn = $("crmRefresh");
-    const exportBtn = $("crmExport");
-    const leadSearch = $("crmLeadSearch");
-    const leadClear = $("crmLeadClear");
 
-    const clientSearch = $("crmClientSearch");
-    const clientSearchBtn = $("crmClientSearchBtn");
-    const createBtn = $("crmCreateClient");
 
-    const clientsCard = $("crmClientsCard");
-    const filterInput = $("crmClientFilter");
-    const filterClear = $("crmClientFilterClear");
 
-    // leads refresh/export
-    if (refreshBtn) refreshBtn.addEventListener("click", refreshCrmAll);
 
-    if (exportBtn) exportBtn.addEventListener("click", async () => {
-      const r = await apiGet("/crm", { limit: 500 });
-      if (!r || !r.ok) return alert("Export failed");
-      const rows = r.leads || [];
-      const headers = ["id","email","name","phone","source_page","status","notes","created_at"];
-      const csv = [headers.join(",")].concat(rows.map((x) => headers.map((h) => csvCell(x[h])).join(","))).join("\n");
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "crm_leads.csv";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    });
+  function parseReportSections(text){
+    const lines = splitLines(text);
+    const sections = { summary: "", highlights: [], steps: [], kpi: "" };
+    let mode = "";
 
-    function csvCell(v){
-      const s = String(v ?? "");
-      if (/[,"\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-      return s;
-    }
 
-    // lead search (filters the SAME lead list)
-    if (leadSearch){
-      leadSearch.addEventListener("input", () => {
-        const q = leadSearch.value.trim().toLowerCase();
-        const wrap = $("crmLeads");
-        if (!wrap) return;
-        wrap.querySelectorAll(".crmLeadRow").forEach((row) => {
-          row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
-        });
-      });
-    }
-    if (leadClear) leadClear.addEventListener("click", () => {
-      if (leadSearch) leadSearch.value = "";
-      if (leadSearch) leadSearch.dispatchEvent(new Event("input"));
-    });
 
-    // server client search (updates SAME client list)
-    if (clientSearchBtn) clientSearchBtn.addEventListener("click", async () => {
-      const q = clientSearch ? clientSearch.value.trim() : "";
-      await refreshCrmClients(q);
-      // expand if collapsed
-      try{
-        const body = clientsCard ? clientsCard.querySelector(".cardBody") : null;
-        if (body) body.style.display = "";
-      }catch(e){}
-      // scroll to list for feedback
-      const list = $("crmClients");
-      if (list) list.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
 
-    // create client
-    if (createBtn) createBtn.addEventListener("click", async () => {
-      const nm = ($("crmNewName") && $("crmNewName").value) ? $("crmNewName").value.trim() : "";
-      const em = ($("crmNewEmail") && $("crmNewEmail").value) ? $("crmNewEmail").value.trim() : "";
-      const ph = ($("crmNewPhone") && $("crmNewPhone").value) ? $("crmNewPhone").value.trim() : "";
-      const r = await apiPost("/crm/clients", { token: TOKEN, full_name: nm, email: em, phone: ph, stage: "lead" });
-      if (!r || !r.ok) return alert(r && r.error ? r.error : "Create failed");
-      await refreshCrmClients("");
-    });
 
-    // collapsible clients card
-    if (clientsCard){
-      const hdr = clientsCard.querySelector(".cardHead");
-      const body = clientsCard.querySelector(".cardBody");
-      if (hdr && body){
-        hdr.style.cursor = "pointer";
-        hdr.addEventListener("click", (e) => {
-          if (e.target && (e.target.tagName === "BUTTON" || e.target.closest("button"))) return;
-          const isHidden = body.style.display === "none";
-          body.style.display = isHidden ? "" : "none";
-        });
-      }
-    }
 
-    // local filter on loaded clients (filters SAME list)
-    if (filterInput){
-      filterInput.addEventListener("input", () => {
-        const q = filterInput.value.trim().toLowerCase();
-        const wrap = $("crmClients");
-        if (!wrap) return;
-        wrap.querySelectorAll(".crmClientRow").forEach((row) => {
-          row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
-        });
-      });
-    }
-    if (filterClear) filterClear.addEventListener("click", () => {
-      if (filterInput) filterInput.value = "";
-      if (filterInput) filterInput.dispatchEvent(new Event("input"));
-    });
 
-    // CRM chat: drives BOTH lists + shows summary
-    const crmSend = $("crmChatSend");
-    const crmIn = $("crmChatInput");
-    const crmOut = $("crmChatOut");
-    const crmClear = $("crmChatClear");
 
-    async function crmChatRun(){
-      const q = crmIn ? crmIn.value.trim() : "";
-      if (!q) return;
-      if (crmOut) crmOut.textContent = "Searching...";
+    for (const line0 of lines){
+      const line = line0.replace(/\*\*/g,"");
 
-      // 1) server client search updates client list
-      await refreshCrmClients(q);
 
-      // 2) lead list filters locally (no extra request needed)
-      const leadWrap = $("crmLeads");
-      if (leadWrap){
-        const qq = q.toLowerCase();
-        leadWrap.querySelectorAll(".crmLeadRow").forEach((row) => {
-          row.style.display = row.textContent.toLowerCase().includes(qq) ? "" : "none";
-        });
+
+
+
+
+
+
+      if (/^SUMMARY:/i.test(line)) { mode="summary"; continue; }
+      if (/^HIGHLIGHTS:/i.test(line)) { mode="highlights"; continue; }
+      if (/^NEXT STEPS:/i.test(line)) { mode="steps"; continue; }
+      if (/^KPI:/i.test(line)){
+        sections.kpi = line.replace(/^KPI:\s*/i,"").trim();
+        mode="";
+        continue;
       }
 
-      const matchedClients = _lastClients || [];
-      const matchedLeads = (_lastLeads || []).filter((l) => {
-        const s = (l.email || "") + " " + (l.name || "") + " " + (l.phone || "") + " " + (l.notes || "");
-        return s.toLowerCase().includes(q.toLowerCase());
-      });
 
-      const out = [];
-      out.push('Search: "' + q + '"');
-      out.push("");
-      out.push("Clients matched: " + matchedClients.length);
-      matchedClients.slice(0, 8).forEach((c) => {
-        out.push("- " + (c.full_name || "(unnamed)") + " • " + (c.primary_email || "") + " • " + (c.stage || ""));
-      });
-      out.push("");
-      out.push("Leads matched: " + matchedLeads.length);
-      matchedLeads.slice(0, 8).forEach((l) => {
-        out.push("- " + (l.email || "(no email)") + " • " + (l.status || "new") + " • " + (l.source_page || ""));
-      });
 
-      if (crmOut) crmOut.textContent = out.join("\n");
 
-      // scroll to results for visibility
-      const list = $("crmLeads");
-      if (list) list.scrollIntoView({ behavior: "smooth", block: "start" });
+
+
+
+
+      const cleaned = line.replace(/^[-•]\s*/,"").replace(/^\d+\)\s*/,"").trim();
+      if (!cleaned) continue;
+
+
+
+
+
+
+
+
+      if (mode==="summary") sections.summary += (sections.summary?" ":"") + cleaned;
+      if (mode==="highlights") sections.highlights.push(cleaned);
+      if (mode==="steps") sections.steps.push(cleaned);
     }
 
-    if (crmSend) crmSend.addEventListener("click", crmChatRun);
-    if (crmIn) crmIn.addEventListener("keydown", (e) => { if (e.key === "Enter") crmChatRun(); });
-    if (crmClear) crmClear.addEventListener("click", () => { if (crmIn) crmIn.value = ""; if (crmOut) crmOut.textContent = ""; });
+
+
+
+
+
+
+
+    return sections;
   }
 
-  function bindTopControls(){
-    const seedBtn = $("seedBtn");
-    const refreshBtn = $("refresh");
-    const aiBtn = $("aiReportTopBtn");
-    const daysSel = $("days");
 
-    if (seedBtn) seedBtn.addEventListener("click", seedDemo);
-    if (refreshBtn) refreshBtn.addEventListener("click", refreshAnalytics);
-    if (aiBtn) aiBtn.addEventListener("click", genAiReport);
-    if (daysSel) daysSel.addEventListener("change", refreshAnalytics);
+
+
+
+
+
+
+  function renderReportCards(containerEl, text){
+    if (!containerEl) return;
+
+
+
+
+
+
+
+
+    const s = parseReportSections(text);
+    const escHtml = (v) => String(v || "").replace(/[&<>"']/g, (c) => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+
+
+
+
+
+
+
+
+    function ul(items, cap){
+      cap = cap || 3;
+      const list = Array.isArray(items) ? items : [];
+      const shown = list.slice(0, cap);
+      const hiddenCount = Math.max(0, list.length - shown.length);
+
+
+
+
+
+
+
+
+      if (!shown.length) return '<div class="muted">—</div>';
+
+
+
+
+
+
+
+
+      const lis = shown.map((x) => '<li>' + escHtml(x) + '</li>').join("");
+      const more = hiddenCount
+        ? '<div class="muted" style="margin-top:6px">+' + hiddenCount + ' more (see raw report)</div>'
+        : "";
+
+
+
+
+
+
+
+
+      return '<ul class="repList">' + lis + '</ul>' + more;
+    }
+
+
+
+
+
+
+
+
+    const kpiHtml = s.kpi ? '<div class="repKpi"><b>' + escHtml(s.kpi) + '</b></div>' : "";
+
+
+
+
+
+
+
+
+    containerEl.innerHTML =
+      '<div class="repCard"><div class="repTitle">Summary</div><div class="repText">' + escHtml(s.summary) + '</div>' + kpiHtml + '</div>' +
+      '<div class="repCard"><div class="repTitle">Highlights</div>' + ul(s.highlights, 3) + '</div>' +
+      '<div class="repCard repFull"><div class="repTitle">Next Steps</div>' + ul(s.steps, 3) + '</div>';
   }
 
-  function boot(){
-    if (!TOKEN){
-      setStatus("missing token");
-      console.warn("Missing token in URL. Add ?token=...");
+
+
+
+
+
+
+
+  async function loadLatestReport() {
+    const pre1 = $("latestAiReport");
+    const cards1 = $("latestAiReportCards");
+    if (pre1) pre1.textContent = "Loading latest report...";
+
+
+
+
+
+
+
+
+    const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
+    const jj = await rr.json().catch(()=>({}));
+
+
+
+
+
+
+
+
+    const text = (jj.ok && jj.report && jj.report.report_text) ? jj.report.report_text : "";
+    if (pre1) pre1.textContent = text || "No report yet.";
+    renderReportCards(cards1, text);
+  }
+
+
+
+
+
+
+
+
+  async function loadReportsList() {
+    const list = $("reportsList");
+    if (!list) return;
+
+
+
+
+
+
+
+
+    list.textContent = "Loading...";
+    const r = await fetch("/reports?token=" + encodeURIComponent(TOKEN) + "&limit=30");
+    const j = await r.json().catch(() => ({}));
+
+
+
+
+
+
+
+
+    list.innerHTML = "";
+    if (!j.ok) { list.textContent = j.error || "Failed to load reports"; return; }
+    if (!j.reports || !j.reports.length) { list.textContent = "No reports yet."; return; }
+
+
+
+
+
+
+
+
+    for (const rep of j.reports) {
+      const item = document.createElement("div");
+      item.className = "item";
+
+
+
+
+
+
+
+
+      const left = document.createElement("div");
+      left.innerHTML = "<b>" + esc(rep.report_date) + "</b><div class='muted'>" + esc(rep.preview || "") + "</div>";
+
+
+
+
+
+
+
+
+      const right = document.createElement("div");
+      right.className = "pill";
+      right.textContent = "Open";
+
+
+
+
+
+
+
+
+      item.appendChild(left);
+      item.appendChild(right);
+      list.appendChild(item);
+    }
+  }
+
+
+
+
+
+
+
+
+  async function refresh() {
+    try {
+      const days = $("days") ? $("days").value : "7";
+      setStatus("loading metrics…");
+
+
+
+
+
+
+
+
+      const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) { setStatus(j.error || "error"); return; }
+
+
+
+
+
+
+
+
+      if ($("kpiToday")) $("kpiToday").textContent = j.visits_today;
+      if ($("kpiRange")) $("kpiRange").textContent = j.visits_range;
+      if ($("kpiLeadRate")) $("kpiLeadRate").textContent = pct(j.conversion_rate || 0);
+      if ($("kpiPurchaseRate")) $("kpiPurchaseRate").textContent = pct(j.purchase_rate || 0);
+
+
+
+
+
+
+
+
+      if ($("leads")) $("leads").textContent = j.leads || 0;
+      if ($("purchases")) $("purchases").textContent = j.purchases || 0;
+      if ($("cta")) $("cta").textContent = j.cta_clicks || 0;
+
+
+
+
+
+
+
+
+      const mob = (j.device_mix && j.device_mix.mobile) ? j.device_mix.mobile : 0;
+      const desk = (j.device_mix && j.device_mix.desktop) ? j.device_mix.desktop : 0;
+      if ($("mob")) $("mob").textContent = mob;
+      if ($("desk")) $("desk").textContent = desk;
+
+
+
+
+
+
+
+
+      if ($("lastEvent")) $("lastEvent").textContent = j.last_event ? JSON.stringify(j.last_event, null, 2) : "No events yet.";
+
+
+
+
+
+
+
+
+      renderTrend($("trendSvg"), j.trend || []);
+      renderDevice($("deviceSvg"), mob, desk);
+      renderTopPages($("topPages"), j.top_pages_range || []);
+
+
+
+
+
+
+
+
+      await loadCRM();
+      await loadLatestReport();
+      await loadReportsList();
+
+
+
+
+
+
+
+
+      setStatus("ready");
+    } catch (e) {
+      setStatus("error: " + (e && e.message ? e.message : "unknown"));
+    }
+  }
+
+
+
+
+
+
+
+
+  async function fire(eventName) {
+    setStatus("sending " + eventName + "…");
+    const r = await fetch("/demo/fire-event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: TOKEN,
+        event_name: eventName,
+        page_type: location.pathname,
+        device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop"
+      })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { setStatus(d.error || "error"); return; }
+    setStatus("sent ✅");
+    setTimeout(refresh, 300);
+  }
+
+
+
+
+
+
+
+
+  async function seed() {
+    setStatus("seeding…");
+    const r = await fetch("/demo/seed?token=" + encodeURIComponent(TOKEN), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ days: 14, events_per_day: 60 })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) { setStatus(j.error || "seed failed"); return; }
+    setStatus("seeded ✅");
+    // Refresh both Analytics and CRM so the CRM tab isn't empty after seeding.
+    setTimeout(() => { refresh(); loadCRM(); loadCrmClients(""); }, 350);
+  }
+
+
+
+
+
+
+
+
+  async function share() {
+    setStatus("creating share link…");
+    const r = await fetch("/demo/link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: TOKEN })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!d.ok) { setStatus(d.error || "error"); return; }
+
+
+
+
+
+
+
+
+    try { await navigator.clipboard.writeText(d.url); setStatus("copied ✅"); }
+    catch { setStatus("share link: " + d.url); }
+  }
+
+
+
+
+
+
+
+
+  // live polling
+  let liveSince = new Date().toISOString();
+  let liveOn = true;
+  let liveTimer = null;
+
+
+
+
+
+
+
+
+  async function liveCheck() {
+    try {
+      const url = "/live?token=" + encodeURIComponent(TOKEN) + "&since=" + encodeURIComponent(liveSince);
+      const r = await fetch(url);
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) return;
+      if ($("liveNew")) $("liveNew").textContent = String(j.new_page_views || 0);
+      if ($("liveLast")) $("liveLast").textContent = j.last_event ? (j.last_event.event_name || "—") : "—";
+      if ($("liveJson")) $("liveJson").textContent = JSON.stringify(j, null, 2);
+      liveSince = j.now || new Date().toISOString();
+    } catch {}
+  }
+
+
+
+
+
+
+
+
+  function startLive() {
+    if (liveTimer) clearInterval(liveTimer);
+    liveTimer = setInterval(() => { if (liveOn) liveCheck(); }, 3500);
+  }
+
+
+
+
+
+
+
+
+  async function aiReport() {
+    setStatus("generating AI report…");
+    const r = await fetch("/generate-report?token=" + encodeURIComponent(TOKEN), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: TOKEN })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!j.ok) { setStatus(j.error || "AI report failed"); return; }
+    setStatus("AI report saved ✅");
+    await loadLatestReport();
+    await loadReportsList();
+  }
+
+
+
+
+
+
+
+
+  // ===== AI CHAT =====
+let chatHistory = [];
+
+
+
+
+
+
+
+
+function addMsg(role, text){
+  const box = $("chatBox");
+  if(!box) return;
+
+
+
+
+
+
+
+
+  const div = document.createElement("div");
+  div.style.marginBottom = "10px";
+  div.style.lineHeight = "1.45";
+
+
+
+
+
+
+
+
+  const label = (role === "user") ? "You" : "AI";
+
+
+
+
+
+
+
+
+  // escape HTML, then turn newlines into <br>
+  const safe = esc(text).replace(/\n/g, "<br>");
+
+
+
+
+
+
+
+
+  div.innerHTML =
+    "<b>" + label + ":</b> " +
+    "<span style=\"white-space:normal\">" + safe + "</span>";
+
+
+
+
+
+
+
+
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+async function sendChat(){
+  const input = $("chatInput");
+  if (!input) return;
+
+
+
+
+
+
+
+
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = "";
+
+
+
+
+
+
+
+
+  addMsg("user", msg);
+
+
+
+
+
+
+
+
+  // temporary "thinking…" line
+  const box = $("chatBox");
+  let thinkingEl = null;
+  if (box) {
+    thinkingEl = document.createElement("div");
+    thinkingEl.style.marginBottom = "8px";
+    thinkingEl.innerHTML = "<b>AI:</b> <span class='muted'>Thinking…</span>";
+    box.appendChild(thinkingEl);
+    box.scrollTop = box.scrollHeight;
+  }
+
+
+
+
+
+
+
+
+  try{
+    const r = await fetch("/api/ai/chat", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ token: TOKEN, message: msg, history: chatHistory.slice(-12) })
+    });
+    const j = await r.json().catch(()=>({}));
+
+
+
+
+
+
+
+
+    if (thinkingEl && box) box.removeChild(thinkingEl);
+
+
+
+
+
+
+
+
+    if(!j.ok){
+      addMsg("ai", j.error || "Chat failed.");
       return;
     }
+
+
+
+
+
+
+
+
+    const reply = j.reply || "(no reply)";
+    addMsg("ai", reply);
+
+
+
+
+
+
+
+
+    chatHistory.push({ role: "user", content: msg });
+    chatHistory.push({ role: "assistant", content: reply });
+  }catch(e){
+    if (thinkingEl && box) box.removeChild(thinkingEl);
+    addMsg("ai", "Error: " + (e?.message || "unknown"));
+  }
+}
+
+
+
+
+
+
+
+
+function clearChat(){
+  const box = $("chatBox");
+  if (!box) return;
+  box.innerHTML = '<div class="muted">Chat cleared.</div>';
+  chatHistory = [];
+}
+
+
+
+
+
+
+
+
+window.addEventListener("DOMContentLoaded", () => {
+
+
+
+
+
+
+
+
+    if (!TOKEN) { setStatus("missing token"); return; }
+
+
+
+
+    // Tabs: Analytics vs CRM
     bindTabs();
-    bindTopControls();
-    bindAnalyticsChat();
-    bindCrm();
-    refreshAnalytics();
-    refreshCrmAll();
-    setStatus("ready");
+    setActiveTab("analytics");
+
+
+
+
+    if ($("refresh")) $("refresh").addEventListener("click", refresh);
+    if ($("days")) $("days").addEventListener("change", refresh);
+    if ($("chatSend")) $("chatSend").addEventListener("click", sendChat);
+if ($("chatClear")) $("chatClear").addEventListener("click", clearChat);
+
+
+
+
+
+
+
+
+if ($("chatInput")) {
+  $("chatInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendChat();
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    if ($("simView")) $("simView").addEventListener("click", () => fire("page_view"));
+    if ($("simLead")) $("simLead").addEventListener("click", () => fire("lead"));
+    if ($("simPurchase")) $("simPurchase").addEventListener("click", () => fire("purchase"));
+    if ($("simCta")) $("simCta").addEventListener("click", () => fire("cta_click"));
+
+
+
+
+
+
+
+
+    if ($("share")) $("share").addEventListener("click", share);
+    if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
+
+
+
+
+
+
+
+
+    if ($("crmRefresh")) $("crmRefresh").addEventListener("click", async () => { await loadCRM(); applyLeadFilter(); });
+if ($("crmLeadSearch")) $("crmLeadSearch").addEventListener("input", applyLeadFilter);
+if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($("crmLeadSearch")) $("crmLeadSearch").value=""; applyLeadFilter(); });
+    if ($("crmExport")) $("crmExport").addEventListener("click", () => {
+      try{
+        const csv = leadsToCSV(crmCache);
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "crm_leads.csv";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setStatus("exported CSV ✅");
+      }catch(e){
+        setStatus("export failed");
+      }
+    });
+
+
+
+
+
+
+
+
+  // CRM AI Search: single search box that returns leads + clients and updates BOTH lists.
+  function renderClientsFromArray(clients){
+    const box = $("crmClients");
+    if(!box) return;
+    box.innerHTML = "";
+    if(!clients || !clients.length){ box.textContent = "No clients matched."; return; }
+
+    for(const c of clients){
+      const title = (c.full_name || "(no name)") + (c.stage ? " • " + c.stage : "");
+      const sub = [
+        c.primary_email ? ("email: " + c.primary_email) : null,
+        c.primary_phone ? ("phone: " + c.primary_phone) : null,
+        ("last touch: " + fmtWhen(c.last_touch_at))
+      ].filter(Boolean).join(" • ");
+
+      const item = makeListItem(title, sub, "Select");
+      item.style.cursor = "pointer";
+      item.addEventListener("click", () => loadCrmClientDetail(c.id));
+      box.appendChild(item);
+    }
+
+    try{ applyClientFilter(); }catch{}
   }
 
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
-  } else {
-    boot();
+  async function crmAiRun(){
+    const out = $("crmAiOut");
+    const inp = $("crmAiInput");
+    if(!out || !inp) return;
+
+    const q = inp.value.trim();
+    if(!q){ out.textContent = "—"; return; }
+    out.textContent = "Searching…";
+
+    try{
+      const r = await fetch("/crm/ai_search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: TOKEN, query: q, days: activeDays() })
+      });
+      const j = await r.json().catch(()=>({}));
+      if(!j.ok){ out.textContent = j.error || "Search failed."; return; }
+
+      // Update lists in-place
+      const leadsBox = $("crmLeads");
+      if(leadsBox) renderCRM(leadsBox, j.leads || []);
+      renderClientsFromArray(j.clients || []);
+
+      // Summary
+      const lines = [];
+      lines.push('Query: "' + q + '"');
+      lines.push("");
+      lines.push("Clients: " + (j.clients || []).length);
+      (j.clients || []).slice(0, 8).forEach((c) => {
+        lines.push("- " + (c.full_name || "(unnamed)") + " • " + (c.primary_email || "") + " • " + (c.stage || ""));
+      });
+      lines.push("");
+      lines.push("Leads: " + (j.leads || []).length);
+      (j.leads || []).slice(0, 8).forEach((l) => {
+        lines.push("- " + (l.email || "(no email)") + " • " + (l.status || "new") + " • " + (l.source_page || ""));
+      });
+
+      out.textContent = lines.join("\n");
+      const leadsEl = $("crmLeads");
+      if (leadsEl) leadsEl.scrollIntoView({ behavior: "smooth", block: "start" });
+    }catch(e){
+      out.textContent = "Search error.";
+    }
   }
-})();
-  `);
+
+
+
+    // CRM AI Search wiring (replaces separate lead/client/chat search boxes)
+    if ($("crmAiSend")) $("crmAiSend").addEventListener("click", crmAiRun);
+    if ($("crmAiInput")) $("crmAiInput").addEventListener("keydown", (e) => { if (e.key === "Enter") crmAiRun(); });
+    if ($("crmAiClear")) $("crmAiClear").addEventListener("click", async () => {
+      if ($("crmAiInput")) $("crmAiInput").value = "";
+      if ($("crmAiOut")) $("crmAiOut").textContent = "—";
+      await loadCRM();
+      await loadCrmClients("");
+    });
+
+// CRM v2 listeners
+if ($("crmClientSearchBtn")) $("crmClientSearchBtn").addEventListener("click", () => {
+  const q = $("crmClientSearch") ? $("crmClientSearch").value.trim() : "";
+  loadCrmClients(q);
 });
+if ($("crmClientSearch")) $("crmClientSearch").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    const q = $("crmClientSearch").value.trim();
+    loadCrmClients(q);
+  }
+});
+
+
+if ($("crmClientFilter")) $("crmClientFilter").addEventListener("input", applyClientFilter);
+if ($("crmClientFilterClear")) $("crmClientFilterClear").addEventListener("click", () => { if ($("crmClientFilter")) $("crmClientFilter").value=""; applyClientFilter(); });
+
+
+
+
+
+
+
+
+if ($("crmCreateClient")) $("crmCreateClient").addEventListener("click", crmCreateClient);
+
+
+
+
+
+
+
+
+if ($("crmChatSend")) $("crmChatSend").addEventListener("click", crmChatRun);
+if ($("crmChatClear")) $("crmChatClear").addEventListener("click", () => { if ($("crmChatInput")) $("crmChatInput").value=""; if ($("crmChatOut")) $("crmChatOut").textContent="—"; });
+if ($("crmChatInput")) $("crmChatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") crmChatRun(); });
+    });
+
+
+
+
+
+
+
+
+    if ($("loadReports")) $("loadReports").addEventListener("click", loadReportsList);
+    if ($("aiReportTopBtn")) $("aiReportTopBtn").addEventListener("click", aiReport);
+    if ($("liveToggle")) $("liveToggle").addEventListener("click", () => {
+      liveOn = !liveOn;
+      $("liveToggle").textContent = liveOn ? "Pause" : "Resume";
+      setStatus(liveOn ? "live on" : "live paused");
+    });
+    if ($("liveNow")) $("liveNow").addEventListener("click", liveCheck);
+
+
+
+
+
+
+
+
+    startLive();
+    liveCheck();
+    refresh();
+  });
+})();`.trim());
+  });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* ---------------------------
+   “Daily job” utilities
+----------------------------*/
+async function generateNonAiDailyReport(site_id) {
+  const metricsRes = await pool.query(
+    `
+    SELECT
+      COUNT(*)::int AS total_events,
+      SUM(CASE WHEN event_name='page_view' THEN 1 ELSE 0 END)::int AS page_views,
+      SUM(CASE WHEN event_name='lead' THEN 1 ELSE 0 END)::int AS leads,
+      SUM(CASE WHEN event_name='purchase' THEN 1 ELSE 0 END)::int AS purchases
+    FROM events_raw
+    WHERE site_id=$1 AND created_at >= NOW() - INTERVAL '1 day'
+    `,
+    [site_id]
+  );
+
+
+
+
+
+
+
+
+  const m = metricsRes.rows[0] || { total_events: 0, page_views: 0, leads: 0, purchases: 0 };
+
+
+
+
+
+
+
+
+  const topRes = await pool.query(
+    `
+    SELECT page_type, COUNT(*)::int AS views
+    FROM events_raw
+    WHERE site_id=$1 AND event_name='page_view' AND created_at >= NOW() - INTERVAL '7 days'
+    GROUP BY page_type
+    ORDER BY views DESC
+    LIMIT 3
+    `,
+    [site_id]
+  );
+
+
+
+
+
+
+
+
+  const lines = [];
+  lines.push("Summary:");
+  lines.push(`In the last 24 hours you recorded ${m.page_views || 0} page views.`);
+  lines.push(`Leads: ${m.leads || 0} • Purchases: ${m.purchases || 0}`);
+  lines.push("");
+  lines.push("Top pages (7d):");
+  if (!topRes.rows.length) lines.push("- (no data yet)");
+  for (const r of topRes.rows) lines.push(`- ${r.page_type || "/"}: ${r.views}`);
+  lines.push("");
+  lines.push("Next steps:");
+  lines.push("1) Put your strongest CTA on the top page");
+  lines.push("2) Add a lead capture (form / booking / email)");
+  lines.push("3) Track a conversion event next");
+  lines.push("");
+  lines.push("Metric to watch:");
+  lines.push("Lead rate (leads / visits)");
+
+
+
+
+
+
+
+
+  return lines.join("\n");
+}
+
+
+
+
+
+
+
+
+async function runDailyForAllSites() {
+  const sites = await pool.query(`SELECT site_id, plan FROM sites`);
+  let made = 0;
+
+
+
+
+
+
+
+
+  for (const s of sites.rows) {
+    const plan = s.plan || "unpaid";
+    if (plan !== "pro" && plan !== "full_ai") continue;
+
+
+
+
+
+
+
+
+    const txt = await generateNonAiDailyReport(s.site_id);
+
+
+
+
+
+
+
+
+    await pool.query(
+      `INSERT INTO daily_reports (site_id, report_date, report_text)
+       VALUES ($1, CURRENT_DATE, $2)
+       ON CONFLICT (site_id, report_date)
+       DO UPDATE SET report_text = EXCLUDED.report_text`,
+      [s.site_id, txt]
+    );
+    made++;
+  }
+
+
+
+
+
+
+
+
+  return { ok: true, updated_sites: made };
+}
+
+
+
+
+
+
+
 
 app.post("/jobs/run-daily", asyncHandler(async (req, res) => {
   const result = await runDailyForAllSites();
