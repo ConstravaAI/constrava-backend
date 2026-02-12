@@ -5894,6 +5894,7 @@ window.CONSTRAVA_TOKEN = ${JSON.stringify(String(token || ""))};
    GET /dashboard.js?token=...
 ----------------------------*/
 
+
 app.get("/dashboard.js", (req, res) => {
   setNoStore(res);
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
@@ -5921,12 +5922,21 @@ app.get("/dashboard.js", (req, res) => {
     if (el) el.textContent = "Status: " + String(t || "ready");
   }
 
+  function escapeHtml(s){
+    return String(s ?? "")
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;")
+      .replace(/'/g,"&#039;");
+  }
+
   async function apiGet(path, params){
     const u = new URL(path, location.origin);
     u.searchParams.set("token", TOKEN);
     if (params){
       for (const k of Object.keys(params)){
-        if (params[k] !== undefined && params[k] !== null) u.searchParams.set(k, String(params[k]));
+        if (params[k] !== undefined && params[k] !== null && params[k] !== "") u.searchParams.set(k, String(params[k]));
       }
     }
     const r = await fetch(u.toString(), { cache: "no-store" });
@@ -5950,6 +5960,229 @@ app.get("/dashboard.js", (req, res) => {
     return Number.isFinite(v) ? v : 7;
   }
 
+  // -------------------------
+  // Charts (SVG)
+  // -------------------------
+  function clearSvg(svg){
+    while(svg.firstChild) svg.removeChild(svg.firstChild);
+  }
+
+  function drawTrendSvg(data){
+    const svg = $("trendSvg");
+    if (!svg) return;
+    clearSvg(svg);
+
+    const W = 900, H = 260;
+    const padL = 42, padR = 18, padT = 14, padB = 30;
+    const innerW = W - padL - padR;
+    const innerH = H - padT - padB;
+
+    const pts = (Array.isArray(data) ? data : []).map((d) => ({
+      day: d.day,
+      visits: Number(d.visits || 0)
+    }));
+
+    const maxV = Math.max(1, ...pts.map(p => p.visits));
+    const minV = 0;
+
+    const x = (i) => padL + (pts.length <= 1 ? 0 : (i/(pts.length-1))*innerW);
+    const y = (v) => padT + innerH - ((v - minV) / (maxV - minV)) * innerH;
+
+    // axis
+    const mk = (tag) => document.createElementNS("http://www.w3.org/2000/svg", tag);
+
+    const axis = mk("line");
+    axis.setAttribute("x1", padL);
+    axis.setAttribute("y1", padT + innerH);
+    axis.setAttribute("x2", padL + innerW);
+    axis.setAttribute("y2", padT + innerH);
+    axis.setAttribute("stroke", "rgba(124,58,237,.25)");
+    axis.setAttribute("stroke-width", "2");
+    svg.appendChild(axis);
+
+    // grid + labels
+    for (let g=0; g<=4; g++){
+      const v = Math.round((maxV * (4-g))/4);
+      const ly = y(v);
+
+      const gl = mk("line");
+      gl.setAttribute("x1", padL);
+      gl.setAttribute("y1", ly);
+      gl.setAttribute("x2", padL + innerW);
+      gl.setAttribute("y2", ly);
+      gl.setAttribute("stroke", "rgba(124,58,237,.10)");
+      gl.setAttribute("stroke-width", "1");
+      svg.appendChild(gl);
+
+      const tx = mk("text");
+      tx.setAttribute("x", 6);
+      tx.setAttribute("y", ly + 4);
+      tx.setAttribute("font-size", "12");
+      tx.setAttribute("fill", "rgba(17,24,39,.65)");
+      tx.textContent = String(v);
+      svg.appendChild(tx);
+    }
+
+    if (!pts.length){
+      const tx = mk("text");
+      tx.setAttribute("x", padL);
+      tx.setAttribute("y", padT + 24);
+      tx.setAttribute("font-size", "14");
+      tx.setAttribute("fill", "rgba(17,24,39,.65)");
+      tx.textContent = "No data yet — seed demo data or install tracking.";
+      svg.appendChild(tx);
+      return;
+    }
+
+    // line path
+    let d = "";
+    pts.forEach((p,i) => {
+      d += (i===0 ? "M" : "L") + x(i) + " " + y(p.visits) + " ";
+    });
+
+    const path = mk("path");
+    path.setAttribute("d", d.trim());
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "rgba(124,58,237,.95)");
+    path.setAttribute("stroke-width", "4");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    svg.appendChild(path);
+
+    // points
+    pts.forEach((p,i) => {
+      const c = mk("circle");
+      c.setAttribute("cx", x(i));
+      c.setAttribute("cy", y(p.visits));
+      c.setAttribute("r", "5");
+      c.setAttribute("fill", "rgba(255,255,255,.95)");
+      c.setAttribute("stroke", "rgba(124,58,237,.95)");
+      c.setAttribute("stroke-width", "3");
+      svg.appendChild(c);
+    });
+
+    // x labels (show first/last, and mid if enough)
+    const labelIdx = pts.length <= 2 ? [0, pts.length-1] : [0, Math.floor((pts.length-1)/2), pts.length-1];
+    labelIdx.forEach((i) => {
+      if (i < 0 || i >= pts.length) return;
+      const tx = mk("text");
+      tx.setAttribute("x", x(i));
+      tx.setAttribute("y", padT + innerH + 22);
+      tx.setAttribute("text-anchor", "middle");
+      tx.setAttribute("font-size", "12");
+      tx.setAttribute("fill", "rgba(17,24,39,.65)");
+      tx.textContent = String(pts[i].day || "").slice(5);
+      svg.appendChild(tx);
+    });
+  }
+
+  function drawDeviceSvg(mobile, desktop){
+    const svg = $("deviceSvg");
+    if (!svg) return;
+    clearSvg(svg);
+
+    const mk = (tag) => document.createElementNS("http://www.w3.org/2000/svg", tag);
+    const cx = 80, cy = 80, r = 52;
+    const total = Math.max(1, (mobile||0) + (desktop||0));
+    const mobPct = (mobile||0)/total;
+    const deskPct = (desktop||0)/total;
+
+    function arcPath(frac, startAngle){
+      const endAngle = startAngle + frac * Math.PI * 2;
+      const x1 = cx + r*Math.cos(startAngle);
+      const y1 = cy + r*Math.sin(startAngle);
+      const x2 = cx + r*Math.cos(endAngle);
+      const y2 = cy + r*Math.sin(endAngle);
+      const large = frac > 0.5 ? 1 : 0;
+      return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`;
+    }
+
+    // background ring
+    const bg = mk("circle");
+    bg.setAttribute("cx", cx);
+    bg.setAttribute("cy", cy);
+    bg.setAttribute("r", r);
+    bg.setAttribute("fill", "none");
+    bg.setAttribute("stroke", "rgba(124,58,237,.14)");
+    bg.setAttribute("stroke-width", "14");
+    svg.appendChild(bg);
+
+    // mobile arc
+    const a1 = mk("path");
+    a1.setAttribute("d", arcPath(mobPct, -Math.PI/2));
+    a1.setAttribute("fill", "none");
+    a1.setAttribute("stroke", "rgba(124,58,237,.95)");
+    a1.setAttribute("stroke-width", "14");
+    a1.setAttribute("stroke-linecap", "round");
+    svg.appendChild(a1);
+
+    // desktop arc
+    const a2 = mk("path");
+    a2.setAttribute("d", arcPath(deskPct, -Math.PI/2 + mobPct*2*Math.PI));
+    a2.setAttribute("fill", "none");
+    a2.setAttribute("stroke", "rgba(17,24,39,.35)");
+    a2.setAttribute("stroke-width", "14");
+    a2.setAttribute("stroke-linecap", "round");
+    svg.appendChild(a2);
+
+    // labels
+    const t1 = mk("text");
+    t1.setAttribute("x", 160);
+    t1.setAttribute("y", 68);
+    t1.setAttribute("font-size", "13");
+    t1.setAttribute("fill", "rgba(17,24,39,.75)");
+    t1.textContent = "Mobile";
+    svg.appendChild(t1);
+
+    const t1v = mk("text");
+    t1v.setAttribute("x", 160);
+    t1v.setAttribute("y", 86);
+    t1v.setAttribute("font-size", "18");
+    t1v.setAttribute("font-weight", "800");
+    t1v.setAttribute("fill", "rgba(124,58,237,.95)");
+    t1v.textContent = Math.round(mobPct*100) + "%";
+    svg.appendChild(t1v);
+
+    const t2 = mk("text");
+    t2.setAttribute("x", 160);
+    t2.setAttribute("y", 112);
+    t2.setAttribute("font-size", "13");
+    t2.setAttribute("fill", "rgba(17,24,39,.75)");
+    t2.textContent = "Desktop";
+    svg.appendChild(t2);
+
+    const t2v = mk("text");
+    t2v.setAttribute("x", 160);
+    t2v.setAttribute("y", 130);
+    t2v.setAttribute("font-size", "18");
+    t2v.setAttribute("font-weight", "800");
+    t2v.setAttribute("fill", "rgba(17,24,39,.70)");
+    t2v.textContent = Math.round(deskPct*100) + "%";
+    svg.appendChild(t2v);
+  }
+
+  function renderTopPages(rows){
+    const wrap = $("topPages");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    const arr = Array.isArray(rows) ? rows : [];
+    if (!arr.length){
+      wrap.innerHTML = '<div class="muted">No page data yet.</div>';
+      return;
+    }
+    arr.forEach((r) => {
+      const div = document.createElement("div");
+      div.className = "item";
+      div.innerHTML =
+        '<div style="font-weight:800">' + escapeHtml(r.page_type) + '</div>' +
+        '<div class="muted">' + escapeHtml(String(r.views)) + ' views • ' + escapeHtml(String(r.share)) + '%</div>';
+      wrap.appendChild(div);
+    });
+  }
+
+  // -------------------------
+  // Tabs
+  // -------------------------
   function bindTabs(){
     const btnA = $("tabAnalytics");
     const btnC = $("tabCRMTop");
@@ -5976,6 +6209,53 @@ app.get("/dashboard.js", (req, res) => {
   // -------------------------
   // Analytics UI
   // -------------------------
+  function appendChat(role, text){
+    const box = $("chatBox");
+    if (!box) return;
+    const div = document.createElement("div");
+    div.style.margin = "8px 0";
+    div.innerHTML =
+      '<div class="muted" style="font-size:12px;margin-bottom:2px">' +
+        escapeHtml(role) +
+      "</div>" +
+      '<div style="white-space:pre-wrap">' + escapeHtml(text) + "</div>";
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  const chatHistory = [];
+
+  async function runAnalyticsChat(){
+    const input = $("chatInput");
+    const msg = input ? input.value.trim() : "";
+    if (!msg) return;
+
+    if (input) input.value = "";
+    appendChat("You", msg);
+
+    chatHistory.push({ role: "user", content: msg });
+
+    // show placeholder
+    appendChat("AI", "…");
+
+    const box = $("chatBox");
+    const last = box ? box.lastElementChild : null;
+
+    try{
+      const r = await apiPost("/api/ai/chat", { token: TOKEN, message: msg, history: chatHistory });
+      if (!r || !r.ok){
+        if (last) last.querySelector("div:nth-child(2)").textContent = (r && r.error) ? r.error : "Chat failed";
+        return;
+      }
+      const answer = String(r.answer || r.reply || r.message || "").trim() || "(no reply)";
+      if (last) last.querySelector("div:nth-child(2)").textContent = answer;
+      chatHistory.push({ role: "assistant", content: answer });
+    } catch(e){
+      if (last) last.querySelector("div:nth-child(2)").textContent = "Network error";
+      console.error(e);
+    }
+  }
+
   async function refreshAnalytics(){
     if (!TOKEN) return;
     setStatus("loading...");
@@ -5990,18 +6270,52 @@ app.get("/dashboard.js", (req, res) => {
 
     setText("kpiToday", m.visits_today ?? 0);
     setText("kpiRange", m.visits_range ?? 0);
-    setText("kpiLeadRate", Math.round((m.conversion_rate || 0) * 10000) / 100 + "%");
-    setText("kpiPurchaseRate", Math.round((m.purchase_rate || 0) * 10000) / 100 + "%");
+
+    // Rates
+    const leadRate = (m.conversion_rate || 0);
+    const buyRate = (m.purchase_rate || 0);
+    setText("kpiLeadRate", (Math.round(leadRate * 10000) / 100) + "%");
+    setText("kpiPurchaseRate", (Math.round(buyRate * 10000) / 100) + "%");
+
     setText("leads", m.leads ?? 0);
     setText("purchases", m.purchases ?? 0);
     setText("cta", m.cta_clicks ?? 0);
+
+    // trend + device + top pages
+    drawTrendSvg(m.trend || []);
+    const dm = m.device_mix || { mobile: 0, desktop: 0 };
+    setText("mob", dm.mobile ?? 0);
+    setText("desk", dm.desktop ?? 0);
+    drawDeviceSvg(dm.mobile || 0, dm.desktop || 0);
+    renderTopPages(m.top_pages_range || []);
+
+    // max/avg
+    const t = Array.isArray(m.trend) ? m.trend : [];
+    const visits = t.map(x => Number(x.visits||0));
+    const maxDay = visits.length ? Math.max(...visits) : 0;
+    const avgDay = visits.length ? (visits.reduce((a,b)=>a+b,0)/visits.length) : 0;
+    setText("maxDay", maxDay || "—");
+    setText("avgDay", visits.length ? (Math.round(avgDay*10)/10) : "—");
+
+    // live section
+    if (m.last_event){
+      setText("liveJson", JSON.stringify(m.last_event, null, 2));
+    }
 
     // latest report preview (if present)
     try{
       const latest = await apiGet("/reports/latest");
       if (latest && latest.ok && latest.report){
-        const box = $("latestAiReport");
-        if (box) box.textContent = latest.report.report_text || "";
+        const raw = $("latestAiReport");
+        if (raw) raw.textContent = latest.report.report_text || "";
+
+        const cards = $("latestAiReportCards");
+        if (cards){
+          const txt = latest.report.report_text || "";
+          // simple split into bullets/cards
+          const parts = txt.split("\n").map(s=>s.trim()).filter(Boolean).slice(0, 18);
+          cards.innerHTML = parts.map(p => '<div class="repCard">' + escapeHtml(p) + '</div>').join("");
+        }
       }
     } catch(e){}
 
@@ -6011,8 +6325,7 @@ app.get("/dashboard.js", (req, res) => {
   async function seedDemo(){
     if (!TOKEN) return;
     setStatus("seeding...");
-    const days = activeDays();
-    const r = await apiPost("/demo/seed", { days });
+    const r = await apiPost("/demo/seed", { days: activeDays() });
     if (!r || !r.ok){
       setStatus("error");
       console.error(r);
@@ -6036,6 +6349,27 @@ app.get("/dashboard.js", (req, res) => {
     }
     await refreshAnalytics();
     setStatus("ready");
+  }
+
+  // -------------------------
+  // Live poll
+  // -------------------------
+  let liveOn = true;
+  let liveTimer = null;
+
+  async function pollLive(){
+    if (!liveOn) return;
+    try{
+      const m = await apiGet("/metrics", { days: activeDays() });
+      if (m && m.ok && m.last_event){
+        setText("liveJson", JSON.stringify(m.last_event, null, 2));
+      }
+    } catch(e){}
+  }
+
+  function startLive(){
+    if (liveTimer) clearInterval(liveTimer);
+    liveTimer = setInterval(pollLive, 5000);
   }
 
   // -------------------------
@@ -6142,17 +6476,8 @@ app.get("/dashboard.js", (req, res) => {
     });
   }
 
-  function escapeHtml(s){
-    return String(s ?? "")
-      .replace(/&/g,"&amp;")
-      .replace(/</g,"&lt;")
-      .replace(/>/g,"&gt;")
-      .replace(/"/g,"&quot;")
-      .replace(/'/g,"&#039;");
-  }
-
   async function refreshCrmLeads(){
-    const r = await apiGet("/crm", { limit: 120 });
+    const r = await apiGet("/crm", { limit: 200 });
     if (r && r.ok) renderLeads(r.leads || []);
   }
 
@@ -6163,6 +6488,24 @@ app.get("/dashboard.js", (req, res) => {
 
   async function refreshCrmAll(){
     await Promise.all([refreshCrmLeads(), refreshCrmClients("")]);
+  }
+
+  function applyLeadFilter(q){
+    const leadSearch = $("crmLeadSearch");
+    const query = (q !== undefined) ? String(q) : (leadSearch ? leadSearch.value : "");
+    const wrap = $("crmLeads");
+    if (!wrap) return;
+    const low = query.trim().toLowerCase();
+    wrap.querySelectorAll(".crmLeadRow").forEach((row) => {
+      row.style.display = !low || row.textContent.toLowerCase().includes(low) ? "" : "none";
+    });
+  }
+
+  function expandClientsCard(){
+    const clientsCard = $("crmClientsCard");
+    if (!clientsCard) return;
+    const body = clientsCard.querySelector(".cardBody");
+    if (body && body.style.display === "none") body.style.display = "";
   }
 
   function bindCrm(){
@@ -6180,7 +6523,11 @@ app.get("/dashboard.js", (req, res) => {
     const filterClear = $("crmClientFilterClear");
 
     // leads refresh/export
-    if (refreshBtn) refreshBtn.addEventListener("click", refreshCrmAll);
+    if (refreshBtn) refreshBtn.addEventListener("click", async () => {
+      await refreshCrmAll();
+      const card = $("crmLeadsCard");
+      if (card) card.scrollIntoView({ behavior:"smooth", block:"start" });
+    });
 
     if (exportBtn) exportBtn.addEventListener("click", async () => {
       const r = await apiGet("/crm", { limit: 500 });
@@ -6203,23 +6550,25 @@ app.get("/dashboard.js", (req, res) => {
       return s;
     }
 
-    // lead search (client-side filter on loaded leads)
-    if (leadSearch){
-      leadSearch.addEventListener("input", () => {
-        const q = leadSearch.value.trim().toLowerCase();
-        const wrap = $("crmLeads");
-        if (!wrap) return;
-        wrap.querySelectorAll(".crmLeadRow").forEach((row) => {
-          row.style.display = row.textContent.toLowerCase().includes(q) ? "" : "none";
-        });
-      });
-    }
-    if (leadClear) leadClear.addEventListener("click", () => { if (leadSearch) leadSearch.value = ""; if (leadSearch) leadSearch.dispatchEvent(new Event("input")); });
+    // lead search (filter leads list)
+    if (leadSearch) leadSearch.addEventListener("input", () => {
+      applyLeadFilter();
+      const card = $("crmLeadsCard");
+      if (card) card.scrollIntoView({ behavior:"smooth", block:"start" });
+    });
 
-    // server client search (top tools)
+    if (leadClear) leadClear.addEventListener("click", () => {
+      if (leadSearch) leadSearch.value = "";
+      applyLeadFilter("");
+    });
+
+    // server client search (updates the SAME clients list below)
     if (clientSearchBtn) clientSearchBtn.addEventListener("click", async () => {
       const q = clientSearch ? clientSearch.value.trim() : "";
+      expandClientsCard();
       await refreshCrmClients(q);
+      const card = $("crmClientsCard");
+      if (card) card.scrollIntoView({ behavior:"smooth", block:"start" });
     });
 
     // create client
@@ -6229,6 +6578,7 @@ app.get("/dashboard.js", (req, res) => {
       const ph = ($("crmNewPhone") && $("crmNewPhone").value) ? $("crmNewPhone").value.trim() : "";
       const r = await apiPost("/crm/clients", { token: TOKEN, full_name: nm, email: em, phone: ph, stage: "lead" });
       if (!r || !r.ok) return alert(r && r.error ? r.error : "Create failed");
+      expandClientsCard();
       await refreshCrmClients("");
     });
 
@@ -6239,7 +6589,6 @@ app.get("/dashboard.js", (req, res) => {
       if (hdr && body){
         hdr.style.cursor = "pointer";
         hdr.addEventListener("click", (e) => {
-          // prevent collapsing when clicking buttons inside header (if any)
           if (e.target && (e.target.tagName === "BUTTON" || e.target.closest("button"))) return;
           const isHidden = body.style.display === "none";
           body.style.display = isHidden ? "" : "none";
@@ -6247,7 +6596,7 @@ app.get("/dashboard.js", (req, res) => {
       }
     }
 
-    // local filter on loaded clients
+    // local filter on loaded clients (within the clients list section)
     if (filterInput){
       filterInput.addEventListener("input", () => {
         const q = filterInput.value.trim().toLowerCase();
@@ -6258,9 +6607,12 @@ app.get("/dashboard.js", (req, res) => {
         });
       });
     }
-    if (filterClear) filterClear.addEventListener("click", () => { if (filterInput) filterInput.value = ""; if (filterInput) filterInput.dispatchEvent(new Event("input")); });
+    if (filterClear) filterClear.addEventListener("click", () => {
+      if (filterInput) filterInput.value = "";
+      if (filterInput) filterInput.dispatchEvent(new Event("input"));
+    });
 
-    // CRM chat (search + summary)
+    // CRM chat (search + ALSO drive the lists)
     const crmSend = $("crmChatSend");
     const crmIn = $("crmChatInput");
     const crmOut = $("crmChatOut");
@@ -6270,10 +6622,17 @@ app.get("/dashboard.js", (req, res) => {
       const q = crmIn ? crmIn.value.trim() : "";
       if (!q) return;
       if (crmOut) crmOut.textContent = "Searching...";
-      const [leads, clients] = await Promise.all([
-        apiGet("/crm", { limit: 200 }),
-        apiGet("/crm/clients", { q })
-      ]);
+
+      // Drive the SAME UI sections:
+      // - filter leads list locally
+      // - server search clients list
+      applyLeadFilter(q);
+      expandClientsCard();
+      await refreshCrmClients(q);
+
+      // Also show a text summary in the chat output
+      const leads = await apiGet("/crm", { limit: 200 });
+      const clients = await apiGet("/crm/clients", { q });
 
       const out = [];
       out.push('Search: "' + q + '"');
@@ -6293,13 +6652,16 @@ app.get("/dashboard.js", (req, res) => {
           const s = (l.email || "") + " " + (l.name || "") + " " + (l.phone || "") + " " + (l.notes || "");
           return s.toLowerCase().includes(q.toLowerCase());
         });
-        out.push("Leads matched (local search): " + rows.length);
+        out.push("Leads matched: " + rows.length);
         rows.slice(0, 8).forEach((l) => {
           out.push("- " + (l.email || "(no email)") + " • " + (l.status || "new") + " • " + (l.source_page || ""));
         });
       }
 
       if (crmOut) crmOut.textContent = out.join("\n");
+
+      const leadCard = $("crmLeadsCard");
+      if (leadCard) leadCard.scrollIntoView({ behavior:"smooth", block:"start" });
     }
 
     if (crmSend) crmSend.addEventListener("click", crmChatRun);
@@ -6317,6 +6679,29 @@ app.get("/dashboard.js", (req, res) => {
     if (refreshBtn) refreshBtn.addEventListener("click", refreshAnalytics);
     if (aiBtn) aiBtn.addEventListener("click", genAiReport);
     if (daysSel) daysSel.addEventListener("change", refreshAnalytics);
+
+    // analytics chat
+    const chatSend = $("chatSend");
+    const chatClear = $("chatClear");
+    const chatInput = $("chatInput");
+
+    if (chatSend) chatSend.addEventListener("click", runAnalyticsChat);
+    if (chatInput) chatInput.addEventListener("keydown", (e) => { if (e.key === "Enter") runAnalyticsChat(); });
+    if (chatClear) chatClear.addEventListener("click", () => {
+      const box = $("chatBox");
+      if (box) box.innerHTML = '<div class="muted">Start by asking: “What should I improve first?”</div>';
+      chatHistory.length = 0;
+    });
+
+    // live controls
+    const liveToggle = $("liveToggle");
+    const liveNow = $("liveNow");
+    if (liveToggle) liveToggle.addEventListener("click", () => {
+      liveOn = !liveOn;
+      liveToggle.textContent = liveOn ? "Pause" : "Resume";
+      if (liveOn) pollLive();
+    });
+    if (liveNow) liveNow.addEventListener("click", pollLive);
   }
 
   function boot(){
@@ -6330,6 +6715,7 @@ app.get("/dashboard.js", (req, res) => {
     bindCrm();
     refreshAnalytics();
     refreshCrmAll();
+    startLive();
     setStatus("ready");
   }
 
