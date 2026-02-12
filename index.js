@@ -1902,7 +1902,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           );
         } catch (e) {}
 
-      }} else if (roll < purchaseRate + leadRate + ctaRate) {
+      } else if (roll < purchaseRate + leadRate + ctaRate) {
         await pool.query(
           `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
            VALUES ($1, 'cta_click', $2, $3, $4)`,
