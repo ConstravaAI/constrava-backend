@@ -2538,10 +2538,10 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
   };
 
   // ---- Leads ----
-  const leadDays = has("recent") ? pickInt(/recent\\s+(\\d+)/i, 7) : days;
+  const leadDays = has("recent") ? pickInt(/recent\s+(\d+)/i, 7) : days;
 
   const statusMatch = q.match(/status\\s*:\\s*([a-z_\\-]+)/i);
-  const pageMatch = q.match(/(?:from\\s+)(\\/[^\\s]+)|page\\s*:\\s*([^\\s]+)/i);
+  const pageMatch = q.match(/(?:from\s+)(\/[^\s]+)|page\s*:\s*([^\s]+)/i);
 
   let leadWhere = "site_id=$1 AND created_at >= NOW() - ($2::int || ' days')::interval";
   const leadVals = [site.site_id, leadDays];
@@ -2571,7 +2571,7 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
   // ---- Clients ----
   const stageMatch = q.match(/stage\\s*:\\s*([a-z_\\-]+)/i);
   const healthMatch = q.match(/health\\s*:\\s*([a-z_\\-]+)/i);
-  const idleDays = (has("idle") || has("no touch") || has("not touched")) ? pickInt(/(?:idle|touch)\\s+(\\d+)/i, 14) : null;
+  const idleDays = (has("idle") || has("no touch") || has("not touched")) ? pickInt(/(?:idle|touch)\s+(\d+)/i, 14) : null;
 
   let clientWhere = "site_id=$1";
   const clientVals = [site.site_id];
