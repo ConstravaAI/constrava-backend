@@ -17,18 +17,26 @@
 // - PGSSL=true
 
 
+
+
 import express from "express";
 import cors from "cors";
 import pkg from "pg";
 import crypto from "crypto";
 
 
+
+
 const { Pool } = pkg;
 const app = express();
 
 
+
+
 // IMPORTANT for Render / reverse proxies (req.protocol + secure cookies)
 app.set("trust proxy", 1);
+
+
 
 
 // CORS
@@ -42,12 +50,18 @@ app.use(
 );
 
 
+
+
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 
+
+
 const PORT = process.env.PORT || 10000;
 const DATABASE_URL = process.env.DATABASE_URL;
+
+
 
 
 if (!DATABASE_URL) {
@@ -56,10 +70,14 @@ if (!DATABASE_URL) {
 }
 
 
+
+
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: process.env.PGSSL === "true" ? { rejectUnauthorized: false } : undefined
 });
+
+
 
 
 /* ---------------------------
@@ -70,6 +88,8 @@ function asyncHandler(fn) {
 }
 
 
+
+
 function setNoStore(res) {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.setHeader("Pragma", "no-cache");
@@ -77,8 +97,12 @@ function setNoStore(res) {
 }
 
 
+
+
 function publicBaseUrl(req) {
   if (process.env.PUBLIC_BASE_URL) return process.env.PUBLIC_BASE_URL;
+
+
 
 
   const xfProto = req.get("x-forwarded-proto");
@@ -86,15 +110,21 @@ function publicBaseUrl(req) {
   const host = req.get("x-forwarded-host") || req.get("host");
 
 
+
+
   if (host) return `${proto}://${host}`;
   return "https://constrava-backend.onrender.com";
 }
+
+
 
 
 function publicEventsUrl(req) {
   if (process.env.PUBLIC_EVENTS_URL) return process.env.PUBLIC_EVENTS_URL;
   return publicBaseUrl(req);
 }
+
+
 
 
 function requireEnv(name) {
@@ -104,11 +134,15 @@ function requireEnv(name) {
 }
 
 
+
+
 function normalizeDays(input) {
   const n = parseInt(String(input ?? "7"), 10);
   const allowed = new Set([1, 7, 30, 365, 730, 1825]);
   return allowed.has(n) ? n : 7;
 }
+
+
 
 
 function normalizeSiteId(raw) {
@@ -118,6 +152,8 @@ function normalizeSiteId(raw) {
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9-]/g, "");
 }
+
+
 
 
 function validateSiteId(site_id) {
@@ -131,6 +167,8 @@ function validateSiteId(site_id) {
 }
 
 
+
+
 function validateCustomToken(token) {
   if (!token) return "access token is required";
   if (token.length < 20) return "access token must be at least 20 characters";
@@ -142,9 +180,13 @@ function validateCustomToken(token) {
 }
 
 
+
+
 function safeEmail(x) {
   return String(x || "").trim().toLowerCase();
 }
+
+
 
 
 function clamp01(n) {
@@ -152,6 +194,8 @@ function clamp01(n) {
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
 }
+
+
 
 
 function planGate(site, allowedPlans) {
@@ -165,6 +209,8 @@ function planGate(site, allowedPlans) {
 }
 
 
+
+
 /* ---------------------------
    Password hashing (no bcrypt)
 ----------------------------*/
@@ -175,12 +221,16 @@ function hashPassword(password) {
 }
 
 
+
+
 function verifyPassword(password, saltHex, hashHex) {
   const salt = Buffer.from(saltHex, "hex");
   const hash = Buffer.from(hashHex, "hex");
   const test = crypto.scryptSync(String(password), salt, 64);
   return crypto.timingSafeEqual(hash, test);
 }
+
+
 
 
 /* ---------------------------
@@ -201,6 +251,8 @@ function getCookie(req, name) {
 }
 
 
+
+
 function setCookie(res, name, value, opts = {}) {
   const {
     httpOnly = true,
@@ -209,6 +261,8 @@ function setCookie(res, name, value, opts = {}) {
     path = "/",
     maxAgeSeconds = 60 * 60 * 24 * 14
   } = opts;
+
+
 
 
   const parts = [
@@ -223,9 +277,13 @@ function setCookie(res, name, value, opts = {}) {
 }
 
 
+
+
 function clearCookie(res, name) {
   res.setHeader("Set-Cookie", `${name}=; Path=/; Max-Age=0; SameSite=Lax`);
 }
+
+
 
 
 /* ---------------------------
@@ -244,6 +302,8 @@ async function getSiteByToken(token) {
 }
 
 
+
+
 async function getSiteById(site_id) {
   const r = await pool.query(
     `SELECT site_id, site_name, owner_email, dashboard_token, plan
@@ -258,12 +318,18 @@ async function getSiteById(site_id) {
 
 
 
+
+
+
+
 /* ---------------------------
    CRM helpers (matching + inference)
 ----------------------------*/
 function normEmail(v){ return String(v||"").trim().toLowerCase(); }
 function normPhone(v){ return String(v||"").replace(/[^0-9+]/g,"").trim(); }
 function normName(v){ return String(v||"").trim().toLowerCase(); }
+
+
 
 
 function tokenSet(s){
@@ -276,6 +342,8 @@ function diceCoeff(a,b){
   for (const x of A) if (B.has(x)) inter++;
   return (2*inter) / (A.size + B.size);
 }
+
+
 
 
 async function findClientByIdentity(site_id, kind, value){
@@ -291,9 +359,13 @@ async function findClientByIdentity(site_id, kind, value){
 }
 
 
+
+
 async function upsertClient(site_id, { full_name, email, phone, stage }){
   const e = email ? normEmail(email) : null;
   const p = phone ? normPhone(phone) : null;
+
+
 
 
   // prefer email identity
@@ -303,11 +375,15 @@ async function upsertClient(site_id, { full_name, email, phone, stage }){
   }
 
 
+
+
   // try phone identity
   if (p){
     const existing = await findClientByIdentity(site_id, "phone", p);
     if (existing) return existing;
   }
+
+
 
 
   // create new client
@@ -318,6 +394,8 @@ async function upsertClient(site_id, { full_name, email, phone, stage }){
     [site_id, full_name ? String(full_name).trim() : null, e, p, stage || "lead"]
   );
   const c = r.rows[0];
+
+
 
 
   // identities
@@ -360,8 +438,12 @@ async function upsertClient(site_id, { full_name, email, phone, stage }){
   }
 
 
+
+
   return c;
 }
+
+
 
 
 async function addIdentity(site_id, client_id, kind, value){
@@ -376,8 +458,12 @@ async function addIdentity(site_id, client_id, kind, value){
 }
 
 
+
+
 async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
   const candidates = [];
+
+
 
 
   const e1 = emailA ? normEmail(emailA) : "";
@@ -385,8 +471,11 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
   const ph = phone ? normPhone(phone) : "";
   const nm = name ? normName(name) : "";
 
+
   const dom1 = e1 && e1.includes("@") ? e1.split("@").pop() : "";
   const dom2 = e2 && e2.includes("@") ? e2.split("@").pop() : "";
+
+
 
 
   if (e1){
@@ -397,6 +486,7 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
     const c = await findClientByIdentity(site_id, "email", e2);
     if (c) candidates.push({ client:c, confidence:0.92, reason:"Matched email: " + e2 });
   }
+
 
   // domain match (useful when aliases change but domain stays)
   if (dom1){
@@ -411,6 +501,8 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
     const c = await findClientByIdentity(site_id, "phone", ph);
     if (c) candidates.push({ client:c, confidence:0.90, reason:"Matched phone: " + ph });
   }
+
+
 
 
   // fuzzy name match (token overlap)
@@ -436,9 +528,13 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
   }
 
 
+
+
   candidates.sort((a,b)=> (b.confidence||0)-(a.confidence||0));
   return candidates[0] || null;
 }
+
+
 
 
 async function createActivityWithMatch(site_id, activity, matchHint){
@@ -463,7 +559,11 @@ async function createActivityWithMatch(site_id, activity, matchHint){
   );
 
 
+
+
   const act = r.rows[0];
+
+
 
 
   const best = await bestMatchClient(site_id, matchHint || {});
@@ -476,12 +576,18 @@ async function createActivityWithMatch(site_id, activity, matchHint){
     );
 
 
+
+
     await pool.query(
       `UPDATE crm_clients
        SET last_touch_at = GREATEST(COALESCE(last_touch_at, '1970-01-01'::timestamptz), $2::timestamptz)
        WHERE id=$1`,
       [best.client.id, act.occurred_at]
     );
+
+
+
+
 
 
 
@@ -506,8 +612,12 @@ try {
 } catch(e) {}
 
 
+
+
 return { activity: act, match: { ...best, status } };
   }
+
+
 
 
   await pool.query(
@@ -517,13 +627,19 @@ return { activity: act, match: { ...best, status } };
   );
 
 
+
+
   return { activity: act, match: null };
 }
+
+
 
 
 async function getSession(req) {
   const sid = getCookie(req, "constrava_session");
   if (!sid) return null;
+
+
 
 
   const r = await pool.query(
@@ -536,16 +652,24 @@ async function getSession(req) {
   );
 
 
+
+
   const row = r.rows[0];
   if (!row) return null;
+
+
 
 
   const expires = new Date(row.expires_at).getTime();
   if (!Number.isFinite(expires) || expires < Date.now()) return null;
 
 
+
+
   return row;
 }
+
+
 
 
 /* ---------------------------
@@ -564,6 +688,8 @@ async function ensureTables() {
   `);
 
 
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id BIGSERIAL PRIMARY KEY,
@@ -576,6 +702,8 @@ async function ensureTables() {
   `);
 
 
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS sessions (
       session_id TEXT PRIMARY KEY,
@@ -584,6 +712,8 @@ async function ensureTables() {
       expires_at TIMESTAMPTZ NOT NULL
     );
   `);
+
+
 
 
   await pool.query(`
@@ -596,6 +726,8 @@ async function ensureTables() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+
 
 
 await pool.query(`
@@ -612,6 +744,8 @@ CREATE TABLE IF NOT EXISTS crm_leads (
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+
 
 
   // --- CRM v2: clients + identities + activities + matching ---
@@ -638,6 +772,8 @@ CREATE TABLE IF NOT EXISTS crm_leads (
   `);
 
 
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS crm_identities (
       id BIGSERIAL PRIMARY KEY,
@@ -649,6 +785,8 @@ CREATE TABLE IF NOT EXISTS crm_leads (
       UNIQUE(site_id, kind, value)
     );
   `);
+
+
 
 
   await pool.query(`
@@ -670,6 +808,8 @@ CREATE TABLE IF NOT EXISTS crm_leads (
   `);
 
 
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS crm_activity_matches (
       id BIGSERIAL PRIMARY KEY,
@@ -684,16 +824,22 @@ CREATE TABLE IF NOT EXISTS crm_leads (
   `);
 
 
+
+
   await pool.query(`
     CREATE INDEX IF NOT EXISTS crm_activities_site_time_idx
       ON crm_activities (site_id, occurred_at DESC);
   `);
 
 
+
+
   await pool.query(`
     CREATE INDEX IF NOT EXISTS crm_matches_site_status_idx
       ON crm_activity_matches (site_id, status, created_at DESC);
   `);
+
+
 
 
   // --- Lightweight migrations (safe to re-run) ---
@@ -713,6 +859,8 @@ CREATE TABLE IF NOT EXISTS crm_leads (
   await pool.query(`ALTER TABLE crm_clients ADD COLUMN IF NOT EXISTS last_touch_summary TEXT;`);
 
 
+
+
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS subject TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS body_text TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS meta JSONB;`);
@@ -729,6 +877,8 @@ CREATE TABLE IF NOT EXISTS crm_leads (
   `);
 
 
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS demo_links (
       code TEXT PRIMARY KEY,
@@ -736,6 +886,10 @@ CREATE TABLE IF NOT EXISTS crm_leads (
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+
+
+
 
 
 
@@ -753,16 +907,24 @@ CREATE TABLE IF NOT EXISTS crm_leads (
   await pool.query(`ALTER TABLE crm_clients ADD COLUMN IF NOT EXISTS last_touch_summary TEXT;`);
 
 
+
+
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS subject TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS body TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS meta JSONB;`);
 
 
+
+
   await pool.query(`ALTER TABLE crm_activity_matches ADD COLUMN IF NOT EXISTS reason TEXT;`);
+
+
 
 
   console.log("✅ Tables ready");
 }
+
+
 
 
 /* ---------------------------
@@ -771,10 +933,14 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 app.get("/", (req, res) => res.send("Backend is running ✅"));
 
 
+
+
 app.get("/health", asyncHandler(async (req, res) => {
   const r = await pool.query("SELECT 1 as ok");
   res.json({ ok: true, db: r.rows[0]?.ok === 1 });
 }));
+
+
 
 
 app.get("/db-test", asyncHandler(async (req, res) => {
@@ -783,11 +949,15 @@ app.get("/db-test", asyncHandler(async (req, res) => {
 }));
 
 
+
+
 app.get("/debug/site", asyncHandler(async (req, res) => {
   const token = req.query.token;
   const site = await getSiteByToken(token);
   res.json({ ok: true, site });
 }));
+
+
 
 
 /* ---------------------------
@@ -798,9 +968,13 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
   const site_id = normalizeSiteId(rawSiteId);
 
 
+
+
   if (!site_id || !email || !password || !token) {
     return res.status(400).json({ ok: false, error: "site_id, email, password, and token are required" });
   }
+
+
 
 
   const site = await getSiteById(site_id);
@@ -808,12 +982,18 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
   if (site.dashboard_token !== token) return res.status(401).json({ ok: false, error: "Invalid site token" });
 
 
+
+
   const e = safeEmail(email);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return res.status(400).json({ ok: false, error: "Invalid email" });
   if (String(password).length < 8) return res.status(400).json({ ok: false, error: "Password must be at least 8 characters" });
 
 
+
+
   const { salt, hash } = hashPassword(password);
+
+
 
 
   try {
@@ -834,12 +1014,18 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
 }));
 
 
+
+
 app.post("/auth/login", asyncHandler(async (req, res) => {
   const { email, password } = req.body || {};
   const e = safeEmail(email);
 
 
+
+
   if (!e || !password) return res.status(400).json({ ok: false, error: "email and password required" });
+
+
 
 
   const r = await pool.query(
@@ -852,14 +1038,20 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
   if (r.rows.length === 0) return res.status(401).json({ ok: false, error: "Invalid login" });
 
 
+
+
   const u = r.rows[0];
   if (!verifyPassword(password, u.password_salt, u.password_hash)) {
     return res.status(401).json({ ok: false, error: "Invalid login" });
   }
 
 
+
+
   const session_id = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
+
 
 
   await pool.query(`INSERT INTO sessions (session_id, user_id, expires_at) VALUES ($1,$2,$3)`, [
@@ -869,6 +1061,8 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
   ]);
 
 
+
+
   setCookie(res, "constrava_session", session_id, {
     httpOnly: true,
     sameSite: "Lax",
@@ -876,7 +1070,11 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
   });
 
 
+
+
   const site = await getSiteById(u.site_id);
+
+
 
 
   res.json({
@@ -888,12 +1086,16 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 }));
 
 
+
+
 app.post("/auth/logout", asyncHandler(async (req, res) => {
   const sid = getCookie(req, "constrava_session");
   if (sid) await pool.query(`DELETE FROM sessions WHERE session_id=$1`, [sid]);
   clearCookie(res, "constrava_session");
   res.json({ ok: true });
 }));
+
+
 
 
 app.get("/me", asyncHandler(async (req, res) => {
@@ -908,6 +1110,8 @@ app.get("/me", asyncHandler(async (req, res) => {
 }));
 
 
+
+
 /* ---------------------------
    Onboarding: create a site
    POST /sites { site_id, site_name, owner_email, custom_token? }
@@ -916,14 +1120,20 @@ app.post("/sites", asyncHandler(async (req, res) => {
   const { site_id: rawSiteId, site_name, owner_email, custom_token } = req.body || {};
 
 
+
+
   if (!rawSiteId || !site_name || !owner_email) {
     return res.status(400).json({ ok: false, error: "site_id, site_name, and owner_email are required" });
   }
 
 
+
+
   const site_id = normalizeSiteId(rawSiteId);
   const siteIdErr = validateSiteId(site_id);
   if (siteIdErr) return res.status(400).json({ ok: false, error: siteIdErr });
+
+
 
 
   let token = crypto.randomUUID();
@@ -932,6 +1142,8 @@ app.post("/sites", asyncHandler(async (req, res) => {
     if (tokErr) return res.status(400).json({ ok: false, error: tokErr });
     token = custom_token;
   }
+
+
 
 
   try {
@@ -949,7 +1161,11 @@ app.post("/sites", asyncHandler(async (req, res) => {
   }
 
 
+
+
   const base = publicBaseUrl(req);
+
+
 
 
   res.json({
@@ -962,6 +1178,8 @@ app.post("/sites", asyncHandler(async (req, res) => {
 }));
 
 
+
+
 /* ---------------------------
    Tracker script
    GET /tracker.js
@@ -971,6 +1189,8 @@ app.get("/tracker.js", (req, res) => {
   const endpoint = publicEventsUrl(req) + "/events";
 
 
+
+
   res.send(`
 (function () {
   try {
@@ -978,8 +1198,12 @@ app.get("/tracker.js", (req, res) => {
     if (!script) return;
 
 
+
+
     var siteId = script.getAttribute("data-site-id");
     if (!siteId) return;
+
+
 
 
     fetch(${JSON.stringify(endpoint)}, {
@@ -999,6 +1223,10 @@ app.get("/tracker.js", (req, res) => {
 
 
 
+
+
+
+
 /* ---------------------------
    Receive events
    POST /events
@@ -1008,8 +1236,12 @@ app.post("/events", asyncHandler(async (req, res) => {
   if (!site_id || !event_name) return res.status(400).json({ ok: false, error: "site_id and event_name required" });
 
 
+
+
   const site = await pool.query("SELECT 1 FROM sites WHERE site_id=$1", [site_id]);
   if (site.rows.length === 0) return res.status(403).json({ ok: false, error: "Invalid site_id" });
+
+
 
 
   await pool.query(
@@ -1017,6 +1249,8 @@ app.post("/events", asyncHandler(async (req, res) => {
      VALUES ($1,$2,$3,$4)`,
     [site_id, String(event_name), page_type || null, device || null]
   );
+
+
 
 
   // CRM: if this is a lead event, also store a row in crm_leads (email optional)
@@ -1027,11 +1261,19 @@ app.post("/events", asyncHandler(async (req, res) => {
     const notes = lead_notes ? String(lead_notes).trim().slice(0, 1000) : null;
 
 
+
+
     await pool.query(
       `INSERT INTO crm_leads (site_id, email, name, phone, source_page, status, notes)
        VALUES ($1,$2,$3,$4,$5,'new',$6)`,
       [site_id, email, name, phone, page_type || null, notes]
     );
+
+
+
+
+
+
 
 
 
@@ -1049,10 +1291,14 @@ try {
     });
 
 
+
+
     // keep identities fresh
     if (email) await addIdentity(site_id, client.id, "email", normEmail(email));
     if (phone) await addIdentity(site_id, client.id, "phone", normPhone(phone));
     if (name) await addIdentity(site_id, client.id, "name", normName(name));
+
+
 
 
     await createActivityWithMatch(site_id, {
@@ -1077,6 +1323,8 @@ try {
   }
 
 
+
+
   res.json({ ok: true });
 }));
 /* ---------------------------
@@ -1089,8 +1337,12 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
   if (!event_name) return res.status(400).json({ ok: false, error: "event_name required" });
 
 
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
 
 
   const allowed = new Set(["page_view", "lead", "purchase", "cta_click"]);
@@ -1099,11 +1351,15 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
   }
 
 
+
+
   await pool.query(
     `INSERT INTO events_raw (site_id, event_name, page_type, device)
      VALUES ($1,$2,$3,$4)`,
     [site.site_id, event_name, page_type || "/", device || "desktop"]
   );
+
+
 
 
   // CRM: store lead details when event is "lead"
@@ -1114,11 +1370,14 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
     const notes = lead_notes ? String(lead_notes).trim().slice(0, 1000) : null;
 
 
+
+
     await pool.query(
       `INSERT INTO crm_leads (site_id, email, name, phone, source_page, status, notes)
        VALUES ($1,$2,$3,$4,$5,'new',$6)`,
       [site.site_id, email, name, phone, page_type || "/", notes]
     );
+
 
     // CRM v2: also create/attach a client + activity (best-effort)
     try {
@@ -1129,9 +1388,11 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
         stage: "lead"
       });
 
+
       if (email) await addIdentity(site.site_id, client.id, "email", normEmail(email));
       if (phone) await addIdentity(site.site_id, client.id, "phone", normPhone(phone));
       if (name) await addIdentity(site.site_id, client.id, "name", normName(name));
+
 
       await createActivityWithMatch(
         site.site_id,
@@ -1152,11 +1413,16 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
       // do not block demo event ingestion if CRM v2 fails
     }
 
+
   }
+
+
 
 
   res.json({ ok: true });
 }));
+
+
 
 
 /* ---------------------------
@@ -1167,13 +1433,19 @@ app.get("/live", asyncHandler(async (req, res) => {
   setNoStore(res);
 
 
+
+
   const token = req.query.token;
   const since = req.query.since;
   if (!token) return res.status(400).json({ ok: false, error: "token required" });
 
 
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
 
 
   const sinceDate = since ? new Date(String(since)) : null;
@@ -1182,12 +1454,16 @@ app.get("/live", asyncHandler(async (req, res) => {
   }
 
 
+
+
   const params = [site.site_id];
   let whereSince = "";
   if (sinceDate) {
     params.push(sinceDate.toISOString());
     whereSince = " AND created_at > $2";
   }
+
+
 
 
   const newViewsRes = await pool.query(
@@ -1202,6 +1478,8 @@ app.get("/live", asyncHandler(async (req, res) => {
   );
 
 
+
+
   const lastEventRes = await pool.query(
     `
     SELECT event_name, page_type, device, created_at
@@ -1212,6 +1490,8 @@ app.get("/live", asyncHandler(async (req, res) => {
     `,
     [site.site_id]
   );
+
+
 
 
   res.json({
@@ -1225,6 +1505,8 @@ app.get("/live", asyncHandler(async (req, res) => {
 }));
 
 
+
+
 /* ---------------------------
    DEMO: shareable link
    POST /demo/link { token } -> { url }
@@ -1235,17 +1517,25 @@ app.post("/demo/link", asyncHandler(async (req, res) => {
   if (!token) return res.status(400).json({ ok: false, error: "token required" });
 
 
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
 
 
   const code = crypto.randomBytes(4).toString("hex");
   await pool.query(`INSERT INTO demo_links (code, token) VALUES ($1,$2)`, [code, token]);
 
 
+
+
   const base = process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
   res.json({ ok: true, code, url: `${base}/d/${code}` });
 }));
+
+
 
 
 app.get("/d/:code", asyncHandler(async (req, res) => {
@@ -1257,6 +1547,8 @@ app.get("/d/:code", asyncHandler(async (req, res) => {
 }));
 
 
+
+
 /* ---------------------------
    Metrics
    GET /metrics?token=...&days=7
@@ -1265,14 +1557,20 @@ app.get("/metrics", asyncHandler(async (req, res) => {
   setNoStore(res);
 
 
+
+
   const token = req.query.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
 
+
+
   const site_id = site.site_id;
   const bizEmail = (site.owner_email || "owner@example.com").toLowerCase();
   const days = normalizeDays(req.query.days);
+
+
 
 
   const todayRes = await pool.query(
@@ -1287,7 +1585,11 @@ app.get("/metrics", asyncHandler(async (req, res) => {
   );
 
 
+
+
   const startDateInterval = `${days - 1} days`;
+
+
 
 
   const trendRes = await pool.query(
@@ -1305,7 +1607,11 @@ app.get("/metrics", asyncHandler(async (req, res) => {
   );
 
 
+
+
   const visits_range = trendRes.rows.reduce((sum, r) => sum + (r.visits || 0), 0);
+
+
 
 
   const topPagesRangeRes = await pool.query(
@@ -1324,6 +1630,8 @@ app.get("/metrics", asyncHandler(async (req, res) => {
   );
 
 
+
+
   const deviceRes = await pool.query(
     `
     SELECT
@@ -1336,6 +1644,8 @@ app.get("/metrics", asyncHandler(async (req, res) => {
     `,
     [site_id, days]
   );
+
+
 
 
   const goalsRangeRes = await pool.query(
@@ -1352,6 +1662,8 @@ app.get("/metrics", asyncHandler(async (req, res) => {
   );
 
 
+
+
   const lastEventRes = await pool.query(
     `
     SELECT event_name, page_type, device, created_at
@@ -1364,13 +1676,19 @@ app.get("/metrics", asyncHandler(async (req, res) => {
   );
 
 
+
+
   const leads = goalsRangeRes.rows[0]?.leads || 0;
   const purchases = goalsRangeRes.rows[0]?.purchases || 0;
   const cta_clicks = goalsRangeRes.rows[0]?.cta_clicks || 0;
 
 
+
+
   const conversion_rate = visits_range ? Number((leads / visits_range).toFixed(4)) : 0;
   const purchase_rate = visits_range ? Number((purchases / visits_range).toFixed(4)) : 0;
+
+
 
 
   const totalRangeViews = topPagesRangeRes.rows.reduce((s, r) => s + (r.views || 0), 0);
@@ -1379,6 +1697,8 @@ app.get("/metrics", asyncHandler(async (req, res) => {
     views: r.views,
     share: totalRangeViews ? Math.round((r.views / totalRangeViews) * 100) : 0
   }));
+
+
 
 
   res.json({
@@ -1403,6 +1723,10 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
 /* ---------------------------
    CRM (Leads)
    GET /crm?token=...&limit=100
@@ -1412,12 +1736,18 @@ app.get("/crm", asyncHandler(async (req, res) => {
   setNoStore(res);
 
 
+
+
   const token = req.query.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
 
+
+
   const limit = Math.min(parseInt(req.query.limit || "100", 10), 300);
+
+
 
 
   const r = await pool.query(
@@ -1430,8 +1760,12 @@ app.get("/crm", asyncHandler(async (req, res) => {
   );
 
 
+
+
   res.json({ ok: true, leads: r.rows });
 }));
+
+
 
 
 app.post("/crm/update", asyncHandler(async (req, res) => {
@@ -1440,12 +1774,18 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
   if (!lead_id) return res.status(400).json({ ok: false, error: "lead_id required" });
 
 
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
 
+
+
   const s = status ? String(status).trim().slice(0, 40) : null;
   const n = notes ? String(notes).trim().slice(0, 2000) : null;
+
+
 
 
   const r = await pool.query(
@@ -1458,9 +1798,15 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
   );
 
 
+
+
   if (!r.rows.length) return res.status(404).json({ ok: false, error: "Lead not found" });
   res.json({ ok: true, lead: r.rows[0] });
 }));
+
+
+
+
 
 
 
@@ -1470,6 +1816,8 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 ----------------------------*/
 
 
+
+
 // List / search clients
 app.get("/crm/clients", asyncHandler(async (req, res) => {
   setNoStore(res);
@@ -1477,8 +1825,12 @@ app.get("/crm/clients", asyncHandler(async (req, res) => {
   const q = String(req.query.q || "").trim().toLowerCase();
 
 
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
 
 
   const params = [site.site_id];
@@ -1487,6 +1839,8 @@ app.get("/crm/clients", asyncHandler(async (req, res) => {
     params.push("%" + q + "%");
     where = " AND (LOWER(COALESCE(full_name,'')) LIKE $2 OR LOWER(COALESCE(primary_email,'')) LIKE $2 OR LOWER(COALESCE(primary_phone,'')) LIKE $2)";
   }
+
+
 
 
   const r = await pool.query(
@@ -1499,8 +1853,12 @@ app.get("/crm/clients", asyncHandler(async (req, res) => {
   );
 
 
+
+
   res.json({ ok: true, clients: r.rows });
 }));
+
+
 
 
 // Create a client
@@ -1510,15 +1868,21 @@ app.post("/crm/clients", asyncHandler(async (req, res) => {
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
 
+
+
   const full_name = String(req.body?.full_name || "").trim();
   const email = String(req.body?.email || "").trim();
   const phone = String(req.body?.phone || "").trim();
   const stage = String(req.body?.stage || "lead").trim();
 
 
+
+
   if (!full_name && !email && !phone) {
     return res.status(400).json({ ok: false, error: "Provide at least one of: full_name, email, phone" });
   }
+
+
 
 
   const c = await upsertClient(site.site_id, { full_name, email, phone, stage });
@@ -1528,8 +1892,12 @@ app.post("/crm/clients", asyncHandler(async (req, res) => {
   if (full_name) await addIdentity(site.site_id, c.id, "name", normName(full_name));
 
 
+
+
   res.json({ ok: true, client: c });
 }));
+
+
 
 
 // Client detail (with recent activity + matches)
@@ -1539,9 +1907,13 @@ app.get("/crm/client", asyncHandler(async (req, res) => {
   const client_id = parseInt(req.query.client_id || "0", 10);
 
 
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
   if (!client_id) return res.status(400).json({ ok: false, error: "client_id required" });
+
+
 
 
   const c = await pool.query(
@@ -1551,10 +1923,14 @@ app.get("/crm/client", asyncHandler(async (req, res) => {
   if (!c.rows.length) return res.status(404).json({ ok: false, error: "Client not found" });
 
 
+
+
   const ids = await pool.query(
     `SELECT kind, value FROM crm_identities WHERE site_id=$1 AND client_id=$2 ORDER BY kind, created_at DESC`,
     [site.site_id, client_id]
   );
+
+
 
 
   const acts = await pool.query(
@@ -1568,8 +1944,12 @@ app.get("/crm/client", asyncHandler(async (req, res) => {
   );
 
 
+
+
   res.json({ ok: true, client: c.rows[0], identities: ids.rows, activities: acts.rows });
 }));
+
+
 
 
 // Review queue (unmatched / low-confidence)
@@ -1578,6 +1958,8 @@ app.get("/crm/review", asyncHandler(async (req, res) => {
   const token = req.query.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
 
 
   const r = await pool.query(
@@ -1593,8 +1975,12 @@ app.get("/crm/review", asyncHandler(async (req, res) => {
   );
 
 
+
+
   res.json({ ok: true, queue: r.rows });
 }));
+
+
 
 
 // Confirm a match (assign activity to a client)
@@ -1604,14 +1990,20 @@ app.post("/crm/review/confirm", asyncHandler(async (req, res) => {
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
 
+
+
   const mid = parseInt(match_id || "0", 10);
   const cid = parseInt(client_id || "0", 10);
   if (!mid || !cid) return res.status(400).json({ ok: false, error: "match_id and client_id required" });
 
 
+
+
   // validate client belongs to site
   const c = await pool.query(`SELECT id FROM crm_clients WHERE site_id=$1 AND id=$2 LIMIT 1`, [site.site_id, cid]);
   if (!c.rows.length) return res.status(404).json({ ok:false, error:"Client not found" });
+
+
 
 
   const r = await pool.query(
@@ -1623,8 +2015,12 @@ app.post("/crm/review/confirm", asyncHandler(async (req, res) => {
   );
 
 
+
+
   res.json({ ok: true, match: r.rows[0] });
 }));
+
+
 
 
 // Reject a match
@@ -1634,8 +2030,12 @@ app.post("/crm/review/reject", asyncHandler(async (req, res) => {
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
 
+
+
   const mid = parseInt(match_id || "0", 10);
   if (!mid) return res.status(400).json({ ok: false, error: "match_id required" });
+
+
 
 
   const r = await pool.query(
@@ -1644,8 +2044,12 @@ app.post("/crm/review/reject", asyncHandler(async (req, res) => {
   );
 
 
+
+
   res.json({ ok: true, match: r.rows[0] });
 }));
+
+
 
 
 // Ingest email activity (webhook-friendly)
@@ -1656,9 +2060,13 @@ app.post("/crm/ingest/email", asyncHandler(async (req, res) => {
   if (!site) return res.status(401).json({ ok:false, error:"Unauthorized" });
 
 
+
+
   const from_email = normEmail(req.body?.from_email);
   const to_email = normEmail(req.body?.to_email);
   if (!from_email && !to_email) return res.status(400).json({ ok:false, error:"from_email or to_email required" });
+
+
 
 
   const out = await createActivityWithMatch(site.site_id, {
@@ -1677,8 +2085,12 @@ app.post("/crm/ingest/email", asyncHandler(async (req, res) => {
   });
 
 
+
+
   res.json({ ok:true, ...out });
 }));
+
+
 
 
 // Ingest call activity
@@ -1689,8 +2101,12 @@ app.post("/crm/ingest/call", asyncHandler(async (req, res) => {
   if (!site) return res.status(401).json({ ok:false, error:"Unauthorized" });
 
 
+
+
   const phone = normPhone(req.body?.phone);
   if (!phone) return res.status(400).json({ ok:false, error:"phone required" });
+
+
 
 
   const out = await createActivityWithMatch(site.site_id, {
@@ -1707,8 +2123,14 @@ app.post("/crm/ingest/call", asyncHandler(async (req, res) => {
   });
 
 
+
+
   res.json({ ok:true, ...out });
 }));
+
+
+
+
 
 
 
@@ -1720,8 +2142,12 @@ app.get("/reports", asyncHandler(async (req, res) => {
   setNoStore(res);
 
 
+
+
   const site = await getSiteByToken(req.query.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+
 
 
   const limit = Math.min(parseInt(req.query.limit || "30", 10), 100);
@@ -1737,12 +2163,18 @@ app.get("/reports", asyncHandler(async (req, res) => {
 }));
 
 
+
+
 app.get("/reports/latest", asyncHandler(async (req, res) => {
   setNoStore(res);
 
 
+
+
   const site = await getSiteByToken(req.query.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+
 
 
   const r = await pool.query(
@@ -1755,23 +2187,33 @@ app.get("/reports/latest", asyncHandler(async (req, res) => {
   );
 
 
+
+
   if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
   res.json({ ok: true, report: r.rows[0] });
 }));
+
+
 
 
 app.get("/reports/by-date", asyncHandler(async (req, res) => {
   setNoStore(res);
 
 
+
+
   const site = await getSiteByToken(req.query.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+
 
 
   const date = String(req.query.date || "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return res.status(400).json({ ok: false, error: "date must be YYYY-MM-DD" });
   }
+
+
 
 
   const r = await pool.query(
@@ -1784,9 +2226,13 @@ app.get("/reports/by-date", asyncHandler(async (req, res) => {
   );
 
 
+
+
   if (!r.rows.length) return res.status(404).json({ ok: false, error: "Report not found for that date" });
   res.json({ ok: true, report: r.rows[0] });
 }));
+
+
 
 
 /* ---------------------------
@@ -1799,8 +2245,12 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
   }
 
 
+
+
   const site = await getSiteByToken(req.query.token || req.body?.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Provide ?token=..." });
+
+
 
 
   const site_id = site.site_id;
@@ -1809,13 +2259,19 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
   const eventsPerDay = Math.max(5, Math.min(parseInt(req.body?.events_per_day || "40", 10), 500));
 
 
+
+
   const leadRate = clamp01(req.body?.lead_rate ?? 0.02);
   const purchaseRate = clamp01(req.body?.purchase_rate ?? 0.004);
   const ctaRate = clamp01(req.body?.cta_rate ?? 0.06);
 
 
+
+
   const pages = ["/", "/pricing", "/services", "/about", "/contact", "/blog", "/faq", "/checkout"];
   let inserted = 0;
+
+
 
 
   for (let d = 0; d < days; d++) {
@@ -1824,9 +2280,13 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
     dayStart.setDate(dayStart.getDate() - d);
 
 
+
+
     for (let i = 0; i < eventsPerDay; i++) {
       const seconds = Math.floor(Math.random() * 86400);
       const ts = new Date(dayStart.getTime() + seconds * 1000);
+
+
 
 
       const r = Math.random();
@@ -1838,7 +2298,11 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
         pages[Math.floor(Math.random() * pages.length)];
 
 
+
+
       const device = Math.random() < 0.62 ? "mobile" : "desktop";
+
+
 
 
       await pool.query(
@@ -1847,6 +2311,8 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
         [site_id, page, device, ts.toISOString()]
       );
       inserted++;
+
+
 
 
       const roll = Math.random();
@@ -1867,6 +2333,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       
         inserted++;
 
+
         // Also seed CRM lead rows so the CRM tab is populated (not just analytics).
         try {
           const leadNames = ["Jordan Lee","Ava Martinez","Noah Patel","Mia Chen","Ethan Brooks","Sophia Rivera","Liam Johnson","Olivia King"];
@@ -1877,11 +2344,13 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           const phone = `+1 (555) 30${Math.floor(Math.random()*10)}-${Math.floor(Math.random()*9000+1000)}`;
           const notes = "Demo lead created by seed. Interested in pricing / next steps.";
 
+
           await pool.query(
             `INSERT INTO crm_leads (site_id, email, name, phone, source_page, status, notes, created_at)
              VALUES ($1,$2,$3,$4,$5,'new',$6,$7)`,
             [site_id, safeEmail(email), nm, phone, "/contact", notes, ts.toISOString()]
           );
+
 
           // CRM v2: create client + activity (best-effort)
           const client = await upsertClient(site_id, { full_name: nm, email, phone, stage: "lead" });
@@ -1902,6 +2371,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           );
         } catch (e) {}
 
+
       } else if (roll < purchaseRate + leadRate + ctaRate) {
         await pool.query(
           `INSERT INTO events_raw (site_id, event_name, page_type, device, created_at)
@@ -1916,12 +2386,17 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
   // ---------------------------
   // CRM demo seed (clients + activities)
   // ---------------------------
   // This makes the CRM tab feel "alive" for demos.
   try {
     const bizEmail = (site.owner_email || "owner@example.com").toLowerCase();
+
 
     const demoClients = [
       { name: "Acme Plumbing", email: "info@acmeplumbing.com", stage: "lead", health: "ok", phone: "+1 (555) 201-1001" },
@@ -1930,8 +2405,10 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       { name: "Summit Realty Group", email: "team@summitrealtygroup.com", stage: "active", health: "at_risk", phone: "+1 (555) 201-1004" }
     ];
 
+
     const baseNow = new Date();
     const daysAgo = (n) => new Date(baseNow.getTime() - n * 24 * 60 * 60 * 1000);
+
 
     // Seed clients
     for (const c of demoClients) {
@@ -1941,6 +2418,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
         phone: c.phone,
         stage: c.stage
       });
+
 
       await pool.query(
         `UPDATE crm_clients
@@ -1962,9 +2440,11 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
         ]
       );
 
+
       // ensure name identity too (helps fuzzy matching)
       if (c.name) await addIdentity(site_id, client.id, "name", normName(c.name));
     }
+
 
     // Seed a handful of activities to populate the CRM views
     await createActivityWithMatch(
@@ -1983,6 +2463,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       { emailA: "info@acmeplumbing.com", emailB: bizEmail, name: "Acme Plumbing" }
     );
 
+
     await createActivityWithMatch(
       site_id,
       {
@@ -1999,6 +2480,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       { emailA: bizEmail, emailB: "info@acmeplumbing.com", name: "Acme Plumbing" }
     );
 
+
     await createActivityWithMatch(
       site_id,
       {
@@ -2013,6 +2495,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       },
       { phone: "+1 (555) 201-1002", name: "Brightside Dental" }
     );
+
 
     await createActivityWithMatch(
       site_id,
@@ -2030,6 +2513,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       { emailA: bizEmail, emailB: "hello@brightsidedental.com", name: "Brightside Dental" }
     );
 
+
     await createActivityWithMatch(
       site_id,
       {
@@ -2045,6 +2529,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       },
       { emailA: "manager@northstarfitness.com", emailB: bizEmail, name: "Northstar Fitness" }
     );
+
 
     await createActivityWithMatch(
       site_id,
@@ -2062,6 +2547,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       { emailA: "team@summitrealtygroup.com", emailB: bizEmail, name: "Summit Realty Group" }
     );
 
+
     // unmatched example (shows up in review queue)
     await createActivityWithMatch(
       site_id,
@@ -2077,6 +2563,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       },
       { emailA: "someone@unknown-example.com", emailB: bizEmail, name: "Unknown" }
     );
+
 
     // Sync last_touch_at to latest matched activity per client
     await pool.query(
@@ -2098,6 +2585,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
     console.warn("CRM demo seed skipped:", e?.message || e);
   }
 
+
 const sample1 =
     "Summary:\nTraffic is concentrating on Pricing and Services.\n\n" +
     "Trend:\nVisitors are exploring multiple pages.\n\n" +
@@ -2105,11 +2593,15 @@ const sample1 =
     "Metric to watch:\nPricing → Contact rate";
 
 
+
+
   const sample2 =
     "Summary:\nYou’re getting steady visits and people are checking Pricing.\n\n" +
     "Trend:\nInterest is consistent — conversion work likely helps.\n\n" +
     "Next steps:\n1) Strongest offer at top of Pricing\n2) Add a 3-step “what happens next”\n3) Shorten forms + speed up pages\n\n" +
     "Metric to watch:\nCTA clicks";
+
+
 
 
   await pool.query(
@@ -2120,12 +2612,16 @@ const sample1 =
   );
 
 
+
+
   await pool.query(
     `INSERT INTO daily_reports (site_id, report_date, report_text)
      VALUES ($1, CURRENT_DATE, $2)
      ON CONFLICT (site_id, report_date) DO NOTHING`,
     [site_id, sample2]
   );
+
+
 
 
   res.json({
@@ -2141,6 +2637,8 @@ const sample1 =
 }));
 
 
+
+
 /* ---------------------------
    AI endpoints (FULL AI only)
 ----------------------------*/
@@ -2148,13 +2646,19 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
   setNoStore(res);
 
 
+
+
   const token = req.query.token || req.body?.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
 
+
+
   const gate = planGate(site, ["full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+
 
 
   const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
@@ -2163,7 +2667,11 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
   if (!message) return res.status(400).json({ ok: false, error: "message required" });
 
 
+
+
   const days = 30;
+
+
 
 
   const metricsRes = await pool.query(
@@ -2181,6 +2689,8 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
   );
 
 
+
+
   const topPagesRes = await pool.query(
     `
     SELECT page_type, COUNT(*)::int AS views
@@ -2196,6 +2706,8 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
   );
 
 
+
+
   const lastReportRes = await pool.query(
     `
     SELECT report_date, report_text
@@ -2208,6 +2720,8 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
   );
 
 
+
+
   const context = {
     site_id: site.site_id,
     plan: site.plan,
@@ -2218,11 +2732,17 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
   };
 
 
+
+
 const system = `
 You are Constrava's analytics coach.
 
 
+
+
 Return plain text formatted like this (keep the line breaks):
+
+
 
 
 WHAT'S HAPPENING
@@ -2230,9 +2750,13 @@ WHAT'S HAPPENING
 - bullet
 
 
+
+
 WHY IT MATTERS
 - bullet
 - bullet
+
+
 
 
 NEXT BEST ACTIONS
@@ -2241,8 +2765,12 @@ NEXT BEST ACTIONS
 3) step
 
 
+
+
 KPI TO WATCH
 - KPI: <name> — <why>
+
+
 
 
 Rules:
@@ -2256,12 +2784,20 @@ Rules:
 
 
 
+
+
+
+
+
+
   const messages = [
     { role: "system", content: system },
     { role: "user", content: "Site context JSON:\n" + JSON.stringify(context) },
     ...history.map((h) => ({ role: h.role, content: String(h.content || "") })),
     { role: "user", content: message }
   ];
+
+
 
 
   const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -2278,13 +2814,21 @@ Rules:
   });
 
 
+
+
   const aiData = await aiRes.json();
   const reply = aiData?.choices?.[0]?.message?.content;
   if (!reply) return res.status(500).json({ ok: false, error: "AI response missing" });
 
 
+
+
   res.json({ ok: true, reply });
 }));
+
+
+
+
 
 
 
@@ -2297,18 +2841,26 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
   setNoStore(res);
 
 
+
+
   const token = req.query.token || req.body?.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok:false, error:"Unauthorized" });
+
+
 
 
   const gate = planGate(site, ["full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok:false, error: gate.error });
 
 
+
+
   const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
   const question = String(req.body?.question || "").trim();
   if (!question) return res.status(400).json({ ok:false, error:"question required" });
+
+
 
 
   // lightweight context: clients + latest touch + recent activities + review queue counts
@@ -2320,6 +2872,8 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
      LIMIT 120`,
     [site.site_id]
   );
+
+
 
 
   const recentActsRes = await pool.query(
@@ -2336,12 +2890,16 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
   );
 
 
+
+
   const reviewCountRes = await pool.query(
     `SELECT COUNT(*)::int as needs_review
      FROM crm_activity_matches
      WHERE site_id=$1 AND status='needs_review'`,
     [site.site_id]
   );
+
+
 
 
   const context = {
@@ -2353,8 +2911,12 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
   };
 
 
+
+
   const system = `
 You are Constrava's CRM autopilot.
+
+
 
 
 The user will ask questions like:
@@ -2365,22 +2927,32 @@ The user will ask questions like:
 - "Do we owe anyone a follow-up?"
 
 
+
+
 You MUST:
 - Answer with structured, scannable text (no wall of text).
 - If client matching is uncertain, say so and show your best guess + confidence.
 - Suggest 1–3 next actions when appropriate.
 
 
+
+
 Return EXACTLY this format:
+
+
 
 
 ANSWER
 - <1–4 bullets>
 
 
+
+
 EVIDENCE
 - <2–6 bullets referencing concrete data points (dates/emails/calls/subjects)>
 - If uncertain, include: "Uncertainty: <why>"
+
+
 
 
 NEXT ACTIONS
@@ -2389,8 +2961,12 @@ NEXT ACTIONS
 3) ...
 
 
+
+
 CONFIDENCE
 - <0–100% and one-sentence reason>
+
+
 
 
 Rules:
@@ -2400,11 +2976,15 @@ Rules:
   `.trim();
 
 
+
+
   const messages = [
     { role:"system", content: system },
     { role:"user", content: "CRM context JSON:\n" + JSON.stringify(context) },
     { role:"user", content: question }
   ];
+
+
 
 
   const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -2418,13 +2998,19 @@ Rules:
   });
 
 
+
+
   const aiData = await aiRes.json().catch(()=>({}));
   const reply = aiData?.choices?.[0]?.message?.content;
   if (!reply) return res.status(500).json({ ok:false, error:"AI response missing" });
 
 
+
+
   res.json({ ok:true, reply });
 }));
+
+
 
 
 app.post("/generate-report", asyncHandler(async (req, res) => {
@@ -2432,11 +3018,17 @@ app.post("/generate-report", asyncHandler(async (req, res) => {
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
 
+
+
   const gate = planGate(site, ["full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
 
 
+
+
   const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
+
+
 
 
   const metricsRes = await pool.query(
@@ -2454,7 +3046,11 @@ app.post("/generate-report", asyncHandler(async (req, res) => {
   );
 
 
+
+
   const metrics = metricsRes.rows[0];
+
+
 
 
   const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -2473,6 +3069,8 @@ app.post("/generate-report", asyncHandler(async (req, res) => {
 You are Constrava's analytics assistant.
 
 
+
+
 Write for a busy small-business owner.
 Make it friendly, simple, and easy to scan.
 Avoid jargon unless explained simply.
@@ -2486,29 +3084,43 @@ Metrics JSON (last 7 days):
 ${JSON.stringify(metrics)}
 
 
+
+
 Return EXACTLY this format:
+
+
 
 
 SUMMARY:
 (1–2 sentences)
 
 
+
+
 HIGHLIGHTS:
 - (max 3 bullets, short)
+
+
 
 
 WHAT HAPPENED:
 (2–3 short sentences)
 
 
+
+
 WHY IT MATTERS:
 - (max 3 bullets)
+
+
 
 
 NEXT STEPS:
 1) (step)
 2) (step)
 3) (step)
+
+
 
 
 KPI: <name> — <value> (target: <target>)
@@ -2519,8 +3131,12 @@ KPI: <name> — <value> (target: <target>)
   });
 
 
+
+
   const aiData = await aiRes.json().catch(() => ({}));
   const reportText = aiData?.choices?.[0]?.message?.content;
+
+
 
 
   if (!reportText) {
@@ -2530,6 +3146,10 @@ KPI: <name> — <value> (target: <target>)
       ai_preview: JSON.stringify(aiData).slice(0, 800)
     });
   }
+
+
+
+
 
 
 
@@ -2544,12 +3164,18 @@ KPI: <name> — <value> (target: <target>)
   );
 
 
+
+
   res.json({ ok: true, report: saved.rows[0] });
 }));
 
 
+
+
 app.post("/generate-action-plan", asyncHandler(async (req, res) => {
   setNoStore(res);
+
+
 
 
   const token = req.query.token || req.body?.token;
@@ -2557,12 +3183,18 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
 
 
+
+
   const gate = planGate(site, ["full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
 
 
+
+
   const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
   const days = 30;
+
+
 
 
   const trendRes = await pool.query(
@@ -2577,6 +3209,8 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
     `,
     [site.site_id, days]
   );
+
+
 
 
   const topPagesRes = await pool.query(
@@ -2595,6 +3229,8 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
   );
 
 
+
+
   const goalsRes = await pool.query(
     `
     SELECT
@@ -2609,6 +3245,8 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
   );
 
 
+
+
   const payload = {
     site_id: site.site_id,
     window_days: days,
@@ -2616,6 +3254,8 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
     top_pages: topPagesRes.rows,
     goals: goalsRes.rows[0] || { leads: 0, purchases: 0, cta_clicks: 0 }
   };
+
+
 
 
   const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -2641,9 +3281,13 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
   });
 
 
+
+
   const aiData = await aiRes.json();
   const text = aiData?.choices?.[0]?.message?.content;
   if (!text) return res.status(500).json({ ok: false, error: "AI response missing" });
+
+
 
 
   const saved = await pool.query(
@@ -2656,8 +3300,12 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
   );
 
 
+
+
   res.json({ ok: true, report: saved.rows[0] });
 }));
+
+
 
 
 /* ---------------------------
@@ -2669,12 +3317,18 @@ app.post("/email-latest", asyncHandler(async (req, res) => {
   if (!to_email) return res.status(400).json({ ok: false, error: "to_email required" });
 
 
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Invalid token" });
 
 
+
+
   const gate = planGate(site, ["pro", "full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+
 
 
   const r = await pool.query(
@@ -2688,8 +3342,12 @@ app.post("/email-latest", asyncHandler(async (req, res) => {
   if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
 
 
+
+
   const RESEND_API_KEY = requireEnv("RESEND_API_KEY");
   const from = requireEnv("FROM_EMAIL");
+
+
 
 
   const emailRes = await fetch("https://api.resend.com/emails", {
@@ -2707,9 +3365,13 @@ app.post("/email-latest", asyncHandler(async (req, res) => {
   });
 
 
+
+
   const emailData = await emailRes.json();
   res.json({ ok: true, resend: emailData });
 }));
+
+
 
 
 /* ---------------------------
@@ -2722,16 +3384,24 @@ app.post("/demo/activate-plan", asyncHandler(async (req, res) => {
   }
 
 
+
+
   const { token, plan } = req.body || {};
   const allowed = new Set(["starter", "pro", "full_ai"]);
+
+
 
 
   if (!token) return res.status(400).json({ ok: false, error: "token required" });
   if (!plan || !allowed.has(plan)) return res.status(400).json({ ok: false, error: "Invalid plan" });
 
 
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
 
 
   const r = await pool.query(
@@ -2740,8 +3410,12 @@ app.post("/demo/activate-plan", asyncHandler(async (req, res) => {
   );
 
 
+
+
   res.json({ ok: true, updated: r.rows[0] });
 }));
+
+
 
 
 /* ---------------------------
@@ -2754,14 +3428,20 @@ app.get("/storefront", asyncHandler(async (req, res) => {
   setNoStore(res);
 
 
+
+
   const token = req.query.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
 
 
+
+
   const site_id = site.site_id;
   const bizEmail = (site.owner_email || "owner@example.com").toLowerCase();
   const plan = site.plan || "unpaid";
+
+
 
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -2841,6 +3521,8 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
   </div>
 
 
+
+
     <div class="card">
       <h3 class="name">Pro</h3>
       <div class="price">$19 <span class="muted">/mo</span></div>
@@ -2851,6 +3533,8 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
       </ul>
       <button class="btn" onclick="activate('pro')">Activate Pro</button>
     </div>
+
+
 
 
     <div class="card" style="grid-column: 1 / -1">
@@ -2865,9 +3549,13 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
       <button class="btn btnGreen" onclick="activate('full_ai')">Activate Full AI</button>
 
 
+
+
       <div class="note">
         <b>Note:</b> These buttons call a demo activation endpoint. Later, Stripe will call a real webhook after payment.
       </div>
+
+
 
 
       <div class="note" id="status">Status: idle</div>
@@ -2876,9 +3564,13 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
 </div>
 
 
+
+
 <script>
 const token = new URLSearchParams(location.search).get("token");
 const statusEl = document.getElementById("status");
+
+
 
 
 async function activate(plan){
@@ -2910,6 +3602,12 @@ async function activate(plan){
 
 
 
+
+
+
+
+
+
 /* ---------------------------
    Dashboard UI
    GET /dashboard?token=...
@@ -2918,16 +3616,24 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
   setNoStore(res);
 
 
+
+
   const token = req.query.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+
+
 
 
   const plan = site.plan || "unpaid";
   if (plan === "unpaid") return res.redirect("/storefront?token=" + encodeURIComponent(token));
 
 
+
+
   res.setHeader("Content-Type", "text/html; charset=utf-8");
+
+
 
 
   // Clean dashboard: HTML + CSS only. All behavior comes from /dashboard.js
@@ -2981,6 +3687,8 @@ body{
 }
 
 
+
+
 .repWrap{
   display:grid;
   grid-template-columns:repeat(12,1fr);
@@ -2988,12 +3696,18 @@ body{
 }
 
 
+
+
 .repCard:nth-child(3){
   grid-column: 1 / -1;
 }
 
 
+
+
 @media (max-width: 980px){ .repCard{ grid-column: 1 / -1; } }
+
+
 
 
 .repTitle{
@@ -3034,6 +3748,8 @@ body{
 .repKpi b{ font-size:14px; }
 
 
+
+
 .brand{display:flex;align-items:center;gap:12px}
 .logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg, rgba(96,165,250,.95), rgba(52,211,153,.88));}
 h1{margin:0;font-size:18px;font-weight:950}
@@ -3042,11 +3758,11 @@ h1{margin:0;font-size:18px;font-weight:950}
 .pill{
   display:inline-block;
   padding:7px 10px;
-  border:1px solid var(--border);
+  border:1px solid rgba(124,58,237,.25);
   border-radius:999px;
-  background: rgba(15,23,42,.55);
+  background: var(--panel2);
   font-size:12px;
-  color: var(--muted);
+  color: var(--accent);
   white-space:nowrap;
 }
 .grid{margin-top:14px;display:grid;grid-template-columns:repeat(12,1fr);gap:12px;}
@@ -3061,9 +3777,9 @@ h1{margin:0;font-size:18px;font-weight:950}
 .kpi{font-size:28px;font-weight:1000;letter-spacing:-0.5px}
 .kpiSmall{font-size:18px;font-weight:950}
 .muted{color:var(--muted);font-size:12px;line-height:1.5}
-button,select,a,input{
+button,a{
   border-radius:12px;border:1px solid var(--border);
-  background: rgba(15,23,42,.55);
+  background: #fff;
   color: var(--text);
   padding:10px 12px;
   font-weight:900;
@@ -3071,6 +3787,17 @@ button,select,a,input{
   text-decoration:none;
   outline:none;
 }
+input,select{
+  border-radius:12px;border:1px solid var(--border);
+  background: var(--panel2);
+  color: var(--text);
+  padding:10px 12px;
+  font-weight:900;
+  outline:none;
+}
+select{appearance:none;-webkit-appearance:none;-moz-appearance:none}
+select option{color:var(--text)}
+
 button:hover,a:hover,select:hover{border-color: var(--accent2)}
 /* Buttons: purple + white theme (no "greyed" look) */
 .btn{
@@ -3132,6 +3859,7 @@ pre{
 }
 .rightBtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 
+
 .tabBtn{
   border:1px solid var(--border);
   background: var(--panel2);
@@ -3160,6 +3888,8 @@ pre{
     </div>
 
 
+
+
     <div class="row">
       <select id="days">
         <option value="1">1 day</option>
@@ -3178,12 +3908,17 @@ pre{
 
 
 
+
+
+
     <div class="tabs" style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 6px">
       <button class="tabBtn active" id="tabAnalytics" type="button">Analytics</button>
       <button class="tabBtn" id="tabCRMTop" type="button">CRM</button>
     </div>
 
+
     <div id="sectionAnalytics">
+
 
   <div class="grid">
     <div class="card span12" id="chatCard">
@@ -3209,11 +3944,15 @@ pre{
     </div>
 
 
+
+
     <div class="card span12">
       <div style="font-weight:950">Latest AI Report</div>
       <div class="muted">Your most recent report (or seed sample).</div>
       <div class="divider"></div>
       <div id="latestAiReportCards" class="repWrap">Loading latest report…</div>
+
+
 
 
 <details style="margin-top:10px">
@@ -3222,7 +3961,11 @@ pre{
 </details>
 
 
+
+
     </div>
+
+
 
 
     <div class="card span3">
@@ -3232,11 +3975,15 @@ pre{
     </div>
 
 
+
+
     <div class="card span3">
       <div class="muted">Visits in range</div>
       <div class="kpi" id="kpiRange">—</div>
       <div class="muted" id="kpiRangeSub"></div>
     </div>
+
+
 
 
     <div class="card span3">
@@ -3246,11 +3993,15 @@ pre{
     </div>
 
 
+
+
     <div class="card span3">
       <div class="muted">Purchase rate</div>
       <div class="kpi" id="kpiPurchaseRate">—</div>
       <div class="muted">Track “purchase” events</div>
     </div>
+
+
 
 
     <div class="card span8">
@@ -3266,12 +4017,18 @@ pre{
       </div>
 
 
+
+
       <div class="chartBox" style="margin-top:10px">
         <svg id="trendSvg" viewBox="0 0 900 260" role="img" aria-label="Traffic trend chart"></svg>
       </div>
 
 
+
+
       <div class="divider"></div>
+
+
 
 
       <div class="row">
@@ -3283,10 +4040,14 @@ pre{
       </div>
 
 
+
+
       <div class="muted" style="margin-top:10px">
         Seeder requires <span class="mono">ENABLE_DEMO_SEED=true</span>. Sim buttons work any time.
       </div>
     </div>
+
+
 
 
     <div class="card span4">
@@ -3312,6 +4073,8 @@ pre{
     </div>
 
 
+
+
     <div class="card span6">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
@@ -3324,6 +4087,8 @@ pre{
     </div>
 
 
+
+
     <div class="card span6">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
@@ -3332,6 +4097,8 @@ pre{
         </div>
         <span class="pill">Visits → Leads → Purchases</span>
       </div>
+
+
 
 
       <div class="grid" style="margin-top:10px;gap:10px">
@@ -3347,6 +4114,8 @@ pre{
         </div>
 
 
+
+
         <div class="card" style="grid-column: span 6; background: var(--panel2); box-shadow:none">
           <div class="muted">Goals in range</div>
           <div class="row" style="margin-top:6px">
@@ -3360,6 +4129,8 @@ pre{
         </div>
       </div>
     </div>
+
+
 
 
     
@@ -3382,10 +4153,16 @@ pre{
 
 
 
+
+
+
+
 <details style="margin-top:10px">
   <summary class="muted" style="cursor:pointer">Show raw report</summary>
   <pre id="report" class="mono" style="max-height:320px;overflow:auto">Loading…</pre>
 </details>
+
+
 
 
         </div>
@@ -3397,19 +4174,85 @@ pre{
     </div>
   </div>
 
+
 </div>
+
 
 <div id="sectionCRM" style="display:none">
   <div class="grid">
-<div class="card span12" id="crmCard">
+
+    <!-- CRM Tools (always visible above lists) -->
+    <div class="card span12" id="crmToolsCard">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">CRM</div>
+          <div class="muted">Search leads + clients, then open a client to see history. Demo seed will populate both.</div>
+        </div>
+        <span class="pill" id="crmToolsStatus">CRM tools</span>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="grid" style="margin-top:0;gap:10px">
+        <!-- Lead tools -->
+        <div class="card span6" style="background: var(--panel2); box-shadow:none">
+          <div style="font-weight:950">Lead inbox tools</div>
+          <div class="muted">Filter leads instantly (no scrolling).</div>
+          <div class="row" style="margin-top:8px">
+            <input id="crmLeadSearch" placeholder="Search leads by email/name/phone/page/status…" style="flex:1;min-width:240px" />
+            <button class="btnGhost" id="crmLeadClear" type="button">Clear</button>
+            <button class="btnGhost" id="crmRefresh" type="button">Refresh</button>
+            <button class="btnGhost" id="crmExport" type="button">Export CSV</button>
+          </div>
+        </div>
+
+        <!-- Client tools -->
+        <div class="card span6" style="background: var(--panel2); box-shadow:none">
+          <div style="font-weight:950">Client tools</div>
+          <div class="muted">Search on the server, or create a client.</div>
+
+          <div class="row" style="margin-top:8px">
+            <input id="crmClientSearch" placeholder="Search clients by name/email/phone…" style="flex:1;min-width:220px" />
+            <button class="btn" id="crmClientSearchBtn" type="button">Search</button>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="row">
+            <input id="crmNewName" placeholder="Full name" style="flex:1;min-width:140px" />
+            <input id="crmNewEmail" placeholder="Email" style="flex:1;min-width:140px" />
+            <input id="crmNewPhone" placeholder="Phone" style="flex:1;min-width:120px" />
+            <button class="btnGreen" id="crmCreateClient" type="button">Add</button>
+          </div>
+        </div>
+
+        <!-- CRM Chat -->
+        <div class="card span12" style="background: var(--panel2); box-shadow:none">
+          <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+            <div>
+              <div style="font-weight:950">CRM chat (search)</div>
+              <div class="muted">Ask things like: “show recent leads”, “find noah”, “clients at risk”, “lead noah.patel42@northstar.fit”.</div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="row">
+            <input id="crmChatInput" placeholder="Search CRM…" style="flex:1;min-width:240px" />
+            <button class="btnGreen" id="crmChatSend" type="button">Search</button>
+            <button class="btnGhost" id="crmChatClear" type="button">Clear</button>
+          </div>
+          <pre id="crmChatOut" style="max-height:260px;overflow:auto">—</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lists / panels -->
+    <div class="card span6" id="crmLeadsCard">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
           <div style="font-weight:950">CRM — Leads</div>
           <div class="muted">Lead inbox saved from <span class="mono">lead</span> events (email optional).</div>
-        </div>
-        <div class="rightBtns">
-          <button class="btnGhost" id="crmRefresh">Refresh</button>
-          <button class="btnGhost" id="crmExport">Export CSV</button>
         </div>
       </div>
       <div class="divider"></div>
@@ -3417,88 +4260,56 @@ pre{
       <div class="muted" style="margin-top:10px">
         Tip: Use <span class="mono">/demo/fire-event</span> with <span class="mono">event_name: "lead"</span> and include <span class="mono">lead_email</span>, <span class="mono">lead_name</span>, <span class="mono">lead_phone</span>.
       </div>
-
-
-<div class="divider"></div>
-
-
-<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
-  <div>
-    <div style="font-weight:950">Automated CRM (best-effort)</div>
-    <div class="muted">Emails + calls can be auto-matched to clients with a confidence score. Low-confidence items appear in the review queue.</div>
-  </div>
-  <span class="pill">AI + Matching</span>
-</div>
-
-
-<div class="grid" style="margin-top:10px;gap:10px">
-  <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
-    <div style="font-weight:950">Clients</div>
-    <div class="muted">Search, create, and open a client.</div>
-    <div class="row" style="margin-top:8px">
-      <input id="crmClientSearch" placeholder="Search by name/email/phone…" style="flex:1;min-width:220px" />
-      <button class="btn" id="crmClientSearchBtn">Search</button>
-    </div>
-    <div class="divider"></div>
-
-
-    <div class="row">
-      <input id="crmNewName" placeholder="Full name" style="flex:1;min-width:140px" />
-      <input id="crmNewEmail" placeholder="Email" style="flex:1;min-width:140px" />
-      <input id="crmNewPhone" placeholder="Phone" style="flex:1;min-width:120px" />
-      <button class="btnGreen" id="crmCreateClient">Add</button>
     </div>
 
+    <div class="card span6" id="crmClientsCard">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Clients</div>
+          <div class="muted">Collapsible list. Filter locally or run a server search above.</div>
+        </div>
+        <span class="pill">AI + Matching</span>
+      </div>
 
-    <div class="list" id="crmClients" style="margin-top:10px">Loading…</div>
-  </div>
+      <div class="divider"></div>
 
+      <details id="crmClientsPanel" open>
+        <summary class="muted" style="cursor:pointer;user-select:none;padding:6px 2px">
+          Client list (click to collapse)
+        </summary>
 
-  <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
-    <div style="font-weight:950">Client status (auto-inferred)</div>
-    <div class="muted">Select a client to see latest touch + activity.</div>
-    <div class="divider"></div>
-    <pre id="crmClientDetail">Pick a client from the list.</pre>
-  </div>
+        <div class="row" style="margin-top:8px">
+          <input id="crmClientFilter" placeholder="Filter loaded clients…" style="flex:1;min-width:220px" />
+          <button class="btnGhost" id="crmClientFilterClear" type="button">Clear</button>
+        </div>
 
-
-  <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
-    <div style="font-weight:950">Review queue</div>
-    <div class="muted">Unmatched or low-confidence activities. Confirm or reject.</div>
-    <div class="divider"></div>
-    <div class="list" id="crmReview">Loading…</div>
-  </div>
-
-
-  <div class="card span6" style="background: rgba(15,23,42,.35); box-shadow:none">
-    <div style="font-weight:950">Ask the CRM AI</div>
-    <div class="muted">Example: “What’s the status of John Smith?”</div>
-    <div class="divider"></div>
-    <div class="row">
-      <input id="crmAskInput" placeholder="Ask a CRM question…" style="flex:1;min-width:220px" />
-      <button class="btnGreen" id="crmAskBtn">Ask</button>
-    </div>
-    <pre id="crmAskOut" style="max-height:320px;overflow:auto">—</pre>
-  </div>
-</div>
-
-
+        <div class="list" id="crmClients" style="margin-top:10px">Loading…</div>
+      </details>
     </div>
 
+    <div class="card span6" id="crmDetailCard">
+      <div style="font-weight:950">Client status (auto-inferred)</div>
+      <div class="muted">Select a client to see latest touch + activity.</div>
+      <div class="divider"></div>
+      <pre id="crmClientDetail">Pick a client from the list.</pre>
+    </div>
 
+    <div class="card span6" id="crmReviewCard">
+      <div style="font-weight:950">Review queue</div>
+      <div class="muted">Unmatched or low-confidence activities. Confirm or reject.</div>
+      <div class="divider"></div>
+      <div class="list" id="crmReview">Loading…</div>
+    </div>
 
   </div>
 </div>
-
-
-</div>
-
-
-<!-- Load the real client script -->
-<script>
-  window.CONSTRAVA_TOKEN = ${JSON.stringify(String(token || ""))};
+window.CONSTRAVA_TOKEN = ${JSON.stringify(String(token || ""))};
 </script>
 <script src="/dashboard.js"></script>
+
+
+
+
 
 
 
@@ -3506,6 +4317,8 @@ pre{
 </body>
 </html>`);
 }));
+
+
 
 
 /* ---------------------------
@@ -3517,9 +4330,13 @@ app.get("/dashboard.js", (req, res) => {
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
 
 
+
+
   res.send(String.raw`
 (() => {
   "use strict";
+
+
 
 
   const TOKEN =
@@ -3528,7 +4345,10 @@ app.get("/dashboard.js", (req, res) => {
     "";
 
 
+
+
   const $ = (id) => document.getElementById(id);
+
 
   function setActiveTab(which){
     const secA = $("sectionAnalytics");
@@ -3537,22 +4357,29 @@ app.get("/dashboard.js", (req, res) => {
     const btnC = $("tabCRMTop");
     const topC = $("tabCRM");
 
+
     if (secA) secA.style.display = (which === "analytics") ? "" : "none";
     if (secC) secC.style.display = (which === "crm") ? "" : "none";
+
 
     if (btnA) btnA.classList.toggle("active", which === "analytics");
     if (btnC) btnC.classList.toggle("active", which === "crm");
   }
+
 
   function bindTabs(){
     const btnA = $("tabAnalytics");
     const btnC = $("tabCRMTop");
     const topC = $("tabCRM");
 
+
     if (btnA) btnA.addEventListener("click", () => setActiveTab("analytics"));
     if (btnC) btnC.addEventListener("click", () => setActiveTab("crm"));
     if (topC) topC.addEventListener("click", () => setActiveTab("crm"));
   }
+
+
+
 
 
 
@@ -3562,15 +4389,21 @@ app.get("/dashboard.js", (req, res) => {
   }
 
 
+
+
   function pct(n){
     return (Math.round((Number(n) || 0) * 10000) / 100).toFixed(2) + "%";
   }
+
+
 
 
   function clamp(n, min, max) {
     n = Number(n) || 0;
     return Math.max(min, Math.min(max, n));
   }
+
+
 
 
   function esc(s) {
@@ -3584,10 +4417,14 @@ app.get("/dashboard.js", (req, res) => {
   }
 
 
+
+
   function renderTrend(svgEl, trend) {
     if (!svgEl) return;
     const W = 900, H = 260, p = 18;
     while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+
 
 
     const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -3601,8 +4438,12 @@ app.get("/dashboard.js", (req, res) => {
     svgEl.appendChild(bg);
 
 
+
+
     const n = (trend && trend.length) ? trend.length : 0;
     if (!n) return;
+
+
 
 
     let maxV = 0, sumV = 0;
@@ -3610,12 +4451,18 @@ app.get("/dashboard.js", (req, res) => {
     const avg = sumV / n;
 
 
+
+
     if ($("maxDay")) $("maxDay").textContent = String(maxV);
     if ($("avgDay")) $("avgDay").textContent = String(Math.round(avg * 10) / 10);
 
 
+
+
     const innerW = W - p * 2;
     const innerH = H - p * 2;
+
+
 
 
     const x = (i) => (n === 1 ? p + innerW / 2 : p + (i * innerW) / (n - 1));
@@ -3626,8 +4473,12 @@ app.get("/dashboard.js", (req, res) => {
     };
 
 
+
+
     let d = "";
     for (let i = 0; i < n; i++) d += (i === 0 ? "M " : " L ") + x(i) + " " + y(trend[i].visits || 0);
+
+
 
 
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -3641,9 +4492,13 @@ app.get("/dashboard.js", (req, res) => {
   }
 
 
+
+
   function renderDevice(svgEl, mobile, desktop) {
     if (!svgEl) return;
     while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+
 
 
     const cx = 80, cy = 80, r = 50, w = 16;
@@ -3651,14 +4506,20 @@ app.get("/dashboard.js", (req, res) => {
     const m = total ? mobile / total : 0.5;
 
 
+
+
     const start = -Math.PI / 2;
     const mid = start + Math.PI * 2 * m;
+
+
 
 
     function arc(a0, a1, color) {
       const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
       const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
       const large = (a1 - a0) > Math.PI ? 1 : 0;
+
+
 
 
       const pth = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -3671,6 +4532,8 @@ app.get("/dashboard.js", (req, res) => {
     }
 
 
+
+
     const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     ring.setAttribute("cx", String(cx));
     ring.setAttribute("cy", String(cy));
@@ -3681,14 +4544,20 @@ app.get("/dashboard.js", (req, res) => {
     svgEl.appendChild(ring);
 
 
+
+
     arc(start, mid, "rgba(52,211,153,.90)");
     arc(mid, start + Math.PI * 2, "rgba(96,165,250,.90)");
   }
 
 
+
+
   function renderTopPages(container, rows) {
     if (!container) return;
     container.innerHTML = "";
+
+
 
 
     if (!rows || !rows.length) {
@@ -3697,9 +4566,13 @@ app.get("/dashboard.js", (req, res) => {
     }
 
 
+
+
     for (const r of rows) {
       const item = document.createElement("div");
       item.className = "item";
+
+
 
 
       const left = document.createElement("div");
@@ -3713,20 +4586,30 @@ app.get("/dashboard.js", (req, res) => {
         "<div class='muted'>" + (r.views || 0) + " views • " + (r.share || 0) + "%</div>";
 
 
+
+
       const barWrap = document.createElement("div");
       barWrap.className = "barWrap";
+
+
 
 
       const bar = document.createElement("div");
       bar.className = "bar";
 
 
+
+
       const fill = document.createElement("div");
       fill.style.width = clamp(r.share || 0, 0, 100) + "%";
 
 
+
+
       bar.appendChild(fill);
       barWrap.appendChild(bar);
+
+
 
 
       item.appendChild(left);
@@ -3736,9 +4619,13 @@ app.get("/dashboard.js", (req, res) => {
   }
 
 
+
+
   
   // ===== CRM (Leads) =====
   let crmCache = [];
+
+
 
 
   function fmtTime(iso){
@@ -3750,13 +4637,19 @@ app.get("/dashboard.js", (req, res) => {
   }
 
 
+
+
   function renderCRM(container, leads){
     if (!container) return;
     container.innerHTML = "";
 
 
+
+
     const rows = Array.isArray(leads) ? leads : [];
     crmCache = rows;
+
+
 
 
     if (!rows.length){
@@ -3765,9 +4658,13 @@ app.get("/dashboard.js", (req, res) => {
     }
 
 
+
+
     for (const l of rows){
       const item = document.createElement("div");
       item.className = "item";
+
+
 
 
       const left = document.createElement("div");
@@ -3781,16 +4678,22 @@ app.get("/dashboard.js", (req, res) => {
       ].filter(Boolean).join(" • ");
 
 
+
+
       left.innerHTML =
         "<b>" + esc(title) + "</b>" +
         "<div class='muted'>" + esc(sub) + "</div>" +
         (l.notes ? "<div class='muted' style='margin-top:6px'>Notes: " + esc(l.notes) + "</div>" : "");
 
 
+
+
       const right = document.createElement("div");
       right.style.display = "flex";
       right.style.gap = "8px";
       right.style.alignItems = "center";
+
+
 
 
       const btn = document.createElement("button");
@@ -3801,6 +4704,8 @@ app.get("/dashboard.js", (req, res) => {
         if (newStatus === null) return;
         const newNotes = prompt("Notes (optional):", l.notes || "");
         if (newNotes === null) return;
+
+
 
 
         const r = await fetch("/crm/update", {
@@ -3815,7 +4720,11 @@ app.get("/dashboard.js", (req, res) => {
       });
 
 
+
+
       right.appendChild(btn);
+
+
 
 
       item.appendChild(left);
@@ -3823,6 +4732,8 @@ app.get("/dashboard.js", (req, res) => {
       container.appendChild(item);
     }
   }
+
+
 
 
   function leadsToCSV(rows){
@@ -3841,6 +4752,8 @@ app.get("/dashboard.js", (req, res) => {
   }
 
 
+
+
   async function loadCRM(){
     const box = $("crmLeads");
     if (box) box.textContent = "Loading…";
@@ -3851,13 +4764,115 @@ app.get("/dashboard.js", (req, res) => {
       return;
     }
     renderCRM(box, j.leads || []);
+    // If a filter is set, re-render filtered view
+    try{ applyLeadFilter(); }catch{}
   }
+
+
+  function leadMatches(l, q){
+    q = String(q||"").trim().toLowerCase();
+    if(!q) return true;
+    const hay = [
+      l.email, l.name, l.phone, l.source_page, l.status, l.notes
+    ].filter(Boolean).join(" ").toLowerCase();
+    return hay.includes(q);
+  }
+
+  function applyLeadFilter(){
+    const q = $("crmLeadSearch") ? $("crmLeadSearch").value : "";
+    const box = $("crmLeads");
+    if(!box) return;
+    const rows = (crmCache || []).filter(l => leadMatches(l, q));
+    renderCRM(box, rows);
+  }
+
+  function applyClientFilter(){
+    const box = $("crmClients");
+    const q = $("crmClientFilter") ? $("crmClientFilter").value.trim().toLowerCase() : "";
+    if(!box) return;
+    const items = Array.from(box.querySelectorAll(".item"));
+    for(const it of items){
+      const txt = (it.textContent || "").toLowerCase();
+      it.style.display = (!q || txt.includes(q)) ? "" : "none";
+    }
+  }
+
+  async function crmChatRun(){
+    const out = $("crmChatOut");
+    const inp = $("crmChatInput");
+    if(!out || !inp) return;
+    const qRaw = inp.value.trim();
+    if(!qRaw){ out.textContent = "—"; return; }
+
+    out.textContent = "Searching…";
+
+    // Ensure leads loaded once (so local search works)
+    if(!Array.isArray(crmCache) || crmCache.length === 0){
+      try{ await loadCRM(); }catch{}
+    }
+
+    const q = qRaw.toLowerCase();
+    const leadHits = (crmCache || []).filter(l => leadMatches(l, qRaw)).slice(0, 12);
+
+    // Client search (server)
+    let clientHits = [];
+    try{
+      const r = await fetch("/crm/clients?token=" + encodeURIComponent(TOKEN) + "&q=" + encodeURIComponent(qRaw));
+      const j = await r.json().catch(()=>({}));
+      if(j.ok && Array.isArray(j.clients)) clientHits = j.clients.slice(0, 12);
+    }catch{}
+
+    const lines = [];
+    lines.push("QUERY: " + qRaw);
+    lines.push("");
+
+    lines.push("LEADS (" + leadHits.length + (leadHits.length === 12 ? "+": "") + ")");
+    if(!leadHits.length) lines.push("- —");
+    for(const l of leadHits){
+      const who = (l.email || l.name || "(no email)") + "";
+      const sub = [
+        l.name ? ("name: " + l.name) : null,
+        l.phone ? ("phone: " + l.phone) : null,
+        l.status ? ("status: " + l.status) : null,
+        l.source_page ? ("page: " + l.source_page) : null,
+        l.created_at ? ("at: " + fmtTime(l.created_at)) : null
+      ].filter(Boolean).join(" • ");
+      lines.push("- " + who);
+      if(sub) lines.push("  " + sub);
+    }
+
+    lines.push("");
+    lines.push("CLIENTS (" + clientHits.length + (clientHits.length === 12 ? "+": "") + ")");
+    if(!clientHits.length) lines.push("- —");
+    for(const c of clientHits){
+      const title = (c.full_name || "(no name)") + (c.stage ? (" • " + c.stage) : "");
+      const sub = [
+        c.primary_email ? ("email: " + c.primary_email) : null,
+        c.primary_phone ? ("phone: " + c.primary_phone) : null,
+        c.last_touch_at ? ("last touch: " + fmtWhen(c.last_touch_at)) : null
+      ].filter(Boolean).join(" • ");
+      lines.push("- " + title);
+      if(sub) lines.push("  " + sub);
+    }
+
+    lines.push("");
+    lines.push("Tip: Click a client in the list to open status + activity.");
+
+    out.textContent = lines.join("
+");
+  }
+
+
+
+
 
 
 
 
 // ===== CRM v2 (clients + review + AI) =====
 let crmSelectedClientId = null;
+
+
 
 
 function fmtWhen(iso){
@@ -3870,9 +4885,13 @@ function fmtWhen(iso){
 }
 
 
+
+
 function makeListItem(title, sub, right){
   const item = document.createElement("div");
   item.className = "item";
+
+
 
 
   const left = document.createElement("div");
@@ -3880,15 +4899,21 @@ function makeListItem(title, sub, right){
   left.innerHTML = "<b>" + esc(title) + "</b><div class='muted'>" + esc(sub || "") + "</div>";
 
 
+
+
   const r = document.createElement("div");
   r.className = "pill";
   r.textContent = right || "Open";
+
+
 
 
   item.appendChild(left);
   item.appendChild(r);
   return item;
 }
+
+
 
 
 async function loadCrmClients(q){
@@ -3902,7 +4927,11 @@ async function loadCrmClients(q){
   if(!j.ok){ box.textContent = j.error || "Failed."; return; }
 
 
+
+
   if(!j.clients || !j.clients.length){ box.textContent = "No clients yet."; return; }
+
+
 
 
   for(const c of j.clients){
@@ -3912,6 +4941,8 @@ async function loadCrmClients(q){
       c.primary_phone ? ("phone: " + c.primary_phone) : null,
       ("last touch: " + fmtWhen(c.last_touch_at))
     ].filter(Boolean).join(" • ");
+
+
 
 
     const item = makeListItem(title, sub, "Select");
@@ -3925,10 +4956,14 @@ async function loadCrmClients(q){
 }
 
 
+
+
 async function loadCrmClientDetail(clientId){
   const pre = $("crmClientDetail");
   if(!pre) return;
   pre.textContent = "Loading client…";
+
+
 
 
   const r = await fetch("/crm/client?token=" + encodeURIComponent(TOKEN) + "&client_id=" + encodeURIComponent(String(clientId)));
@@ -3936,9 +4971,13 @@ async function loadCrmClientDetail(clientId){
   if(!j.ok){ pre.textContent = j.error || "Failed."; return; }
 
 
+
+
   const c = j.client || {};
   const acts = Array.isArray(j.activities) ? j.activities : [];
   const ids = Array.isArray(j.identities) ? j.identities : [];
+
+
 
 
   const lines = [];
@@ -3969,9 +5008,14 @@ async function loadCrmClientDetail(clientId){
     if(sub) lines.push("  " + sub);
   }
 
+  try{ applyClientFilter(); }catch{}
+
+
 
   pre.textContent = lines.join("\n");
 }
+
+
 
 
 async function loadCrmReview(){
@@ -3980,14 +5024,20 @@ async function loadCrmReview(){
   box.textContent = "Loading…";
 
 
+
+
   const r = await fetch("/crm/review?token=" + encodeURIComponent(TOKEN));
   const j = await r.json().catch(()=>({}));
   box.innerHTML = "";
   if(!j.ok){ box.textContent = j.error || "Failed."; return; }
 
 
+
+
   const q = Array.isArray(j.queue) ? j.queue : [];
   if(!q.length){ box.textContent = "Queue is empty ✅"; return; }
+
+
 
 
   for(const it of q){
@@ -3998,8 +5048,12 @@ async function loadCrmReview(){
       (" • conf: " + Math.round((Number(it.confidence||0))*100) + "%");
 
 
+
+
     const row = makeListItem(title, sub, "Review");
     row.style.cursor = "pointer";
+
+
 
 
     row.addEventListener("click", async () => {
@@ -4012,6 +5066,8 @@ async function loadCrmReview(){
       if(!ok) return;
 
 
+
+
       const rr = await fetch("/crm/review/confirm", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
@@ -4022,6 +5078,8 @@ async function loadCrmReview(){
       await loadCrmReview();
       if(crmSelectedClientId) await loadCrmClientDetail(crmSelectedClientId);
     });
+
+
 
 
     // add a reject button
@@ -4044,6 +5102,8 @@ async function loadCrmReview(){
     });
 
 
+
+
     // replace right pill with button group
     row.removeChild(row.lastChild);
     const right = document.createElement("div");
@@ -4057,9 +5117,13 @@ async function loadCrmReview(){
     row.appendChild(right);
 
 
+
+
     box.appendChild(row);
   }
 }
+
+
 
 
 async function crmCreateClient(){
@@ -4067,6 +5131,8 @@ async function crmCreateClient(){
   const e = $("crmNewEmail") ? $("crmNewEmail").value.trim() : "";
   const p = $("crmNewPhone") ? $("crmNewPhone").value.trim() : "";
   if(!n && !e && !p){ alert("Add at least a name, email, or phone."); return; }
+
+
 
 
   const r = await fetch("/crm/clients", {
@@ -4078,13 +5144,19 @@ async function crmCreateClient(){
   if(!j.ok){ alert(j.error || "Failed"); return; }
 
 
+
+
   if ($("crmNewName")) $("crmNewName").value = "";
   if ($("crmNewEmail")) $("crmNewEmail").value = "";
   if ($("crmNewPhone")) $("crmNewPhone").value = "";
 
 
+
+
   await loadCrmClients($("crmClientSearch") ? $("crmClientSearch").value.trim() : "");
 }
+
+
 
 
 async function crmAsk(){
@@ -4093,9 +5165,13 @@ async function crmAsk(){
   if(!out || !input) return;
 
 
+
+
   const q = input.value.trim();
   if(!q) return;
   out.textContent = "Thinking…";
+
+
 
 
   const r = await fetch("/api/ai/crm/answer", {
@@ -4109,10 +5185,14 @@ async function crmAsk(){
 }
 
 
+
+
 async function loadCRMv2(){
   await loadCrmClients("");
   await loadCrmReview();
 }
+
+
 
 
 // ===== Reports =====
@@ -4121,14 +5201,20 @@ async function loadCRMv2(){
   }
 
 
+
+
   function parseReportSections(text){
     const lines = splitLines(text);
     const sections = { summary: "", highlights: [], steps: [], kpi: "" };
     let mode = "";
 
 
+
+
     for (const line0 of lines){
       const line = line0.replace(/\*\*/g,"");
+
+
 
 
       if (/^SUMMARY:/i.test(line)) { mode="summary"; continue; }
@@ -4141,8 +5227,12 @@ async function loadCRMv2(){
       }
 
 
+
+
       const cleaned = line.replace(/^[-•]\s*/,"").replace(/^\d+\)\s*/,"").trim();
       if (!cleaned) continue;
+
+
 
 
       if (mode==="summary") sections.summary += (sections.summary?" ":"") + cleaned;
@@ -4151,18 +5241,26 @@ async function loadCRMv2(){
     }
 
 
+
+
     return sections;
   }
+
+
 
 
   function renderReportCards(containerEl, text){
     if (!containerEl) return;
 
 
+
+
     const s = parseReportSections(text);
     const escHtml = (v) => String(v || "").replace(/[&<>"']/g, (c) => ({
       "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
     }[c]));
+
+
 
 
     function ul(items, cap){
@@ -4172,7 +5270,11 @@ async function loadCRMv2(){
       const hiddenCount = Math.max(0, list.length - shown.length);
 
 
+
+
       if (!shown.length) return '<div class="muted">—</div>';
+
+
 
 
       const lis = shown.map((x) => '<li>' + escHtml(x) + '</li>').join("");
@@ -4181,11 +5283,17 @@ async function loadCRMv2(){
         : "";
 
 
+
+
       return '<ul class="repList">' + lis + '</ul>' + more;
     }
 
 
+
+
     const kpiHtml = s.kpi ? '<div class="repKpi"><b>' + escHtml(s.kpi) + '</b></div>' : "";
+
+
 
 
     containerEl.innerHTML =
@@ -4195,14 +5303,20 @@ async function loadCRMv2(){
   }
 
 
+
+
   async function loadLatestReport() {
     const pre1 = $("latestAiReport");
     const cards1 = $("latestAiReportCards");
     if (pre1) pre1.textContent = "Loading latest report...";
 
 
+
+
     const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
     const jj = await rr.json().catch(()=>({}));
+
+
 
 
     const text = (jj.ok && jj.report && jj.report.report_text) ? jj.report.report_text : "";
@@ -4211,9 +5325,13 @@ async function loadCRMv2(){
   }
 
 
+
+
   async function loadReportsList() {
     const list = $("reportsList");
     if (!list) return;
+
+
 
 
     list.textContent = "Loading...";
@@ -4221,9 +5339,13 @@ async function loadCRMv2(){
     const j = await r.json().catch(() => ({}));
 
 
+
+
     list.innerHTML = "";
     if (!j.ok) { list.textContent = j.error || "Failed to load reports"; return; }
     if (!j.reports || !j.reports.length) { list.textContent = "No reports yet."; return; }
+
+
 
 
     for (const rep of j.reports) {
@@ -4231,13 +5353,19 @@ async function loadCRMv2(){
       item.className = "item";
 
 
+
+
       const left = document.createElement("div");
       left.innerHTML = "<b>" + esc(rep.report_date) + "</b><div class='muted'>" + esc(rep.preview || "") + "</div>";
+
+
 
 
       const right = document.createElement("div");
       right.className = "pill";
       right.textContent = "Open";
+
+
 
 
       item.appendChild(left);
@@ -4247,15 +5375,21 @@ async function loadCRMv2(){
   }
 
 
+
+
   async function refresh() {
     try {
       const days = $("days") ? $("days").value : "7";
       setStatus("loading metrics…");
 
 
+
+
       const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
       const j = await r.json().catch(() => ({}));
       if (!j.ok) { setStatus(j.error || "error"); return; }
+
+
 
 
       if ($("kpiToday")) $("kpiToday").textContent = j.visits_today;
@@ -4264,9 +5398,13 @@ async function loadCRMv2(){
       if ($("kpiPurchaseRate")) $("kpiPurchaseRate").textContent = pct(j.purchase_rate || 0);
 
 
+
+
       if ($("leads")) $("leads").textContent = j.leads || 0;
       if ($("purchases")) $("purchases").textContent = j.purchases || 0;
       if ($("cta")) $("cta").textContent = j.cta_clicks || 0;
+
+
 
 
       const mob = (j.device_mix && j.device_mix.mobile) ? j.device_mix.mobile : 0;
@@ -4275,7 +5413,11 @@ async function loadCRMv2(){
       if ($("desk")) $("desk").textContent = desk;
 
 
+
+
       if ($("lastEvent")) $("lastEvent").textContent = j.last_event ? JSON.stringify(j.last_event, null, 2) : "No events yet.";
+
+
 
 
       renderTrend($("trendSvg"), j.trend || []);
@@ -4283,9 +5425,13 @@ async function loadCRMv2(){
       renderTopPages($("topPages"), j.top_pages_range || []);
 
 
+
+
       await loadCRM();
       await loadLatestReport();
       await loadReportsList();
+
+
 
 
       setStatus("ready");
@@ -4293,6 +5439,8 @@ async function loadCRMv2(){
       setStatus("error: " + (e && e.message ? e.message : "unknown"));
     }
   }
+
+
 
 
   async function fire(eventName) {
@@ -4314,6 +5462,8 @@ async function loadCRMv2(){
   }
 
 
+
+
   async function seed() {
     setStatus("seeding…");
     const r = await fetch("/demo/seed?token=" + encodeURIComponent(TOKEN), {
@@ -4329,6 +5479,8 @@ async function loadCRMv2(){
   }
 
 
+
+
   async function share() {
     setStatus("creating share link…");
     const r = await fetch("/demo/link", {
@@ -4340,15 +5492,21 @@ async function loadCRMv2(){
     if (!d.ok) { setStatus(d.error || "error"); return; }
 
 
+
+
     try { await navigator.clipboard.writeText(d.url); setStatus("copied ✅"); }
     catch { setStatus("share link: " + d.url); }
   }
+
+
 
 
   // live polling
   let liveSince = new Date().toISOString();
   let liveOn = true;
   let liveTimer = null;
+
+
 
 
   async function liveCheck() {
@@ -4365,10 +5523,14 @@ async function loadCRMv2(){
   }
 
 
+
+
   function startLive() {
     if (liveTimer) clearInterval(liveTimer);
     liveTimer = setInterval(() => { if (liveOn) liveCheck(); }, 3500);
   }
+
+
 
 
   async function aiReport() {
@@ -4386,8 +5548,12 @@ async function loadCRMv2(){
   }
 
 
+
+
   // ===== AI CHAT =====
 let chatHistory = [];
+
+
 
 
 function addMsg(role, text){
@@ -4395,21 +5561,31 @@ function addMsg(role, text){
   if(!box) return;
 
 
+
+
   const div = document.createElement("div");
   div.style.marginBottom = "10px";
   div.style.lineHeight = "1.45";
 
 
+
+
   const label = (role === "user") ? "You" : "AI";
+
+
 
 
   // escape HTML, then turn newlines into <br>
   const safe = esc(text).replace(/\n/g, "<br>");
 
 
+
+
   div.innerHTML =
     "<b>" + label + ":</b> " +
     "<span style=\"white-space:normal\">" + safe + "</span>";
+
+
 
 
   box.appendChild(div);
@@ -4419,9 +5595,15 @@ function addMsg(role, text){
 
 
 
+
+
+
+
 async function sendChat(){
   const input = $("chatInput");
   if (!input) return;
+
+
 
 
   const msg = input.value.trim();
@@ -4429,7 +5611,11 @@ async function sendChat(){
   input.value = "";
 
 
+
+
   addMsg("user", msg);
+
+
 
 
   // temporary "thinking…" line
@@ -4444,6 +5630,8 @@ async function sendChat(){
   }
 
 
+
+
   try{
     const r = await fetch("/api/ai/chat", {
       method: "POST",
@@ -4453,7 +5641,11 @@ async function sendChat(){
     const j = await r.json().catch(()=>({}));
 
 
+
+
     if (thinkingEl && box) box.removeChild(thinkingEl);
+
+
 
 
     if(!j.ok){
@@ -4462,8 +5654,12 @@ async function sendChat(){
     }
 
 
+
+
     const reply = j.reply || "(no reply)";
     addMsg("ai", reply);
+
+
 
 
     chatHistory.push({ role: "user", content: msg });
@@ -4475,6 +5671,8 @@ async function sendChat(){
 }
 
 
+
+
 function clearChat(){
   const box = $("chatBox");
   if (!box) return;
@@ -4483,19 +5681,27 @@ function clearChat(){
 }
 
 
+
+
 window.addEventListener("DOMContentLoaded", () => {
 
 
+
+
     if (!TOKEN) { setStatus("missing token"); return; }
+
 
     // Tabs: Analytics vs CRM
     bindTabs();
     setActiveTab("analytics");
 
+
     if ($("refresh")) $("refresh").addEventListener("click", refresh);
     if ($("days")) $("days").addEventListener("change", refresh);
     if ($("chatSend")) $("chatSend").addEventListener("click", sendChat);
 if ($("chatClear")) $("chatClear").addEventListener("click", clearChat);
+
+
 
 
 if ($("chatInput")) {
@@ -4507,17 +5713,27 @@ if ($("chatInput")) {
 
 
 
+
+
+
+
     if ($("simView")) $("simView").addEventListener("click", () => fire("page_view"));
     if ($("simLead")) $("simLead").addEventListener("click", () => fire("lead"));
     if ($("simPurchase")) $("simPurchase").addEventListener("click", () => fire("purchase"));
     if ($("simCta")) $("simCta").addEventListener("click", () => fire("cta_click"));
 
 
+
+
     if ($("share")) $("share").addEventListener("click", share);
     if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
 
 
-    if ($("crmRefresh")) $("crmRefresh").addEventListener("click", loadCRM);
+
+
+    if ($("crmRefresh")) $("crmRefresh").addEventListener("click", async () => { await loadCRM(); applyLeadFilter(); });
+if ($("crmLeadSearch")) $("crmLeadSearch").addEventListener("input", applyLeadFilter);
+if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($("crmLeadSearch")) $("crmLeadSearch").value=""; applyLeadFilter(); });
     if ($("crmExport")) $("crmExport").addEventListener("click", () => {
       try{
         const csv = leadsToCSV(crmCache);
@@ -4534,6 +5750,8 @@ if ($("chatInput")) {
       }catch(e){
         setStatus("export failed");
       }
+    });
+
 
 
 // CRM v2 listeners
@@ -4548,15 +5766,23 @@ if ($("crmClientSearch")) $("crmClientSearch").addEventListener("keydown", (e) =
   }
 });
 
+if ($("crmClientFilter")) $("crmClientFilter").addEventListener("input", applyClientFilter);
+if ($("crmClientFilterClear")) $("crmClientFilterClear").addEventListener("click", () => { if ($("crmClientFilter")) $("crmClientFilter").value=""; applyClientFilter(); });
+
+
+
 
 if ($("crmCreateClient")) $("crmCreateClient").addEventListener("click", crmCreateClient);
 
 
-if ($("crmAskBtn")) $("crmAskBtn").addEventListener("click", crmAsk);
-if ($("crmAskInput")) $("crmAskInput").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") crmAsk();
-});
+
+
+if ($("crmChatSend")) $("crmChatSend").addEventListener("click", crmChatRun);
+if ($("crmChatClear")) $("crmChatClear").addEventListener("click", () => { if ($("crmChatInput")) $("crmChatInput").value=""; if ($("crmChatOut")) $("crmChatOut").textContent="—"; });
+if ($("crmChatInput")) $("crmChatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") crmChatRun(); });
     });
+
+
 
 
     if ($("loadReports")) $("loadReports").addEventListener("click", loadReportsList);
@@ -4569,12 +5795,18 @@ if ($("crmAskInput")) $("crmAskInput").addEventListener("keydown", (e) => {
     if ($("liveNow")) $("liveNow").addEventListener("click", liveCheck);
 
 
+
+
     startLive();
     liveCheck();
     refresh();
   });
 })();`.trim());
   });
+
+
+
+
 
 
 
@@ -4597,7 +5829,11 @@ async function generateNonAiDailyReport(site_id) {
   );
 
 
+
+
   const m = metricsRes.rows[0] || { total_events: 0, page_views: 0, leads: 0, purchases: 0 };
+
+
 
 
   const topRes = await pool.query(
@@ -4611,6 +5847,8 @@ async function generateNonAiDailyReport(site_id) {
     `,
     [site_id]
   );
+
+
 
 
   const lines = [];
@@ -4631,8 +5869,12 @@ async function generateNonAiDailyReport(site_id) {
   lines.push("Lead rate (leads / visits)");
 
 
+
+
   return lines.join("\n");
 }
+
+
 
 
 async function runDailyForAllSites() {
@@ -4640,12 +5882,18 @@ async function runDailyForAllSites() {
   let made = 0;
 
 
+
+
   for (const s of sites.rows) {
     const plan = s.plan || "unpaid";
     if (plan !== "pro" && plan !== "full_ai") continue;
 
 
+
+
     const txt = await generateNonAiDailyReport(s.site_id);
+
+
 
 
     await pool.query(
@@ -4659,14 +5907,20 @@ async function runDailyForAllSites() {
   }
 
 
+
+
   return { ok: true, updated_sites: made };
 }
+
+
 
 
 app.post("/jobs/run-daily", asyncHandler(async (req, res) => {
   const result = await runDailyForAllSites();
   res.json(result);
 }));
+
+
 
 
 if (process.env.ENABLE_SCHEDULER === "true") {
@@ -4676,6 +5930,8 @@ if (process.env.ENABLE_SCHEDULER === "true") {
 }
 
 
+
+
 /* ---------------------------
    Errors
 ----------------------------*/
@@ -4683,6 +5939,8 @@ app.use((err, req, res, next) => {
   console.error("ERROR:", err && err.stack ? err.stack : err);
   res.status(500).json({ ok: false, error: String(err.message || err) });
 });
+
+
 
 
 /* ---------------------------
