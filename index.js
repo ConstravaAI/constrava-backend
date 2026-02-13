@@ -3619,8 +3619,8 @@ async function createActivityWithMatch(site_id, activity, matchHint){
     // Enrich identities for this client using any identifiers present in the activity.
     // This is what lets us later connect a call (name/phone) to an email (email-only), etc.
     try{
-      const combinedText = [act.subject, act.body_text].filter(Boolean).join("
-");
+   const combinedText = [act.subject, act.body_text].filter(Boolean).join("\n");
+
       const foundEmails = new Set([
         ...(act.from_email ? [normEmail(act.from_email)] : []),
         ...(act.to_email ? [normEmail(act.to_email)] : []),
