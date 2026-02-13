@@ -3939,7 +3939,7 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
   const leadDays = has("recent") ? pickInt(/recent\s+(\d+)/i, 7) : days;
 
 
-  const statusMatch = q.match(/status\\s*:\\s*([a-z_\\-]+)/i);
+  const statusMatch = q.match(/status\s*:\s*([a-z_\-]+)/i);
   const pageMatch = q.match(/(?:from\s+)(\/[^\s]+)|page\s*:\s*([^\s]+)/i);
 
 
@@ -3973,8 +3973,8 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
 
 
   // ---- Clients ----
-  const stageMatch = q.match(/stage\\s*:\\s*([a-z_\\-]+)/i);
-  const healthMatch = q.match(/health\\s*:\\s*([a-z_\\-]+)/i);
+  const stageMatch = q.match(/stage\s*:\s*([a-z_\-]+)/i);
+  const healthMatch = q.match(/health\s*:\s*([a-z_\-]+)/i);
   const idleDays = (has("idle") || has("no touch") || has("not touched")) ? pickInt(/(?:idle|touch)\s+(\d+)/i, 14) : null;
 
 
@@ -12439,7 +12439,7 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
       const r = await fetch("/crm/ai_search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: TOKEN, query: q, days: activeDays() })
+        body: JSON.stringify({ token: TOKEN, query: q, days: (typeof activeDays==='function' ? activeDays() : (parseInt((document.getElementById('days')||{}).value||'7',10)||7)) })
       });
       const j = await r.json().catch(()=>({}));
       if(!j.ok){ out.textContent = j.error || "Search failed."; return; }
@@ -12470,7 +12470,7 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
       const leadsEl = $("crmLeads");
       if (leadsEl) leadsEl.scrollIntoView({ behavior: "smooth", block: "start" });
     }catch(e){
-      out.textContent = "Search error.";
+      out.textContent = "Search error: " + (e && e.message ? e.message : String(e)); console.error(e);
     }
   }
 
@@ -12543,6 +12543,7 @@ if ($("crmCreateClient")) $("crmCreateClient").addEventListener("click", crmCrea
 if ($("crmChatSend")) $("crmChatSend").addEventListener("click", crmChatRun);
 if ($("crmChatClear")) $("crmChatClear").addEventListener("click", () => { if ($("crmChatInput")) $("crmChatInput").value=""; if ($("crmChatOut")) $("crmChatOut").textContent="—"; });
 if ($("crmChatInput")) $("crmChatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") crmChatRun(); });
+    });
 
 
 
