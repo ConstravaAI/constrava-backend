@@ -2249,52 +2249,6 @@ function normEmail(v){ return String(v||"").trim().toLowerCase(); }
 function normPhone(v){ return String(v||"").replace(/[^0-9+]/g,"").trim(); }
 function normName(v){ return String(v||"").trim().toLowerCase(); }
 
-// Extract lightweight entities from raw text to help stitch identities across channels.
-// These are intentionally heuristic (fast + deterministic).
-function extractEmails(text){
-  const s = String(text||"");
-  const out = new Set();
-  const re = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/ig;
-  let m;
-  while ((m = re.exec(s))) out.add(m[0].toLowerCase());
-  return Array.from(out);
-}
-function extractPhones(text){
-  const s = String(text||"");
-  const out = new Set();
-  // US-ish + international-ish patterns; normalized later with normPhone
-  const re = /(\+?\d[\d\-\s\(\)]{7,}\d)/g;
-  let m;
-  while ((m = re.exec(s))){
-    const p = normPhone(m[1]);
-    if (p && p.replace(/[^0-9]/g,"").length >= 10) out.add(p);
-  }
-  return Array.from(out);
-}
-function domainFromEmail(e){
-  const x = normEmail(e);
-  return x.includes("@") ? x.split("@").pop() : "";
-}
-function guessNameFromEmail(e){
-  const x = normEmail(e);
-  const local = x.includes("@") ? x.split("@")[0] : x;
-  const parts = local.split(/[._\-]+/g).filter(Boolean);
-  if (parts.length >= 2){
-    const cap = (w)=> w ? (w[0].toUpperCase()+w.slice(1)) : "";
-    return cap(parts[0]) + " " + cap(parts[1]);
-  }
-  return "";
-}
-function extractProbableName(text){
-  const s = String(text||"");
-  // Very light signature-based guess: "Thanks,\nFirst Last"
-  const m = s.match(/(?:thanks|thank you|regards|sincerely)[,!\s]*\n\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/);
-  if (m) return m[1].trim();
-  return "";
-}
-
-
-
 
 
 
@@ -3615,45 +3569,8 @@ async function createActivityWithMatch(site_id, activity, matchHint){
   const best = await bestMatchClient(site_id, matchHint || {});
   if (best && best.client){
     const status = best.confidence >= 0.90 ? "auto_matched" : "needs_review";
-
-    // Enrich identities for this client using any identifiers present in the activity.
-    // This is what lets us later connect a call (name/phone) to an email (email-only), etc.
-    try{
-   const combinedText = [act.subject, act.body_text].filter(Boolean).join("\n");
-
-      const foundEmails = new Set([
-        ...(act.from_email ? [normEmail(act.from_email)] : []),
-        ...(act.to_email ? [normEmail(act.to_email)] : []),
-        ...extractEmails(combinedText)
-      ]);
-      const foundPhones = new Set([
-        ...(act.phone ? [normPhone(act.phone)] : []),
-        ...extractPhones(combinedText)
-      ]);
-
-      // Add identities
-      for (const e of foundEmails){
-        if (e) await addIdentity(site_id, best.client.id, "email", e);
-        const dom = domainFromEmail(e);
-        if (dom) await addIdentity(site_id, best.client.id, "domain", dom);
-      }
-      for (const p of foundPhones){
-        if (p) await addIdentity(site_id, best.client.id, "phone", p);
-      }
-
-      // Name identity (if present in meta or body/signature)
-      const probableName = (activity?.meta?.name || activity?.meta?.full_name || extractProbableName(combinedText) || "").toString().trim();
-      if (probableName){
-        await addIdentity(site_id, best.client.id, "name", normName(probableName));
-        // Also update crm_clients.full_name if missing
-        if (!best.client.full_name){
-          await pool.query(`UPDATE crm_clients SET full_name=$1 WHERE id=$2`, [probableName, best.client.id]);
-          best.client.full_name = probableName;
-        }
-      }
-    }catch(e){}
-
-  await pool.query(`INSERT INTO crm_activity_matches (site_id, activity_id, client_id, confidence, reason, status)
+    await pool.query(
+      `INSERT INTO crm_activity_matches (site_id, activity_id, client_id, confidence, reason, status)
        VALUES ($1,$2,$3,$4,$5,$6)`,
       [site_id, act.id, best.client.id, best.confidence, best.reason, status]
     );
@@ -12358,196 +12275,294 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 
+// CRM AI Search (deterministic; works without OPENAI_API_KEY).
+// Interprets simple phrases/filters and returns matching leads + clients.
 
-// CRM Copilot chat: answers CRM questions by reasoning over raw activities + clients.
-// If OPENAI_API_KEY is not set, uses deterministic fallbacks for common queries.
+// CRM Copilot — "AI employee" that can answer CRM questions by reasoning over raw CRM activities + clients.
+// Returns both a chatbot-style answer AND structured result lists.
+//
+// Requires plan: full_ai (uses OPENAI_API_KEY). If key missing, falls back to deterministic search.
+//
+// POST /crm/copilot  { token, message, days? }
+// -> { ok, reply, results: { clients:[], leads:[], activities:[] }, suggested_next_best_5:[] }
 app.post("/crm/copilot", asyncHandler(async (req, res) => {
+  setNoStore(res);
+
   const token = req.body?.token || req.query.token;
   const message = String(req.body?.message || "").trim();
-  const days = Number(req.body?.days || 30) || 30;
+  const days = Number(req.body?.days || 90) || 90;
+
+  if (!token || !message) return res.status(400).json({ ok: false, error: "token + message required" });
 
   const site = await getSiteByToken(token);
-  if (!site) return res.status(401).json({ ok:false, error:"Unauthorized" });
-  if (!message) return res.status(400).json({ ok:false, error:"message required" });
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
-  // Pull a recent window of raw activities (source-of-truth)
-  const actR = await pool.query(
-    `SELECT id, type, direction, occurred_at, from_email, to_email, subject, phone, duration_sec, meta
+  // Gate: allow only full_ai plan for the true copilot.
+  const gate = planGate(site, ["full_ai"]);
+  if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+  if (!OPENAI_API_KEY) {
+    // Deterministic fallback (still useful; keeps UI functional)
+    const q = message.toLowerCase();
+    const term = message.slice(0, 120);
+
+    const clients = (await pool.query(
+      `SELECT id, full_name, primary_email, primary_phone, stage, health, last_touch_at
+       FROM crm_clients
+       WHERE site_id=$1
+         AND (full_name ILIKE '%'||$2||'%' OR primary_email ILIKE '%'||$2||'%' OR primary_phone ILIKE '%'||$2||'%')
+       ORDER BY last_touch_at DESC NULLS LAST
+       LIMIT 30`,
+      [site.site_id, term]
+    )).rows;
+
+    const activities = (await pool.query(
+      `SELECT id, type, direction, occurred_at, from_email, to_email, phone, subject, body_text, meta
+       FROM crm_activities
+       WHERE site_id=$1
+         AND occurred_at >= NOW() - ($2::int || ' days')::interval
+         AND (COALESCE(subject,'') ILIKE '%'||$3||'%' OR COALESCE(body_text,'') ILIKE '%'||$3||'%' OR COALESCE(from_email,'') ILIKE '%'||$3||'%' OR COALESCE(to_email,'') ILIKE '%'||$3||'%' OR COALESCE(phone,'') ILIKE '%'||$3||'%')
+       ORDER BY occurred_at DESC
+       LIMIT 120`,
+      [site.site_id, days, term]
+    )).rows;
+
+    return res.json({
+      ok: true,
+      reply: `I don't have an OpenAI key configured, so I ran a basic search for "${term}".`,
+      results: { clients, activities, leads: [] },
+      suggested_next_best_5: []
+    });
+  }
+
+  // ---------- Retrieval (keep context small & relevant) ----------
+  // 1) Pull recent activities (raw emails/calls/forms).
+  const activityRows = (await pool.query(
+    `SELECT id, type, direction, occurred_at, from_email, to_email, phone, subject, body_text, duration_sec, meta
      FROM crm_activities
-     WHERE site_id=$1 AND occurred_at >= NOW() - ($2::int || ' days')::interval
+     WHERE site_id=$1
+       AND occurred_at >= NOW() - ($2::int || ' days')::interval
      ORDER BY occurred_at DESC
-     LIMIT 800`,
+     LIMIT 350`,
     [site.site_id, days]
-  );
+  )).rows;
 
-  // Pull clients + latest touch
-  const clientR = await pool.query(
-    `SELECT id, full_name, primary_email, primary_phone, company, stage, health, last_touch_at, last_touch_summary, notes
+  // 2) Pull clients (light directory).
+  const clientRows = (await pool.query(
+    `SELECT id, full_name, primary_email, primary_phone, stage, health, last_touch_at, notes
      FROM crm_clients
      WHERE site_id=$1
      ORDER BY last_touch_at DESC NULLS LAST, created_at DESC
-     LIMIT 400`,
+     LIMIT 220`,
     [site.site_id]
-  );
+  )).rows;
 
-  // Pull matches for attribution (so bot can say who)
-  const matchR = await pool.query(
-    `SELECT m.activity_id, m.client_id, m.confidence, m.reason, m.status
-     FROM crm_activity_matches m
-     WHERE m.site_id=$1
-     ORDER BY m.created_at DESC
-     LIMIT 1200`,
+  // 3) Pull identity graph (emails/phones/names/domains).
+  const identityRows = (await pool.query(
+    `SELECT client_id, kind, value, confidence, source
+     FROM crm_identities
+     WHERE site_id=$1
+     ORDER BY confidence DESC, created_at DESC
+     LIMIT 900`,
     [site.site_id]
-  );
+  )).rows;
 
-  const activities = actR.rows;
-  const clients = clientR.rows;
+  // 4) Pull recent auto matches (helps linking).
+  const matchRows = (await pool.query(
+    `SELECT activity_id, client_id, confidence, reason, status
+     FROM crm_activity_matches
+     WHERE site_id=$1
+     ORDER BY created_at DESC
+     LIMIT 900`,
+    [site.site_id]
+  )).rows;
 
-  // Build fast maps
-  const byClient = new Map();
-  for (const c of clients) byClient.set(String(c.id), c);
-
-  const actToClient = new Map();
-  for (const m of matchR.rows){
-    if (m.client_id) actToClient.set(String(m.activity_id), String(m.client_id));
-  }
-
-  // Deterministic fallback for common “list” queries (works without AI)
-  function monthWindow(){
-    // "this month": 31 day window is fine for demo
-    return 31;
-  }
-  const msg = message.toLowerCase();
-  const wantsCalled = msg.includes("called");
-  const wantsEmailedBack = msg.includes("email response") || msg.includes("emailed back") || msg.includes("replied");
-  const wantsNextBest = msg.includes("next best") || msg.includes("best 5") || msg.includes("top 5 potential");
-
-  if (!process.env.OPENAI_API_KEY){
-    // Fallback list: "people we've called this month and gotten an email response from"
-    if (wantsCalled && wantsEmailedBack){
-      const win = monthWindow();
-      const recent = activities.filter(a => a.occurred_at && new Date(a.occurred_at).getTime() >= Date.now() - win*86400000);
-
-      // called: call activities (any direction) that have a matched client
-      const calledClients = new Set();
-      for (const a of recent){
-        if (a.type !== "call") continue;
-        const cid = actToClient.get(String(a.id));
-        if (cid) calledClients.add(cid);
-      }
-
-      // email response: inbound email from those clients
-      const emailedBackClients = new Set();
-      for (const a of recent){
-        if (a.type !== "email") continue;
-        if ((a.direction||"") !== "in") continue;
-        const cid = actToClient.get(String(a.id));
-        if (cid && calledClients.has(cid)) emailedBackClients.add(cid);
-      }
-
-      const people = Array.from(emailedBackClients).map(id => byClient.get(String(id))).filter(Boolean);
-      const out = people.slice(0, 200).map(p => ({
-        name: p.full_name || "(unknown name)",
-        email: p.primary_email || "",
-        phone: p.primary_phone || "",
-        stage: p.stage || "lead",
-        last_touch_at: p.last_touch_at
-      }));
-
-      return res.json({ ok:true, mode:"fallback", answer:`Found ${out.length} people called this month who later emailed back.`, results: out });
-    }
-
-    if (wantsNextBest){
-      // Simple “next best 5” heuristic:
-      // score = recency + intent words in last_touch_summary/notes + stage
-      const intentWords = ["price","pricing","quote","schedule","book","demo","call","next steps"];
-      const scored = clients.map(c => {
-        const t = c.last_touch_at ? new Date(c.last_touch_at).getTime() : 0;
-        const rec = t ? Math.max(0, 30 - Math.floor((Date.now()-t)/86400000)) : 0;
-        const text = (c.last_touch_summary||"") + " " + (c.notes||"");
-        let intent = 0;
-        for (const w of intentWords) if (text.toLowerCase().includes(w)) intent += 3;
-        let stage = c.stage === "lead" ? 3 : (c.stage === "active" ? 2 : 0);
-        return { client: c, score: rec + intent + stage };
-      }).sort((a,b)=>b.score-a.score);
-
-      const top = scored.slice(0,5).map(x => ({
-        name: x.client.full_name || "(unknown name)",
-        email: x.client.primary_email || "",
-        phone: x.client.primary_phone || "",
-        stage: x.client.stage,
-        health: x.client.health,
-        score: x.score,
-        why: x.client.last_touch_summary || x.client.notes || ""
-      }));
-
-      return res.json({ ok:true, mode:"fallback", answer:"Here are the next best 5 potential customers to contact (heuristic).", results: top });
-    }
-
-    // Generic fallback
-    return res.json({ ok:true, mode:"fallback", answer:"AI key not set. I can answer common list questions (called/replied/next best).", results: [] });
-  }
-
-  // AI mode (Full AI plan recommended)
-  // Keep payload compact: include recent activities + matches + a client directory.
-  const compactActs = activities.slice(0, 300).map(a => ({
-    id: a.id, type: a.type, dir: a.direction, at: a.occurred_at,
-    from: a.from_email, to: a.to_email, phone: a.phone,
-    subject: a.subject, meta: a.meta
-  }));
-  const compactClients = clients.slice(0, 250).map(c => ({
-    id: c.id, name: c.full_name, email: c.primary_email, phone: c.primary_phone,
-    company: c.company, stage: c.stage, health: c.health, last_touch_at: c.last_touch_at,
-    last_touch_summary: c.last_touch_summary
-  }));
-  const compactMatches = matchR.rows.slice(0, 600).map(m => ({
-    activity_id: m.activity_id, client_id: m.client_id, confidence: m.confidence, reason: m.reason
+  // Compact the context: keep only essential fields + short body excerpts.
+  const compactActivities = activityRows.map((a) => ({
+    id: a.id,
+    type: a.type,
+    dir: a.direction,
+    at: a.occurred_at,
+    from: a.from_email,
+    to: a.to_email,
+    phone: a.phone,
+    subject: a.subject,
+    text: (a.body_text || "").slice(0, 600),
+    meta: a.meta || null
   }));
 
-  const system = `
-You are Constrava CRM Copilot.
-You answer questions about leads/clients based on raw communications (calls, emails, forms, site visits, follows).
-Important: identity stitching is fuzzy. Use the provided matches first, but you may infer additional links using context
-(email domains, phone numbers, names, timing, subjects). If uncertain, say so.
-When asked for lists, return concise bullet lists. When asked for "next best 5", rank by intent + recency + engagement.
-`;
+  const compactClients = clientRows.map((c) => ({
+    id: c.id,
+    name: c.full_name,
+    email: c.primary_email,
+    phone: c.primary_phone,
+    stage: c.stage,
+    health: c.health,
+    last_touch_at: c.last_touch_at,
+    notes: (c.notes || "").slice(0, 260)
+  }));
 
-  const user = {
-    question: message,
-    clients: compactClients,
-    activities: compactActs,
-    matches: compactMatches
-  };
+  const compactIdentities = identityRows.map((i) => ({
+    client_id: i.client_id,
+    kind: i.kind,
+    value: i.value,
+    conf: i.confidence,
+    source: i.source
+  }));
 
-  const ai = await fetch("https://api.openai.com/v1/chat/completions", {
+  const compactMatches = matchRows.map((m) => ({
+    activity_id: m.activity_id,
+    client_id: m.client_id,
+    conf: m.confidence,
+    reason: m.reason,
+    status: m.status
+  }));
+
+  const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+
+  // ---------- Prompt ----------
+  const system = [
+    "You are Constrava CRM Copilot — an AI employee for small businesses.",
+    "You can comb through raw CRM interactions like a human: emails, call transcripts, form submissions, notes, and site events.",
+    "Your job is to answer the user's question and (when asked) produce structured results and ranked next actions.",
+    "",
+    "IMPORTANT:",
+    "- Identity stitching is a core task. A call may contain a name while an email may not; link them using contextual clues:",
+    "  phone numbers, email addresses, domains, signatures, timing, repeated topics, and prior matches/identities.",
+    "- Be honest about uncertainty. If linking is not confident, explain why and mark it low confidence.",
+    "",
+    "OUTPUT FORMAT:",
+    "Return STRICT JSON only (no markdown) with keys:",
+    "{",
+    '  "answer": string,',
+    '  "people": [ { "client_id": number|null, "display_name": string, "emails": string[], "phones": string[], "confidence": number, "why": string, "evidence_activity_ids": number[] } ],',
+    '  "results": { "clients": number[], "activities": number[] },',
+    '  "next_best_5": [ { "display_name": string, "client_id": number|null, "reason": string, "confidence": number, "evidence_activity_ids": number[] } ]',
+    "}",
+    "",
+    "Keep answer concise but useful. If user asks for a list, return it in both answer text and in structured arrays."
+  ].join("\n");
+
+  const user = [
+    "USER QUESTION:",
+    message,
+    "",
+    "DATA:",
+    "clients=" + JSON.stringify(compactClients),
+    "identities=" + JSON.stringify(compactIdentities),
+    "matches=" + JSON.stringify(compactMatches),
+    "activities=" + JSON.stringify(compactActivities)
+  ].join("\n");
+
+  const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4.1-mini",
+      model: OPENAI_MODEL,
       messages: [
         { role: "system", content: system },
-        { role: "user", content: JSON.stringify(user).slice(0, 12000) }
+        { role: "user", content: user }
       ],
       temperature: 0.2
     })
   });
 
-  const j = await ai.json().catch(()=>null);
-  const reply = j?.choices?.[0]?.message?.content || "No answer.";
-  res.json({ ok:true, mode:"ai", answer: reply });
+  const j = await aiRes.json().catch(() => ({}));
+  const raw = j?.choices?.[0]?.message?.content || "";
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    // Last-resort: attempt to extract a JSON object from the response
+    const m = String(raw).match(/\{[\s\S]*\}$/);
+    if (m) {
+      try { parsed = JSON.parse(m[0]); } catch {}
+    }
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return res.json({
+      ok: true,
+      reply: raw || "No response.",
+      results: { clients: [], activities: [], leads: [] },
+      suggested_next_best_5: []
+    });
+  }
+
+  const clientIds = Array.isArray(parsed?.results?.clients) ? parsed.results.clients : [];
+  const activityIds = Array.isArray(parsed?.results?.activities) ? parsed.results.activities : [];
+
+  const clients = clientIds.length
+    ? (await pool.query(
+        `SELECT id, full_name, primary_email, primary_phone, stage, health, last_touch_at, notes
+         FROM crm_clients
+         WHERE site_id=$1 AND id = ANY($2::bigint[])
+         ORDER BY last_touch_at DESC NULLS LAST`,
+        [site.site_id, clientIds]
+      )).rows
+    : [];
+
+  const activities = activityIds.length
+    ? (await pool.query(
+        `SELECT id, type, direction, occurred_at, from_email, to_email, phone, subject, body_text, duration_sec, meta
+         FROM crm_activities
+         WHERE site_id=$1 AND id = ANY($2::bigint[])
+         ORDER BY occurred_at DESC`,
+        [site.site_id, activityIds]
+      )).rows
+    : [];
+
+  res.json({
+    ok: true,
+    reply: String(parsed.answer || "").slice(0, 6000),
+    people: Array.isArray(parsed.people) ? parsed.people.slice(0, 80) : [],
+    results: { clients, activities, leads: [] },
+    suggested_next_best_5: Array.isArray(parsed.next_best_5) ? parsed.next_best_5.slice(0, 20) : []
+  });
 }));
 
 
+// Backward-compatible CRM search (legacy UI). Kept for safety.
+// POST /crm/ai_search { token, query, days? } -> returns basic lists (no OpenAI needed)
+app.post("/crm/ai_search", asyncHandler(async (req, res) => {
+  setNoStore(res);
+  const token = req.body?.token || req.query.token;
+  const query = String(req.body?.query || "").trim();
+  const days = Number(req.body?.days || 30) || 30;
 
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
+  const term = query.slice(0, 120);
 
+  const clients = (await pool.query(
+    `SELECT id, full_name, primary_email, primary_phone, stage, health, last_touch_at
+     FROM crm_clients
+     WHERE site_id=$1
+       AND (full_name ILIKE '%'||$2||'%' OR primary_email ILIKE '%'||$2||'%' OR primary_phone ILIKE '%'||$2||'%')
+     ORDER BY last_touch_at DESC NULLS LAST
+     LIMIT 30`,
+    [site.site_id, term]
+  )).rows;
 
+  const activities = (await pool.query(
+    `SELECT id, type, direction, occurred_at, from_email, to_email, phone, subject, body_text, meta
+     FROM crm_activities
+     WHERE site_id=$1
+       AND occurred_at >= NOW() - ($2::int || ' days')::interval
+       AND (COALESCE(subject,'') ILIKE '%'||$3||'%' OR COALESCE(body_text,'') ILIKE '%'||$3||'%' OR COALESCE(from_email,'') ILIKE '%'||$3||'%' OR COALESCE(to_email,'') ILIKE '%'||$3||'%' OR COALESCE(phone,'') ILIKE '%'||$3||'%')
+     ORDER BY occurred_at DESC
+     LIMIT 120`,
+    [site.site_id, days, term]
+  )).rows;
 
-
-
+  res.json({ ok: true, clients, leads: [], activities });
+}));
 app.get("/crm/clients", asyncHandler(async (req, res) => {
   setNoStore(res);
   const token = req.query.token;
@@ -27585,14 +27600,14 @@ pre{
       <div class="grid" style="margin-top:0;gap:10px">
         <!-- Lead tools -->
         
-        <!-- CRM AI Search (single interface) -->
+        <!-- CRM Copilot (AI employee) -->
         <div class="card span12" style="background: var(--panel2); box-shadow:none">
           <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
             <div>
-              <div style="font-weight:950">CRM AI Search</div>
+              <div style="font-weight:950">CRM Copilot</div>
               <div class="muted">
-                Ask things like: <span class="mono">find ava</span>, <span class="mono">recent leads</span>,
-                <span class="mono">status:new</span>, <span class="mono">clients idle 14</span>, <span class="mono">leads from /contact</span>.
+                Ask anything: <span class="mono">"people we called this month who emailed back"</span>,
+                <span class="mono">"next best 5 customers"</span>, <span class="mono">"who mentioned pricing"</span>.
               </div>
             </div>
             <div class="row" style="gap:10px;flex-wrap:wrap">
@@ -27601,44 +27616,25 @@ pre{
             </div>
           </div>
 
-
-
-
-
-
-
+          <div id="crmCopilotThread" class="mono" style="margin-top:10px;white-space:pre-wrap;background:rgba(20,20,30,0.06);border:1px solid var(--line);border-radius:14px;padding:12px;max-height:240px;overflow:auto"></div>
 
           <div class="row" style="margin-top:10px;gap:10px;align-items:stretch;flex-wrap:wrap">
-            <input id="crmAiInput" placeholder='Try: "find noah" or "clients idle 30"' style="flex:1;min-width:260px" />
-            <button class="btn" id="crmAiSend" type="button">Search</button>
-            <button class="btnGhost" id="crmAiClear" type="button">Clear</button>
+            <input id="crmCopilotInput" placeholder='Ask the CRM Copilot…' style="flex:1;min-width:260px" />
+            <button class="btn" id="crmCopilotSend" type="button">Send</button>
+            <button class="btnGhost" id="crmCopilotClear" type="button">Clear</button>
           </div>
 
+          <div class="muted" style="margin-top:10px">
+            Copilot answers in chat and can also populate the Clients/Leads lists below as "search results."
+          </div>
 
+          <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap">
+            <span class="pill" id="crmCopilotNextBestPill" style="cursor:pointer">Show next best 5</span>
+            <span class="pill" id="crmCopilotEvidencePill" style="cursor:pointer">Show evidence activity IDs</span>
+          </div>
 
-
-
-
-
-
-          <pre id="crmAiOut" class="mono" style="margin-top:10px;white-space:pre-wrap;background:rgba(20,20,30,0.08);border:1px solid var(--line);border-radius:14px;padding:12px;max-height:220px;overflow:auto"></pre>
-
-
-
-
-
-
-
-
-          <div class="muted" style="margin-top:10px">Results populate the Leads + Clients lists below.</div>
+          <pre id="crmCopilotMeta" class="mono" style="margin-top:10px;white-space:pre-wrap;background:rgba(20,20,30,0.05);border:1px solid var(--line);border-radius:14px;padding:12px;max-height:200px;overflow:auto;display:none"></pre>
         </div>
-
-
-
-
-
-
-
 
 <div class="card span6" id="crmLeadsCard">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
@@ -38888,83 +38884,117 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
 
 
 
-  async function crmAiRun(){
-    const out = $("crmAiOut");
-    const inp = $("crmAiInput");
-    if(!out || !inp) return;
+  async function crmCopilotRun(){
+    const thread = $("crmCopilotThread");
+    const inp = $("crmCopilotInput");
+    const meta = $("crmCopilotMeta");
+    if (!thread || !inp) return;
 
+    const msg = String(inp.value || "").trim();
+    if (!msg) return;
 
+    // append user bubble
+    thread.textContent += (thread.textContent ? "\n\n" : "") + "You: " + msg;
+    thread.scrollTop = thread.scrollHeight;
 
-
-
-
-
-
-    const q = inp.value.trim();
-    if(!q){ out.textContent = "—"; return; }
-    out.textContent = "Searching…";
-
-
-
-
-
-
-
+    inp.value = "";
+    let days = 90;
+    try { if (typeof activeDays === "function") days = activeDays() || 90; } catch {}
 
     try{
       const r = await fetch("/crm/copilot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: TOKEN, message: q, days: (typeof activeDays==='function' ? activeDays() : (parseInt((document.getElementById('days')||{}).value||'7',10)||7)) })
+        body: JSON.stringify({ token: TOKEN, message: msg, days })
       });
       const j = await r.json().catch(()=>({}));
-      if(!j.ok){ out.textContent = j.error || "Search failed."; return; }
 
+      if (!j || !j.ok){
+        thread.textContent += "\n\nCopilot: " + (j && j.error ? j.error : "Request failed.");
+        thread.scrollTop = thread.scrollHeight;
+        return;
+      }
 
+      thread.textContent += "\n\nCopilot: " + (j.reply || "(no reply)");
+      thread.scrollTop = thread.scrollHeight;
 
+      // Populate "search results" panels (clients/leads/activities) when provided.
+      if (j.results && j.results.clients){
+        // replace client list
+        try{
+          const box = $("crmClients");
+          if (box){
+            box.innerHTML = "";
+            const cs = j.results.clients || [];
+            if (!cs.length) box.textContent = "No clients matched.";
+            else cs.forEach((c) => {
+              const title = (c.full_name || "(no name)") + (c.stage ? " • " + c.stage : "");
+              const sub = [
+                c.primary_email ? ("email: " + c.primary_email) : null,
+                c.primary_phone ? ("phone: " + c.primary_phone) : null,
+                ("last touch: " + fmtWhen(c.last_touch_at))
+              ].filter(Boolean).join(" • ");
 
+              const item = makeListItem(title, sub, "Select");
+              item.style.cursor = "pointer";
+              item.addEventListener("click", () => loadCrmClientDetail(c.id));
+              box.appendChild(item);
+            });
+          }
+        }catch(e){ console.error(e); }
+      }
 
+      if (j.results && j.results.activities){
+        try{
+          const box = $("crmLeads");
+          if (box){
+            // reuse existing renderer: renderCRM expects leads shape; but activities show as a list
+            box.innerHTML = "";
+            const acts = j.results.activities || [];
+            if (!acts.length) box.textContent = "No activity matched.";
+            else acts.slice(0, 120).forEach((a) => {
+              const title = (a.type || "activity") + " • " + fmtWhen(a.occurred_at);
+              const sub = [
+                a.from_email ? ("from: " + a.from_email) : null,
+                a.to_email ? ("to: " + a.to_email) : null,
+                a.phone ? ("phone: " + a.phone) : null,
+                a.subject ? ("subj: " + a.subject) : null
+              ].filter(Boolean).join(" • ");
+              const preview = (a.body_text || "").slice(0, 140);
+              const item = makeListItem(title, sub + (preview ? " • " + preview : ""), "—");
+              box.appendChild(item);
+            });
+          }
+        }catch(e){ console.error(e); }
+      }
 
+      // Optional meta panel (next best 5 + evidence)
+      try{
+        const nb = j.suggested_next_best_5 || [];
+        if (meta){
+          const lines = [];
+          if (nb.length){
+            lines.push("Next best 5:");
+            nb.slice(0, 5).forEach((x, i) => {
+              lines.push((i+1) + ". " + (x.display_name || "(unknown)") + " — " + (x.reason || "") + " (conf " + (x.confidence ?? "") + ")");
+            });
+            lines.push("");
+          }
+          const people = j.people || [];
+          if (people.length){
+            lines.push("Linked people:");
+            people.slice(0, 10).forEach((p) => {
+              lines.push("- " + (p.display_name || "(unknown)") + " • conf " + (p.confidence ?? "") + " • " + (p.why || ""));
+            });
+          }
+          meta.textContent = lines.join("\n") || "";
+        }
+      }catch(e){ console.error(e); }
 
-
-      // Update lists in-place
-      const leadsBox = $("crmLeads");
-      if(leadsBox) renderCRM(leadsBox, j.leads || []);
-      renderClientsFromArray(j.clients || []);
-
-
-
-
-
-
-
-
-      // Summary
-      const lines = [];
-      lines.push('Query: "' + q + '"');
-      lines.push("");
-      lines.push("Clients: " + (j.clients || []).length);
-      (j.clients || []).slice(0, 8).forEach((c) => {
-        lines.push("- " + (c.full_name || "(unnamed)") + " • " + (c.primary_email || "") + " • " + (c.stage || ""));
-      });
-      lines.push("");
-      lines.push("Leads: " + (j.leads || []).length);
-      (j.leads || []).slice(0, 8).forEach((l) => {
-        lines.push("- " + (l.email || "(no email)") + " • " + (l.status || "new") + " • " + (l.source_page || ""));
-      });
-
-
-
-
-
-
-
-
-      out.textContent = lines.join("\n");
-      const leadsEl = $("crmLeads");
-      if (leadsEl) leadsEl.scrollIntoView({ behavior: "smooth", block: "start" });
     }catch(e){
-      out.textContent = "Search error: " + (e && e.message ? e.message : String(e)); console.error(e);
+      thread.textContent += "\n\nCopilot: Error — " + (e && e.message ? e.message : String(e));
+      thread.scrollTop = thread.scrollHeight;
+      console.error(e);
     }
   }
 
@@ -38991,14 +39021,24 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
 
 
 
-    // CRM AI Search wiring (replaces separate lead/client/chat search boxes)
-    if ($("crmAiSend")) $("crmAiSend").addEventListener("click", crmAiRun);
-    if ($("crmAiInput")) $("crmAiInput").addEventListener("keydown", (e) => { if (e.key === "Enter") crmAiRun(); });
-    if ($("crmAiClear")) $("crmAiClear").addEventListener("click", async () => {
-      if ($("crmAiInput")) $("crmAiInput").value = "";
-      if ($("crmAiOut")) $("crmAiOut").textContent = "—";
+
+    // CRM Copilot wiring
+    if ($("crmCopilotSend")) $("crmCopilotSend").addEventListener("click", crmCopilotRun);
+    if ($("crmCopilotInput")) $("crmCopilotInput").addEventListener("keydown", (e) => { if (e.key === "Enter") crmCopilotRun(); });
+    if ($("crmCopilotClear")) $("crmCopilotClear").addEventListener("click", async () => {
+      if ($("crmCopilotThread")) $("crmCopilotThread").textContent = "";
+      if ($("crmCopilotMeta")) { $("crmCopilotMeta").textContent=""; $("crmCopilotMeta").style.display="none"; }
       await loadCRM();
       await loadCrmClients("");
+    });
+
+    if ($("crmCopilotNextBestPill")) $("crmCopilotNextBestPill").addEventListener("click", () => {
+      const m = $("crmCopilotMeta"); if (!m) return;
+      m.style.display = (m.style.display === "none" || !m.style.display) ? "block" : "none";
+    });
+    if ($("crmCopilotEvidencePill")) $("crmCopilotEvidencePill").addEventListener("click", () => {
+      const m = $("crmCopilotMeta"); if (!m) return;
+      m.style.display = "block";
     });
 
 
