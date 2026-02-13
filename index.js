@@ -12275,288 +12275,202 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 
-// CRM Assistant (deterministic; works without OPENAI_API_KEY).
+// CRM AI Search (deterministic; works without OPENAI_API_KEY).
 // Interprets simple phrases/filters and returns matching leads + clients.
+app.post("/crm/ai_search", asyncHandler(async (req, res) => {
+  const token = req.body.token || req.query.token;
+  const query = String(req.body.query || "").trim();
+  const days = Number(req.body.days || 30) || 30;
 
-// CRM Copilot (AI employee): answers CRM questions by reasoning over raw activities + clients.
-// - Uses OPENAI_API_KEY when available
-// - Returns both a chat reply AND structured results for the UI (clients + activities)
-// - Includes evidence activity IDs so answers can be traced
-async function runCrmCopilot({ site_id, message, days }) {
-  const LIMIT_CLIENTS = 100;
-  const LIMIT_ACTS = 350;
-  const daysInt = Number(days || 30) || 30;
+
+
+
+
+
+
+
+  const site = await getSiteByToken(token);
+  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
+
+
+
+
+  const q = query.toLowerCase();
+  const limit = 180;
+
+
+
+
+
+
+
+
+  const has = (s) => q.includes(s);
+  const pickInt = (re_, fallback) => {
+    const m = q.match(re_);
+    const n = m ? parseInt(m[1], 10) : NaN;
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+
+
+
+
+
+
+
+  // ---- Leads ----
+  const leadDays = has("recent") ? pickInt(/recent\s+(\d+)/i, 7) : days;
+
+
+
+
+
+
+
+
+  const statusMatch = q.match(/status\s*:\s*([a-z_\-]+)/i);
+  const pageMatch = q.match(/(?:from\s+)(\/[^\s]+)|page\s*:\s*([^\s]+)/i);
+
+
+
+
+
+
+
+
+  let leadWhere = "site_id=$1 AND created_at >= NOW() - ($2::int || ' days')::interval";
+  const leadVals = [site.site_id, leadDays];
+
+
+
+
+
+
+
+
+  if (statusMatch){
+    leadVals.push(statusMatch[1]);
+    leadWhere += ` AND status=$${leadVals.length}`;
+  }
+  if (pageMatch){
+    const p = (pageMatch[1] || pageMatch[2] || "").trim();
+    if (p){
+      leadVals.push(p);
+      leadWhere += ` AND source_page ILIKE '%' || $${leadVals.length} || '%'`;
+    }
+  }
+
+
+
+
+
+
+
+
+  if (query){
+    leadVals.push(query);
+    leadWhere += ` AND (email ILIKE '%' || $${leadVals.length} || '%' OR name ILIKE '%' || $${leadVals.length} || '%' OR phone ILIKE '%' || $${leadVals.length} || '%' OR notes ILIKE '%' || $${leadVals.length} || '%')`;
+  }
+
+
+
+
+
+
+
+
+  const leads = (await pool.query(
+    `SELECT * FROM crm_leads WHERE ${leadWhere} ORDER BY created_at DESC LIMIT ${limit}`,
+    leadVals
+  )).rows;
+
+
+
+
+
+
+
+
+  // ---- Clients ----
+  const stageMatch = q.match(/stage\s*:\s*([a-z_\-]+)/i);
+  const healthMatch = q.match(/health\s*:\s*([a-z_\-]+)/i);
+  const idleDays = (has("idle") || has("no touch") || has("not touched")) ? pickInt(/(?:idle|touch)\s+(\d+)/i, 14) : null;
+
+
+
+
+
+
+
+
+  let clientWhere = "site_id=$1";
+  const clientVals = [site.site_id];
+
+
+
+
+
+
+
+
+  if (stageMatch){
+    clientVals.push(stageMatch[1]);
+    clientWhere += ` AND stage=$${clientVals.length}`;
+  }
+  if (healthMatch){
+    clientVals.push(healthMatch[1]);
+    clientWhere += ` AND health=$${clientVals.length}`;
+  }
+  if (idleDays !== null){
+    clientVals.push(idleDays);
+    clientWhere += ` AND (last_touch_at IS NULL OR last_touch_at < NOW() - ($${clientVals.length}::int || ' days')::interval)`;
+  }
+
+
+
+
+
+
+
+
+  if (query){
+    clientVals.push(query);
+    clientWhere += ` AND (full_name ILIKE '%' || $${clientVals.length} || '%' OR primary_email ILIKE '%' || $${clientVals.length} || '%' OR primary_phone ILIKE '%' || $${clientVals.length} || '%' OR notes ILIKE '%' || $${clientVals.length} || '%')`;
+  }
+
+
+
+
+
+
+
 
   const clients = (await pool.query(
-    `SELECT id, full_name, primary_email, primary_phone, stage, health, last_touch_at, notes, created_at
-     FROM crm_clients
-     WHERE site_id=$1
-     ORDER BY last_touch_at DESC NULLS LAST, created_at DESC
-     LIMIT ${LIMIT_CLIENTS}`,
-    [site_id]
+    `SELECT * FROM crm_clients WHERE ${clientWhere} ORDER BY last_touch_at DESC NULLS LAST, created_at DESC LIMIT ${limit}`,
+    clientVals
   )).rows;
 
-  const activities = (await pool.query(
-    `SELECT id, type, occurred_at, subject, body_text, meta
-     FROM crm_activities
-     WHERE site_id=$1
-       AND occurred_at >= NOW() - ($2::int || ' days')::interval
-     ORDER BY occurred_at DESC
-     LIMIT ${LIMIT_ACTS}`,
-    [site_id, daysInt]
-  )).rows;
 
-  // Matches (link activities to clients). Do NOT assume any schema like "confidence".
-  const matches = (await pool.query(
-    `SELECT activity_id, client_id, reason
-     FROM crm_activity_matches
-     WHERE site_id=$1
-     ORDER BY activity_id DESC
-     LIMIT 2000`,
-    [site_id]
-  )).rows;
 
-  const actById = new Map(activities.map(a => [a.id, a]));
-  const clientToActs = new Map();
-  const matchedActIds = new Set();
 
-  for (const mm of matches) {
-    matchedActIds.add(mm.activity_id);
-    const act = actById.get(mm.activity_id);
-    if (!act) continue;
-    if (!clientToActs.has(mm.client_id)) clientToActs.set(mm.client_id, []);
-    clientToActs.get(mm.client_id).push(act);
-  }
 
-  const intentScoreForText = (t) => {
-    const s = String(t || "").toLowerCase();
-    let score = 0;
-    if (/(pricing|price|quote|estimate|cost|rates)/.test(s)) score += 4;
-    if (/(book|schedule|calendar|appointment|call me|demo|consult)/.test(s)) score += 4;
-    if (/(buy|purchase|order|subscribe|sign up|signup)/.test(s)) score += 5;
-    if (/(interested|sounds good|let's do|next steps|follow up)/.test(s)) score += 3;
-    if (/(question|can you|how do i|help)/.test(s)) score += 2;
-    if (/(not interested|stop|unsubscribe|no thanks|spam)/.test(s)) score -= 8;
-    return score;
-  };
 
-  const daysSince = (dt) => {
-    if (!dt) return 9999;
-    const ms = Date.now() - new Date(dt).getTime();
-    return Math.floor(ms / (1000 * 60 * 60 * 24));
-  };
 
-  function digestForClient(c) {
-    const acts = (clientToActs.get(c.id) || [])
-      .slice()
-      .sort((a,b) => new Date(b.occurred_at) - new Date(a.occurred_at))
-      .slice(0, 8);
 
-    const touch = { email: 0, call: 0, form: 0, visit: 0, other: 0 };
-    let intent = 0;
-    const evidence = [];
-    for (const a of acts) {
-      const typ = String(a.type || "other").toLowerCase();
-      if (typ.includes("email")) touch.email++;
-      else if (typ.includes("call")) touch.call++;
-      else if (typ.includes("form")) touch.form++;
-      else if (typ.includes("visit")) touch.visit++;
-      else touch.other++;
-
-      const combinedText = [a.subject, a.body_text].filter(Boolean).join("\n");
-      intent += intentScoreForText(combinedText);
-
-      if (evidence.length < 5) {
-        const snip = String(combinedText || "").replace(/\s+/g, " ").slice(0, 180);
-        if (snip) evidence.push(`${new Date(a.occurred_at).toISOString().slice(0,10)} • ${a.type} • ${snip}`);
-      }
-    }
-
-    const idle = daysSince(c.last_touch_at);
-    let score = intent;
-    score += idle <= 2 ? 1 : idle <= 7 ? 2 : idle <= 14 ? 3 : 4;
-
-    const stage = String(c.stage || "").toLowerCase();
-    if (stage === "qualified" || stage === "proposal") score += 3;
-    if (stage === "won") score -= 10;
-    if (stage === "lost") score -= 6;
-
-    return {
-      id: c.id,
-      name: c.full_name || "",
-      email: c.primary_email || "",
-      phone: c.primary_phone || "",
-      stage: c.stage || "",
-      health: c.health || "",
-      last_touch_days: idle,
-      touches: touch,
-      intent_score: intent,
-      priority_score: score,
-      evidence
-    };
-  }
-
-  const digests = clients.map(digestForClient);
-
-  const unmatched = activities
-    .filter(a => !matchedActIds.has(a.id))
-    .slice(0, 30)
-    .map(a => ({
-      id: a.id,
-      type: a.type,
-      occurred_at: a.occurred_at,
-      subject: a.subject || "",
-      snippet: String(a.body_text || "").replace(/\s+/g," ").slice(0, 200)
-    }));
-
-  const heuristic_next_best_5 = digests
-    .slice()
-    .sort((a,b) => b.priority_score - a.priority_score)
-    .slice(0, 5)
-    .map(d => ({
-      client_id: d.id,
-      name: d.name,
-      email: d.email,
-      stage: d.stage,
-      why: `intent=${d.intent_score}, idle=${d.last_touch_days}d, touches email:${d.touches.email}/call:${d.touches.call}`
-    }));
-
-  // Fallback if no AI key
-  if (!process.env.OPENAI_API_KEY) {
-    return {
-      reply:
-        "CRM Copilot (basic mode): OPENAI_API_KEY not set.\n\nNext best 5:\n" +
-        heuristic_next_best_5.map((x,i)=>`${i+1}. ${x.name || "(unnamed)"} • ${x.email || ""} • ${x.why}`).join("\n"),
-      reasoning_short: "Heuristic scoring (intent keywords + recency + stage).",
-      suggested_next_best_5: heuristic_next_best_5,
-      evidence_activity_ids: [],
-      results: { clients: clients.slice(0, 25), activities: activities.slice(0, 25) }
-    };
-  }
-
-  // AI mode: send compact memory (digests + recent evidence).
-  const payload = {
-    question: String(message || ""),
-    client_digests: digests.slice(0, 80),
-    unmatched_recent_activity: unmatched,
-    recent_activity: activities.slice(0, 40).map(a => ({
-      id: a.id, type: a.type, occurred_at: a.occurred_at,
-      subject: a.subject || "",
-      snippet: String(a.body_text || "").replace(/\s+/g, " ").slice(0, 240)
-    })),
-    heuristic_next_best_5
-  };
-
-  const system = `You are an AI CRM employee.
-You answer CRM questions using the provided data.
-Rules:
-- Output JSON only.
-- Keys: reply (string), reasoning_short (string),
-  suggested_next_best_5 (array of {client_id,name,email,why}),
-  evidence_activity_ids (array of activity ids you relied on),
-  result_client_ids (array), result_activity_ids (array).
-- Assume names are often missing. Stitch identity across scraps (emails, phone numbers, domains, timing, writing style, signatures, call receipts). If you infer that two activities refer to the same person, explain briefly in reasoning_short and include the activity IDs in evidence_activity_ids.
-- Keep it concise and action-oriented.`;
-
-  const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
-
-  let aiText = "";
-  try {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: JSON.stringify(payload).slice(0, 24000) }
-        ]
-      })
-    });
-    const j = await resp.json();
-    aiText = j?.choices?.[0]?.message?.content || "";
-  } catch (e) {
-    aiText = "";
-  }
-
-  let parsed = null;
-  try {
-    parsed = JSON.parse(aiText);
-  } catch (e) {
-    // Graceful fallback if model didn't follow JSON
-    return {
-      reply:
-        "I had trouble formatting a structured answer, so here’s a baseline.\n\nNext best 5:\n" +
-        heuristic_next_best_5.map((x,i)=>`${i+1}. ${x.name || "(unnamed)"} • ${x.email || ""} • ${x.why}`).join("\n"),
-      reasoning_short: "AI response was not valid JSON; returned heuristic baseline.",
-      suggested_next_best_5: heuristic_next_best_5,
-      evidence_activity_ids: [],
-      results: { clients: clients.slice(0, 25), activities: activities.slice(0, 25) }
-    };
-  }
-
-  const reply = String(parsed.reply || "").trim() || "—";
-  const reasoning_short = String(parsed.reasoning_short || "").slice(0, 800);
-
-  const evidence_activity_ids = Array.isArray(parsed.evidence_activity_ids) ? parsed.evidence_activity_ids.slice(0, 60) : [];
-  const suggested_next_best_5 = Array.isArray(parsed.suggested_next_best_5) ? parsed.suggested_next_best_5.slice(0, 10) : heuristic_next_best_5;
-
-  const result_client_ids = Array.isArray(parsed.result_client_ids) ? parsed.result_client_ids : [];
-  const result_activity_ids = Array.isArray(parsed.result_activity_ids) ? parsed.result_activity_ids : [];
-
-  // Resolve IDs -> rows for UI list population
-  const clientMap = new Map(clients.map(c => [c.id, c]));
-  const resolvedClients = result_client_ids.map(id => clientMap.get(id)).filter(Boolean).slice(0, 80);
-  const resolvedActs = result_activity_ids.map(id => actById.get(id)).filter(Boolean).slice(0, 150);
-
-  return {
-    reply,
-    reasoning_short,
-    suggested_next_best_5,
-    evidence_activity_ids,
-    results: {
-      clients: resolvedClients.length ? resolvedClients : clients.slice(0, 25),
-      activities: resolvedActs.length ? resolvedActs : activities.slice(0, 25)
-    }
-  };
-}
-
-// Chat-style Copilot endpoint
-app.post("/crm/copilot", asyncHandler(async (req, res) => {
-  const token = req.body?.token || req.query.token;
-  const message = String(req.body?.message || "").trim();
-  const days = Number(req.body?.days || 30) || 30;
-
-  if (!token) return res.status(400).json({ ok: false, error: "token required" });
-  if (!message) return res.status(400).json({ ok: false, error: "message required" });
-
-  const site = await getSiteByToken(token);
-  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
-
-  const out = await runCrmCopilot({ site_id: site.site_id, message, days });
-  res.json({ ok: true, ...out });
+  res.json({ ok: true, leads, clients });
 }));
 
-// Backward-compatible "search" endpoint: treated as a Copilot question.
-// Accepts {token, query, days} and returns {ok, reply, results:{clients,activities}, suggested_next_best_5}
-app.post("/crm/ai_search", asyncHandler(async (req, res) => {
-  const token = req.body?.token || req.query.token;
-  const query = String(req.body?.query || "").trim();
-  const days = Number(req.body?.days || 30) || 30;
 
-  if (!token) return res.status(400).json({ ok: false, error: "token required" });
-  if (!query) return res.status(400).json({ ok: false, error: "query required" });
 
-  const site = await getSiteByToken(token);
-  if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
-  const out = await runCrmCopilot({ site_id: site.site_id, message: query, days });
-  res.json({ ok: true, ...out });
-}));
+
+
+
 
 app.get("/crm/clients", asyncHandler(async (req, res) => {
   setNoStore(res);
@@ -16645,13 +16559,13 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
         // Also seed CRM lead rows so the CRM tab is populated (not just analytics).
         try {
-          const leadNames = ["","","","Mia Chen","","Sophia Rivera","Liam Johnson","Olivia King"];
+          const leadNames = ["Jordan Lee","Ava Martinez","Noah Patel","Mia Chen","Ethan Brooks","Sophia Rivera","Liam Johnson","Olivia King"];
           const nm = leadNames[Math.floor(Math.random() * leadNames.length)];
           const local = nm.toLowerCase().replace(/[^a-z]+/g, ".");
           const doms = ["example.com","mail.com","acme.co","brightside.io","northstar.fit","summit.group"];
           const email = `${local}${Math.floor(Math.random()*90+10)}@${doms[Math.floor(Math.random()*doms.length)]}`;
           const phone = `+1 (555) 30${Math.floor(Math.random()*10)}-${Math.floor(Math.random()*9000+1000)}`;
-          const notes = "Demo interaction created by seed (name omitted). Interested in pricing / next steps.";
+          const notes = "Demo lead created by seed. Interested in pricing / next steps.";
 
 
 
@@ -16948,10 +16862,10 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
     const demoClients = [
-      { name: "", email: "info@acmeplumbing.com", stage: "lead", health: "ok", phone: "+1 (555) 201-1001" },
-      { name: "", email: "hello@brightsidedental.com", stage: "lead", health: "ok", phone: "+1 (555) 201-1002" },
-      { name: "", email: "manager@northstarfitness.com", stage: "active", health: "good", phone: "+1 (555) 201-1003" },
-      { name: "", email: "team@summitrealtygroup.com", stage: "active", health: "at_risk", phone: "+1 (555) 201-1004" }
+      { name: "Acme Plumbing", email: "info@acmeplumbing.com", stage: "lead", health: "ok", phone: "+1 (555) 201-1001" },
+      { name: "Brightside Dental", email: "hello@brightsidedental.com", stage: "lead", health: "ok", phone: "+1 (555) 201-1002" },
+      { name: "Northstar Fitness", email: "manager@northstarfitness.com", stage: "active", health: "good", phone: "+1 (555) 201-1003" },
+      { name: "Summit Realty Group", email: "team@summitrealtygroup.com", stage: "active", health: "at_risk", phone: "+1 (555) 201-1004" }
     ];
 
 
@@ -17159,7 +17073,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           "Hi! We found you on Google. Can you quote a same-day repair? Also curious about pricing and scheduling.",
         meta: { demo: true }
       },
-      { emailA: "info@acmeplumbing.com", emailB: bizEmail, name: "" }
+      { emailA: "info@acmeplumbing.com", emailB: bizEmail, name: "Acme Plumbing" }
     );
 
 
@@ -17206,7 +17120,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           "Thanks for reaching out! Here are 2 options and the earliest availability. If you can confirm an address + time window, we can lock it in.",
         meta: { demo: true }
       },
-      { emailA: bizEmail, emailB: "info@acmeplumbing.com", name: "" }
+      { emailA: bizEmail, emailB: "info@acmeplumbing.com", name: "Acme Plumbing" }
     );
 
 
@@ -17252,7 +17166,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           "15-min call: they want a monthly plan and asked about response times. They mentioned they get ~2–3 leads/day.",
         meta: { demo: true }
       },
-      { phone: "+1 (555) 201-1002", name: "" }
+      { phone: "+1 (555) 201-1002", name: "Brightside Dental" }
     );
 
 
@@ -17299,7 +17213,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           "Attached proposal. Key goals: increase qualified leads, reduce form drop-off, and measure CTA performance. Happy to walk through it.",
         meta: { demo: true }
       },
-      { emailA: bizEmail, emailB: "hello@brightsidedental.com", name: "" }
+      { emailA: bizEmail, emailB: "hello@brightsidedental.com", name: "Brightside Dental" }
     );
 
 
@@ -17346,7 +17260,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           "We added new classes and updated the homepage hero. Can you verify the tracking still looks right and send the updated report?",
         meta: { demo: true }
       },
-      { emailA: "manager@northstarfitness.com", emailB: bizEmail, name: "" }
+      { emailA: "manager@northstarfitness.com", emailB: bizEmail, name: "Northstar Fitness" }
     );
 
 
@@ -17393,7 +17307,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           "We noticed fewer inquiries. Anything change? Can you check where people are dropping off and what we should fix first?",
         meta: { demo: true }
       },
-      { emailA: "team@summitrealtygroup.com", emailB: bizEmail, name: "" }
+      { emailA: "team@summitrealtygroup.com", emailB: bizEmail, name: "Summit Realty Group" }
     );
 
 
@@ -20079,7 +19993,7 @@ You are Constrava's CRM autopilot.
 
 
 The user will ask questions like:
-- "What is the status of ?"
+- "What is the status of Acme Plumbing?"
 - "When did we last talk to Sarah?"
 - "Which clients are at risk?"
 - "How many calls did we have this week?"
@@ -27533,6 +27447,21 @@ pre{
 
 
 <div id="sectionCRM" style="display:none">
+
+  <div class="card span12" style="border:1px dashed var(--line);background:rgba(124,58,237,0.10);">
+    <div style="display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:950">CRM is under development</div>
+        <div class="muted" style="margin-top:4px">
+          This area is still in progress. Some features may be incomplete or change without notice.
+        </div>
+      </div>
+      <div class="pill" style="border-color:rgba(124,58,237,0.35);background:rgba(124,58,237,0.16);color:var(--ink);">
+        Coming soon
+      </div>
+    </div>
+  </div>
+
   <div class="grid">
 
 
@@ -27595,11 +27524,11 @@ pre{
       <div class="grid" style="margin-top:0;gap:10px">
         <!-- Lead tools -->
         
-        <!-- CRM Assistant (single interface) -->
+        <!-- CRM AI Search (single interface) -->
         <div class="card span12" style="background: var(--panel2); box-shadow:none">
           <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
             <div>
-              <div style="font-weight:950">CRM Assistant</div>
+              <div style="font-weight:950">CRM AI Search</div>
               <div class="muted">
                 Ask things like: <span class="mono">find ava</span>, <span class="mono">recent leads</span>,
                 <span class="mono">status:new</span>, <span class="mono">clients idle 14</span>, <span class="mono">leads from /contact</span>.
@@ -27640,14 +27569,7 @@ pre{
 
 
 
-          
-          <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap">
-            <button class="btnGhost" id="crmQaNext5" type="button">Next best 5</button>
-            <button class="btnGhost" id="crmQaCalledEmailed" type="button">Called → emailed back</button>
-            <button class="btnGhost" id="crmQaPricing" type="button">Mentions pricing</button>
-            <button class="btnGhost" id="crmQaUnmatched" type="button">Unmatched activity</button>
-          </div>
-<div class="muted" style="margin-top:10px">Results populate the Leads + Clients lists below.</div>
+          <div class="muted" style="margin-top:10px">Results populate the Leads + Clients lists below.</div>
         </div>
 
 
@@ -31734,7 +31656,7 @@ app.get("/dashboard.js", (req, res) => {
     lines.push("CLIENTS (" + clientHits.length + (clientHits.length === 12 ? "+": "") + ")");
     if(!clientHits.length) lines.push("- —");
     for(const c of clientHits){
-      const title = (c.full_name || c.primary_email || c.primary_phone || "(unknown)") + (c.stage ? (" • " + c.stage) : "");
+      const title = (c.full_name || "(no name)") + (c.stage ? (" • " + c.stage) : "");
       const sub = [
         c.primary_email ? ("email: " + c.primary_email) : null,
         c.primary_phone ? ("phone: " + c.primary_phone) : null,
@@ -32453,7 +32375,7 @@ async function loadCrmClients(q){
 
 
   for(const c of j.clients){
-    const title = (c.full_name || c.primary_email || c.primary_phone || "(unknown)") + (c.stage ? " • " + c.stage : "");
+    const title = (c.full_name || "(no name)") + (c.stage ? " • " + c.stage : "");
     const sub = [
       c.primary_email ? ("email: " + c.primary_email) : null,
       c.primary_phone ? ("phone: " + c.primary_phone) : null,
@@ -38853,7 +38775,7 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
 
 
 
-  // CRM Assistant: single search box that returns leads + clients and updates BOTH lists.
+  // CRM AI Search: single search box that returns leads + clients and updates BOTH lists.
   function renderClientsFromArray(clients){
     const box = $("crmClients");
     if(!box) return;
@@ -38868,7 +38790,7 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
 
 
     for(const c of clients){
-      const title = (c.full_name || c.primary_email || c.primary_phone || "(unknown)") + (c.stage ? " • " + c.stage : "");
+      const title = (c.full_name || "(no name)") + (c.stage ? " • " + c.stage : "");
       const sub = [
         c.primary_email ? ("email: " + c.primary_email) : null,
         c.primary_phone ? ("phone: " + c.primary_phone) : null,
@@ -38962,7 +38884,7 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
       lines.push("");
       lines.push("Clients: " + (j.clients || []).length);
       (j.clients || []).slice(0, 8).forEach((c) => {
-        lines.push("- " + (c.full_name || c.primary_email || c.primary_phone || "(unnamed)") + " • " + (c.primary_email || "") + " • " + (c.stage || ""));
+        lines.push("- " + (c.full_name || "(unnamed)") + " • " + (c.primary_email || "") + " • " + (c.stage || ""));
       });
       lines.push("");
       lines.push("Leads: " + (j.leads || []).length);
@@ -39008,7 +38930,7 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
 
 
 
-    // CRM Assistant wiring (replaces separate lead/client/chat search boxes)
+    // CRM AI Search wiring (replaces separate lead/client/chat search boxes)
     if ($("crmAiSend")) $("crmAiSend").addEventListener("click", crmAiRun);
     if ($("crmAiInput")) $("crmAiInput").addEventListener("keydown", (e) => { if (e.key === "Enter") crmAiRun(); });
     if ($("crmAiClear")) $("crmAiClear").addEventListener("click", async () => {
