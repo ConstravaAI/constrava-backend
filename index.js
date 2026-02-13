@@ -12275,7 +12275,7 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 
-// CRM AI Search (deterministic; works without OPENAI_API_KEY).
+// CRM Assistant (deterministic; works without OPENAI_API_KEY).
 // Interprets simple phrases/filters and returns matching leads + clients.
 
 // CRM Copilot (AI employee): answers CRM questions by reasoning over raw activities + clients.
@@ -12455,7 +12455,7 @@ Rules:
   suggested_next_best_5 (array of {client_id,name,email,why}),
   evidence_activity_ids (array of activity ids you relied on),
   result_client_ids (array), result_activity_ids (array).
-- If you infer that two activities refer to the same person (call has name, email lacks name), explain briefly in reasoning_short and include the activity IDs in evidence_activity_ids.
+- Assume names are often missing. Stitch identity across scraps (emails, phone numbers, domains, timing, writing style, signatures, call receipts). If you infer that two activities refer to the same person, explain briefly in reasoning_short and include the activity IDs in evidence_activity_ids.
 - Keep it concise and action-oriented.`;
 
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
@@ -16645,13 +16645,13 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
         // Also seed CRM lead rows so the CRM tab is populated (not just analytics).
         try {
-          const leadNames = ["Jordan Lee","Ava Martinez","Noah Patel","Mia Chen","Ethan Brooks","Sophia Rivera","Liam Johnson","Olivia King"];
+          const leadNames = ["","","","Mia Chen","","Sophia Rivera","Liam Johnson","Olivia King"];
           const nm = leadNames[Math.floor(Math.random() * leadNames.length)];
           const local = nm.toLowerCase().replace(/[^a-z]+/g, ".");
           const doms = ["example.com","mail.com","acme.co","brightside.io","northstar.fit","summit.group"];
           const email = `${local}${Math.floor(Math.random()*90+10)}@${doms[Math.floor(Math.random()*doms.length)]}`;
           const phone = `+1 (555) 30${Math.floor(Math.random()*10)}-${Math.floor(Math.random()*9000+1000)}`;
-          const notes = "Demo lead created by seed. Interested in pricing / next steps.";
+          const notes = "Demo interaction created by seed (name omitted). Interested in pricing / next steps.";
 
 
 
@@ -16948,10 +16948,10 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
     const demoClients = [
-      { name: "Acme Plumbing", email: "info@acmeplumbing.com", stage: "lead", health: "ok", phone: "+1 (555) 201-1001" },
-      { name: "Brightside Dental", email: "hello@brightsidedental.com", stage: "lead", health: "ok", phone: "+1 (555) 201-1002" },
-      { name: "Northstar Fitness", email: "manager@northstarfitness.com", stage: "active", health: "good", phone: "+1 (555) 201-1003" },
-      { name: "Summit Realty Group", email: "team@summitrealtygroup.com", stage: "active", health: "at_risk", phone: "+1 (555) 201-1004" }
+      { name: "", email: "info@acmeplumbing.com", stage: "lead", health: "ok", phone: "+1 (555) 201-1001" },
+      { name: "", email: "hello@brightsidedental.com", stage: "lead", health: "ok", phone: "+1 (555) 201-1002" },
+      { name: "", email: "manager@northstarfitness.com", stage: "active", health: "good", phone: "+1 (555) 201-1003" },
+      { name: "", email: "team@summitrealtygroup.com", stage: "active", health: "at_risk", phone: "+1 (555) 201-1004" }
     ];
 
 
@@ -17159,7 +17159,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           "Hi! We found you on Google. Can you quote a same-day repair? Also curious about pricing and scheduling.",
         meta: { demo: true }
       },
-      { emailA: "info@acmeplumbing.com", emailB: bizEmail, name: "Acme Plumbing" }
+      { emailA: "info@acmeplumbing.com", emailB: bizEmail, name: "" }
     );
 
 
@@ -17206,7 +17206,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           "Thanks for reaching out! Here are 2 options and the earliest availability. If you can confirm an address + time window, we can lock it in.",
         meta: { demo: true }
       },
-      { emailA: bizEmail, emailB: "info@acmeplumbing.com", name: "Acme Plumbing" }
+      { emailA: bizEmail, emailB: "info@acmeplumbing.com", name: "" }
     );
 
 
@@ -17252,7 +17252,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           "15-min call: they want a monthly plan and asked about response times. They mentioned they get ~2–3 leads/day.",
         meta: { demo: true }
       },
-      { phone: "+1 (555) 201-1002", name: "Brightside Dental" }
+      { phone: "+1 (555) 201-1002", name: "" }
     );
 
 
@@ -17299,7 +17299,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           "Attached proposal. Key goals: increase qualified leads, reduce form drop-off, and measure CTA performance. Happy to walk through it.",
         meta: { demo: true }
       },
-      { emailA: bizEmail, emailB: "hello@brightsidedental.com", name: "Brightside Dental" }
+      { emailA: bizEmail, emailB: "hello@brightsidedental.com", name: "" }
     );
 
 
@@ -17346,7 +17346,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           "We added new classes and updated the homepage hero. Can you verify the tracking still looks right and send the updated report?",
         meta: { demo: true }
       },
-      { emailA: "manager@northstarfitness.com", emailB: bizEmail, name: "Northstar Fitness" }
+      { emailA: "manager@northstarfitness.com", emailB: bizEmail, name: "" }
     );
 
 
@@ -17393,7 +17393,7 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
           "We noticed fewer inquiries. Anything change? Can you check where people are dropping off and what we should fix first?",
         meta: { demo: true }
       },
-      { emailA: "team@summitrealtygroup.com", emailB: bizEmail, name: "Summit Realty Group" }
+      { emailA: "team@summitrealtygroup.com", emailB: bizEmail, name: "" }
     );
 
 
@@ -20079,7 +20079,7 @@ You are Constrava's CRM autopilot.
 
 
 The user will ask questions like:
-- "What is the status of Acme Plumbing?"
+- "What is the status of ?"
 - "When did we last talk to Sarah?"
 - "Which clients are at risk?"
 - "How many calls did we have this week?"
@@ -27595,11 +27595,11 @@ pre{
       <div class="grid" style="margin-top:0;gap:10px">
         <!-- Lead tools -->
         
-        <!-- CRM AI Search (single interface) -->
+        <!-- CRM Assistant (single interface) -->
         <div class="card span12" style="background: var(--panel2); box-shadow:none">
           <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
             <div>
-              <div style="font-weight:950">CRM AI Search</div>
+              <div style="font-weight:950">CRM Assistant</div>
               <div class="muted">
                 Ask things like: <span class="mono">find ava</span>, <span class="mono">recent leads</span>,
                 <span class="mono">status:new</span>, <span class="mono">clients idle 14</span>, <span class="mono">leads from /contact</span>.
@@ -27640,7 +27640,14 @@ pre{
 
 
 
-          <div class="muted" style="margin-top:10px">Results populate the Leads + Clients lists below.</div>
+          
+          <div class="row" style="margin-top:10px;gap:10px;flex-wrap:wrap">
+            <button class="btnGhost" id="crmQaNext5" type="button">Next best 5</button>
+            <button class="btnGhost" id="crmQaCalledEmailed" type="button">Called → emailed back</button>
+            <button class="btnGhost" id="crmQaPricing" type="button">Mentions pricing</button>
+            <button class="btnGhost" id="crmQaUnmatched" type="button">Unmatched activity</button>
+          </div>
+<div class="muted" style="margin-top:10px">Results populate the Leads + Clients lists below.</div>
         </div>
 
 
@@ -31727,7 +31734,7 @@ app.get("/dashboard.js", (req, res) => {
     lines.push("CLIENTS (" + clientHits.length + (clientHits.length === 12 ? "+": "") + ")");
     if(!clientHits.length) lines.push("- —");
     for(const c of clientHits){
-      const title = (c.full_name || "(no name)") + (c.stage ? (" • " + c.stage) : "");
+      const title = (c.full_name || c.primary_email || c.primary_phone || "(unknown)") + (c.stage ? (" • " + c.stage) : "");
       const sub = [
         c.primary_email ? ("email: " + c.primary_email) : null,
         c.primary_phone ? ("phone: " + c.primary_phone) : null,
@@ -32446,7 +32453,7 @@ async function loadCrmClients(q){
 
 
   for(const c of j.clients){
-    const title = (c.full_name || "(no name)") + (c.stage ? " • " + c.stage : "");
+    const title = (c.full_name || c.primary_email || c.primary_phone || "(unknown)") + (c.stage ? " • " + c.stage : "");
     const sub = [
       c.primary_email ? ("email: " + c.primary_email) : null,
       c.primary_phone ? ("phone: " + c.primary_phone) : null,
@@ -38846,7 +38853,7 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
 
 
 
-  // CRM AI Search: single search box that returns leads + clients and updates BOTH lists.
+  // CRM Assistant: single search box that returns leads + clients and updates BOTH lists.
   function renderClientsFromArray(clients){
     const box = $("crmClients");
     if(!box) return;
@@ -38861,7 +38868,7 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
 
 
     for(const c of clients){
-      const title = (c.full_name || "(no name)") + (c.stage ? " • " + c.stage : "");
+      const title = (c.full_name || c.primary_email || c.primary_phone || "(unknown)") + (c.stage ? " • " + c.stage : "");
       const sub = [
         c.primary_email ? ("email: " + c.primary_email) : null,
         c.primary_phone ? ("phone: " + c.primary_phone) : null,
@@ -38955,7 +38962,7 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
       lines.push("");
       lines.push("Clients: " + (j.clients || []).length);
       (j.clients || []).slice(0, 8).forEach((c) => {
-        lines.push("- " + (c.full_name || "(unnamed)") + " • " + (c.primary_email || "") + " • " + (c.stage || ""));
+        lines.push("- " + (c.full_name || c.primary_email || c.primary_phone || "(unnamed)") + " • " + (c.primary_email || "") + " • " + (c.stage || ""));
       });
       lines.push("");
       lines.push("Leads: " + (j.leads || []).length);
@@ -39001,7 +39008,7 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
 
 
 
-    // CRM AI Search wiring (replaces separate lead/client/chat search boxes)
+    // CRM Assistant wiring (replaces separate lead/client/chat search boxes)
     if ($("crmAiSend")) $("crmAiSend").addEventListener("click", crmAiRun);
     if ($("crmAiInput")) $("crmAiInput").addEventListener("keydown", (e) => { if (e.key === "Enter") crmAiRun(); });
     if ($("crmAiClear")) $("crmAiClear").addEventListener("click", async () => {
