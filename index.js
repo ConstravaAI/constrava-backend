@@ -31,10 +31,42 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import express from "express";
 import cors from "cors";
 import pkg from "pg";
 import crypto from "crypto";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -69,8 +101,40 @@ const app = express();
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // IMPORTANT for Render / reverse proxies (req.protocol + secure cookies)
 app.set("trust proxy", 1);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -112,6 +176,22 @@ app.use(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -130,8 +210,40 @@ app.use(express.urlencoded({ extended: true }));
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const PORT = process.env.PORT || 10000;
 const DATABASE_URL = process.env.DATABASE_URL;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -168,10 +280,42 @@ if (!DATABASE_URL) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: process.env.PGSSL === "true" ? { rejectUnauthorized: false } : undefined
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -210,6 +354,22 @@ function asyncHandler(fn) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function setNoStore(res) {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.setHeader("Pragma", "no-cache");
@@ -231,8 +391,40 @@ function setNoStore(res) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function publicBaseUrl(req) {
   if (process.env.PUBLIC_BASE_URL) return process.env.PUBLIC_BASE_URL;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -268,9 +460,41 @@ function publicBaseUrl(req) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   if (host) return `${proto}://${host}`;
   return "https://constrava-backend.onrender.com";
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -291,6 +515,22 @@ function publicEventsUrl(req) {
   if (process.env.PUBLIC_EVENTS_URL) return process.env.PUBLIC_EVENTS_URL;
   return publicBaseUrl(req);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -328,11 +568,43 @@ function requireEnv(name) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function normalizeDays(input) {
   const n = parseInt(String(input ?? "7"), 10);
   const allowed = new Set([1, 7, 30, 365, 730, 1825]);
   return allowed.has(n) ? n : 7;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -356,6 +628,22 @@ function normalizeSiteId(raw) {
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9-]/g, "");
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -397,6 +685,22 @@ function validateSiteId(site_id) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function validateCustomToken(token) {
   if (!token) return "access token is required";
   if (token.length < 20) return "access token must be at least 20 characters";
@@ -406,6 +710,22 @@ function validateCustomToken(token) {
   if (!/[^A-Za-z0-9]/.test(token)) return "access token must include a symbol";
   return null;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -441,11 +761,43 @@ function safeEmail(x) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function clamp01(n) {
   const x = Number(n);
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -487,6 +839,22 @@ function planGate(site, allowedPlans) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    Password hashing (no bcrypt)
 ----------------------------*/
@@ -511,12 +879,44 @@ function hashPassword(password) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function verifyPassword(password, saltHex, hashHex) {
   const salt = Buffer.from(saltHex, "hex");
   const hash = Buffer.from(hashHex, "hex");
   const test = crypto.scryptSync(String(password), salt, 64);
   return crypto.timingSafeEqual(hash, test);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -565,6 +965,22 @@ function getCookie(req, name) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function setCookie(res, name, value, opts = {}) {
   const {
     httpOnly = true,
@@ -573,6 +989,22 @@ function setCookie(res, name, value, opts = {}) {
     path = "/",
     maxAgeSeconds = 60 * 60 * 24 * 14
   } = opts;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -615,9 +1047,41 @@ function setCookie(res, name, value, opts = {}) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function clearCookie(res, name) {
   res.setHeader("Set-Cookie", `${name}=; Path=/; Max-Age=0; SameSite=Lax`);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -648,6 +1112,22 @@ async function getSiteByToken(token) {
   );
   return r.rows[0] || null;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -706,12 +1186,60 @@ async function getSiteById(site_id) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    CRM helpers (matching + inference)
 ----------------------------*/
 function normEmail(v){ return String(v||"").trim().toLowerCase(); }
 function normPhone(v){ return String(v||"").replace(/[^0-9+]/g,"").trim(); }
 function normName(v){ return String(v||"").trim().toLowerCase(); }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -738,6 +1266,22 @@ function diceCoeff(a,b){
   for (const x of A) if (B.has(x)) inter++;
   return (2*inter) / (A.size + B.size);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -781,9 +1325,41 @@ async function findClientByIdentity(site_id, kind, value){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async function upsertClient(site_id, { full_name, email, phone, stage }){
   const e = email ? normEmail(email) : null;
   const p = phone ? normPhone(phone) : null;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -821,11 +1397,43 @@ async function upsertClient(site_id, { full_name, email, phone, stage }){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // try phone identity
   if (p){
     const existing = await findClientByIdentity(site_id, "phone", p);
     if (existing) return existing;
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -850,6 +1458,22 @@ async function upsertClient(site_id, { full_name, email, phone, stage }){
     [site_id, full_name ? String(full_name).trim() : null, e, p, stage || "lead"]
   );
   const c = r.rows[0];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -920,8 +1544,40 @@ async function upsertClient(site_id, { full_name, email, phone, stage }){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   return c;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -964,8 +1620,40 @@ async function addIdentity(site_id, client_id, kind, value){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
   const candidates = [];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -994,8 +1682,32 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
 
 
 
+
+
+
+
+
+
+
+
   const dom1 = e1 && e1.includes("@") ? e1.split("@").pop() : "";
   const dom2 = e2 && e2.includes("@") ? e2.split("@").pop() : "";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1028,6 +1740,14 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
 
 
 
+
+
+
+
+
+
+
+
   // domain match (useful when aliases change but domain stays)
   if (dom1){
     const c = await findClientByIdentity(site_id, "domain", dom1);
@@ -1041,6 +1761,22 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
     const c = await findClientByIdentity(site_id, "phone", ph);
     if (c) candidates.push({ client:c, confidence:0.90, reason:"Matched phone: " + ph });
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1094,9 +1830,41 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   candidates.sort((a,b)=> (b.confidence||0)-(a.confidence||0));
   return candidates[0] || null;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1149,7 +1917,39 @@ async function createActivityWithMatch(site_id, activity, matchHint){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const act = r.rows[0];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1190,12 +1990,60 @@ async function createActivityWithMatch(site_id, activity, matchHint){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     await pool.query(
       `UPDATE crm_clients
        SET last_touch_at = GREATEST(COALESCE(last_touch_at, '1970-01-01'::timestamptz), $2::timestamptz)
        WHERE id=$1`,
       [best.client.id, act.occurred_at]
     );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1262,8 +2110,40 @@ try {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 return { activity: act, match: { ...best, status } };
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1301,8 +2181,40 @@ return { activity: act, match: { ...best, status } };
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   return { activity: act, match: null };
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1322,6 +2234,22 @@ return { activity: act, match: { ...best, status } };
 async function getSession(req) {
   const sid = getCookie(req, "constrava_session");
   if (!sid) return null;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1362,8 +2290,40 @@ async function getSession(req) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const row = r.rows[0];
   if (!row) return null;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1398,8 +2358,40 @@ async function getSession(req) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   return row;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1446,6 +2438,22 @@ async function ensureTables() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id BIGSERIAL PRIMARY KEY,
@@ -1472,6 +2480,22 @@ async function ensureTables() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS sessions (
       session_id TEXT PRIMARY KEY,
@@ -1480,6 +2504,22 @@ async function ensureTables() {
       expires_at TIMESTAMPTZ NOT NULL
     );
   `);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1522,6 +2562,22 @@ async function ensureTables() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 await pool.query(`
     
 CREATE TABLE IF NOT EXISTS crm_leads (
@@ -1536,6 +2592,22 @@ CREATE TABLE IF NOT EXISTS crm_leads (
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1590,6 +2662,22 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS crm_identities (
       id BIGSERIAL PRIMARY KEY,
@@ -1601,6 +2689,22 @@ CREATE TABLE IF NOT EXISTS crm_leads (
       UNIQUE(site_id, kind, value)
     );
   `);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1650,6 +2754,22 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS crm_activity_matches (
       id BIGSERIAL PRIMARY KEY,
@@ -1662,6 +2782,22 @@ CREATE TABLE IF NOT EXISTS crm_leads (
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1698,10 +2834,42 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`
     CREATE INDEX IF NOT EXISTS crm_matches_site_status_idx
       ON crm_activity_matches (site_id, status, created_at DESC);
   `);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1749,6 +2917,22 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS subject TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS body_text TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS meta JSONB;`);
@@ -1779,6 +2963,22 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS demo_links (
       code TEXT PRIMARY KEY,
@@ -1786,6 +2986,38 @@ CREATE TABLE IF NOT EXISTS crm_leads (
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1845,9 +3077,41 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS subject TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS body TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS meta JSONB;`);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1881,8 +3145,40 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   console.log("✅ Tables ready");
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1919,10 +3215,42 @@ app.get("/", (req, res) => res.send("Backend is running ✅"));
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.get("/health", asyncHandler(async (req, res) => {
   const r = await pool.query("SELECT 1 as ok");
   res.json({ ok: true, db: r.rows[0]?.ok === 1 });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1959,11 +3287,43 @@ app.get("/db-test", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.get("/debug/site", asyncHandler(async (req, res) => {
   const token = req.query.token;
   const site = await getSiteByToken(token);
   res.json({ ok: true, site });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2002,9 +3362,41 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   if (!site_id || !email || !password || !token) {
     return res.status(400).json({ ok: false, error: "site_id, email, password, and token are required" });
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2040,6 +3432,22 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const e = safeEmail(email);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return res.status(400).json({ ok: false, error: "Invalid email" });
   if (String(password).length < 8) return res.status(400).json({ ok: false, error: "Password must be at least 8 characters" });
@@ -2059,7 +3467,39 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const { salt, hash } = hashPassword(password);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2108,6 +3548,22 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.post("/auth/login", asyncHandler(async (req, res) => {
   const { email, password } = req.body || {};
   const e = safeEmail(email);
@@ -2127,7 +3583,39 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   if (!e || !password) return res.status(400).json({ ok: false, error: "email and password required" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2168,6 +3656,22 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const u = r.rows[0];
   if (!verifyPassword(password, u.password_salt, u.password_hash)) {
     return res.status(401).json({ ok: false, error: "Invalid login" });
@@ -2188,8 +3692,40 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const session_id = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2227,6 +3763,22 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   setCookie(res, "constrava_session", session_id, {
     httpOnly: true,
     sameSite: "Lax",
@@ -2248,7 +3800,39 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteById(u.site_id);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2288,12 +3872,44 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.post("/auth/logout", asyncHandler(async (req, res) => {
   const sid = getCookie(req, "constrava_session");
   if (sid) await pool.query(`DELETE FROM sessions WHERE session_id=$1`, [sid]);
   clearCookie(res, "constrava_session");
   res.json({ ok: true });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2336,12 +3952,44 @@ app.get("/me", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    Onboarding: create a site
    POST /sites { site_id, site_name, owner_email, custom_token? }
 ----------------------------*/
 app.post("/sites", asyncHandler(async (req, res) => {
   const { site_id: rawSiteId, site_name, owner_email, custom_token } = req.body || {};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2377,9 +4025,41 @@ app.post("/sites", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site_id = normalizeSiteId(rawSiteId);
   const siteIdErr = validateSiteId(site_id);
   if (siteIdErr) return res.status(400).json({ ok: false, error: siteIdErr });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2402,6 +4082,22 @@ app.post("/sites", asyncHandler(async (req, res) => {
     if (tokErr) return res.status(400).json({ ok: false, error: tokErr });
     token = custom_token;
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2447,7 +4143,39 @@ app.post("/sites", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const base = publicBaseUrl(req);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2488,6 +4216,22 @@ app.post("/sites", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    Tracker script
    GET /tracker.js
@@ -2495,6 +4239,22 @@ app.post("/sites", asyncHandler(async (req, res) => {
 app.get("/tracker.js", (req, res) => {
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
   const endpoint = publicEventsUrl(req) + "/events";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2532,8 +4292,40 @@ app.get("/tracker.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     var siteId = script.getAttribute("data-site-id");
     if (!siteId) return;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2595,6 +4387,38 @@ app.get("/tracker.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    Receive events
    POST /events
@@ -2602,6 +4426,22 @@ app.get("/tracker.js", (req, res) => {
 app.post("/events", asyncHandler(async (req, res) => {
   const { site_id, event_name, page_type, device, lead_email, lead_name, lead_phone, lead_notes } = req.body || {};
   if (!site_id || !event_name) return res.status(400).json({ ok: false, error: "site_id and event_name required" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2636,11 +4476,43 @@ app.post("/events", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(
     `INSERT INTO events_raw (site_id, event_name, page_type, device)
      VALUES ($1,$2,$3,$4)`,
     [site_id, String(event_name), page_type || null, device || null]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2679,11 +4551,75 @@ app.post("/events", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     await pool.query(
       `INSERT INTO crm_leads (site_id, email, name, phone, source_page, status, notes)
        VALUES ($1,$2,$3,$4,$5,'new',$6)`,
       [site_id, email, name, phone, page_type || null, notes]
     );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2757,10 +4693,42 @@ try {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     // keep identities fresh
     if (email) await addIdentity(site_id, client.id, "email", normEmail(email));
     if (phone) await addIdentity(site_id, client.id, "phone", normPhone(phone));
     if (name) await addIdentity(site_id, client.id, "name", normName(name));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2813,6 +4781,22 @@ try {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true });
 }));
 /* ---------------------------
@@ -2839,8 +4823,40 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2877,11 +4893,43 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(
     `INSERT INTO events_raw (site_id, event_name, page_type, device)
      VALUES ($1,$2,$3,$4)`,
     [site.site_id, event_name, page_type || "/", device || "desktop"]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2920,11 +4968,35 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     await pool.query(
       `INSERT INTO crm_leads (site_id, email, name, phone, source_page, status, notes)
        VALUES ($1,$2,$3,$4,$5,'new',$6)`,
       [site.site_id, email, name, phone, page_type || "/", notes]
     );
+
+
+
+
+
+
+
+
 
 
 
@@ -2949,9 +5021,25 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
       if (email) await addIdentity(site.site_id, client.id, "email", normEmail(email));
       if (phone) await addIdentity(site.site_id, client.id, "phone", normPhone(phone));
       if (name) await addIdentity(site.site_id, client.id, "name", normName(name));
+
+
+
+
+
+
+
+
 
 
 
@@ -2986,7 +5074,31 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3005,6 +5117,22 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
 
   res.json({ ok: true });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3043,6 +5171,22 @@ app.get("/live", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const token = req.query.token;
   const since = req.query.since;
   if (!token) return res.status(400).json({ ok: false, error: "token required" });
@@ -3062,8 +5206,40 @@ app.get("/live", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3100,12 +5276,44 @@ app.get("/live", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const params = [site.site_id];
   let whereSince = "";
   if (sinceDate) {
     params.push(sinceDate.toISOString());
     whereSince = " AND created_at > $2";
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3148,6 +5356,22 @@ app.get("/live", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const lastEventRes = await pool.query(
     `
     SELECT event_name, page_type, device, created_at
@@ -3158,6 +5382,22 @@ app.get("/live", asyncHandler(async (req, res) => {
     `,
     [site.site_id]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3199,6 +5439,22 @@ app.get("/live", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    DEMO: shareable link
    POST /demo/link { token } -> { url }
@@ -3207,6 +5463,22 @@ app.get("/live", asyncHandler(async (req, res) => {
 app.post("/demo/link", asyncHandler(async (req, res) => {
   const { token } = req.body || {};
   if (!token) return res.status(400).json({ ok: false, error: "token required" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3241,8 +5513,40 @@ app.post("/demo/link", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const code = crypto.randomBytes(4).toString("hex");
   await pool.query(`INSERT INTO demo_links (code, token) VALUES ($1,$2)`, [code, token]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3262,6 +5566,22 @@ app.post("/demo/link", asyncHandler(async (req, res) => {
   const base = process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
   res.json({ ok: true, code, url: `${base}/d/${code}` });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3301,12 +5621,44 @@ app.get("/d/:code", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    Metrics
    GET /metrics?token=...&days=7
 ----------------------------*/
 app.get("/metrics", asyncHandler(async (req, res) => {
   setNoStore(res);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3342,9 +5694,41 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site_id = site.site_id;
   const bizEmail = (site.owner_email || "owner@example.com").toLowerCase();
   const days = normalizeDays(req.query.days);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3387,7 +5771,39 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const startDateInterval = `${days - 1} days`;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3433,7 +5849,39 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const visits_range = trendRes.rows.reduce((sum, r) => sum + (r.visits || 0), 0);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3480,6 +5928,22 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const deviceRes = await pool.query(
     `
     SELECT
@@ -3492,6 +5956,22 @@ app.get("/metrics", asyncHandler(async (req, res) => {
     `,
     [site_id, days]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3536,6 +6016,22 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const lastEventRes = await pool.query(
     `
     SELECT event_name, page_type, device, created_at
@@ -3546,6 +6042,22 @@ app.get("/metrics", asyncHandler(async (req, res) => {
     `,
     [site_id]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3581,8 +6093,40 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const conversion_rate = visits_range ? Number((leads / visits_range).toFixed(4)) : 0;
   const purchase_rate = visits_range ? Number((purchases / visits_range).toFixed(4)) : 0;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3605,6 +6149,22 @@ app.get("/metrics", asyncHandler(async (req, res) => {
     views: r.views,
     share: totalRangeViews ? Math.round((r.views / totalRangeViews) * 100) : 0
   }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3671,6 +6231,38 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    CRM (Leads)
    GET /crm?token=...&limit=100
@@ -3678,6 +6270,22 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 ----------------------------*/
 app.get("/crm", asyncHandler(async (req, res) => {
   setNoStore(res);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3713,7 +6321,39 @@ app.get("/crm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const limit = Math.min(parseInt(req.query.limit || "100", 10), 300);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3754,8 +6394,40 @@ app.get("/crm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, leads: r.rows });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3792,8 +6464,40 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3828,6 +6532,22 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const r = await pool.query(
     `UPDATE crm_leads
      SET status = COALESCE($3, status),
@@ -3836,6 +6556,22 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
      RETURNING id, email, name, phone, source_page, status, notes, created_at`,
     [site.site_id, lead_id, s, n]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3887,9 +6623,57 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    CRM v2 (clients + activities + matching)
 ----------------------------*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3911,6 +6695,10 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
 // CRM AI Search (deterministic; works without OPENAI_API_KEY).
 // Interprets simple phrases/filters and returns matching leads + clients.
 app.post("/crm/ai_search", asyncHandler(async (req, res) => {
@@ -3919,12 +6707,18 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
   const days = Number(req.body.days || 30) || 30;
 
 
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
 
+
+
   const q = query.toLowerCase();
   const limit = 180;
+
+
 
 
   const has = (s) => q.includes(s);
@@ -3935,16 +6729,24 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
   };
 
 
+
+
   // ---- Leads ----
   const leadDays = has("recent") ? pickInt(/recent\s+(\d+)/i, 7) : days;
+
+
 
 
   const statusMatch = q.match(/status\s*:\s*([a-z_\-]+)/i);
   const pageMatch = q.match(/(?:from\s+)(\/[^\s]+)|page\s*:\s*([^\s]+)/i);
 
 
+
+
   let leadWhere = "site_id=$1 AND created_at >= NOW() - ($2::int || ' days')::interval";
   const leadVals = [site.site_id, leadDays];
+
+
 
 
   if (statusMatch){
@@ -3960,10 +6762,14 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
   }
 
 
+
+
   if (query){
     leadVals.push(query);
     leadWhere += ` AND (email ILIKE '%' || $${leadVals.length} || '%' OR name ILIKE '%' || $${leadVals.length} || '%' OR phone ILIKE '%' || $${leadVals.length} || '%' OR notes ILIKE '%' || $${leadVals.length} || '%')`;
   }
+
+
 
 
   const leads = (await pool.query(
@@ -3972,14 +6778,20 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
   )).rows;
 
 
+
+
   // ---- Clients ----
   const stageMatch = q.match(/stage\s*:\s*([a-z_\-]+)/i);
   const healthMatch = q.match(/health\s*:\s*([a-z_\-]+)/i);
   const idleDays = (has("idle") || has("no touch") || has("not touched")) ? pickInt(/(?:idle|touch)\s+(\d+)/i, 14) : null;
 
 
+
+
   let clientWhere = "site_id=$1";
   const clientVals = [site.site_id];
+
+
 
 
   if (stageMatch){
@@ -3996,10 +6808,14 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
   }
 
 
+
+
   if (query){
     clientVals.push(query);
     clientWhere += ` AND (full_name ILIKE '%' || $${clientVals.length} || '%' OR primary_email ILIKE '%' || $${clientVals.length} || '%' OR primary_phone ILIKE '%' || $${clientVals.length} || '%' OR notes ILIKE '%' || $${clientVals.length} || '%')`;
   }
+
+
 
 
   const clients = (await pool.query(
@@ -4008,8 +6824,12 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
   )).rows;
 
 
+
+
   res.json({ ok: true, leads, clients });
 }));
+
+
 
 
 app.get("/crm/clients", asyncHandler(async (req, res) => {
@@ -4032,8 +6852,40 @@ app.get("/crm/clients", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4056,6 +6908,22 @@ app.get("/crm/clients", asyncHandler(async (req, res) => {
     params.push("%" + q + "%");
     where = " AND (LOWER(COALESCE(full_name,'')) LIKE $2 OR LOWER(COALESCE(primary_email,'')) LIKE $2 OR LOWER(COALESCE(primary_phone,'')) LIKE $2)";
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4096,8 +6964,40 @@ app.get("/crm/clients", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, clients: r.rows });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4135,6 +7035,22 @@ app.post("/crm/clients", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const full_name = String(req.body?.full_name || "").trim();
   const email = String(req.body?.email || "").trim();
   const phone = String(req.body?.phone || "").trim();
@@ -4155,9 +7071,41 @@ app.post("/crm/clients", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   if (!full_name && !email && !phone) {
     return res.status(400).json({ ok: false, error: "Provide at least one of: full_name, email, phone" });
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4195,8 +7143,40 @@ app.post("/crm/clients", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, client: c });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4234,9 +7214,41 @@ app.get("/crm/client", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
   if (!client_id) return res.status(400).json({ ok: false, error: "client_id required" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4274,10 +7286,42 @@ app.get("/crm/client", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const ids = await pool.query(
     `SELECT kind, value FROM crm_identities WHERE site_id=$1 AND client_id=$2 ORDER BY kind, created_at DESC`,
     [site.site_id, client_id]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4319,8 +7363,40 @@ app.get("/crm/client", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, client: c.rows[0], identities: ids.rows, activities: acts.rows });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4343,6 +7419,22 @@ app.get("/crm/review", asyncHandler(async (req, res) => {
   const token = req.query.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4386,8 +7478,40 @@ app.get("/crm/review", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, queue: r.rows });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4425,6 +7549,22 @@ app.post("/crm/review/confirm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const mid = parseInt(match_id || "0", 10);
   const cid = parseInt(client_id || "0", 10);
   if (!mid || !cid) return res.status(400).json({ ok: false, error: "match_id and client_id required" });
@@ -4444,9 +7584,41 @@ app.post("/crm/review/confirm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // validate client belongs to site
   const c = await pool.query(`SELECT id FROM crm_clients WHERE site_id=$1 AND id=$2 LIMIT 1`, [site.site_id, cid]);
   if (!c.rows.length) return res.status(404).json({ ok:false, error:"Client not found" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4486,8 +7658,40 @@ app.post("/crm/review/confirm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, match: r.rows[0] });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4525,8 +7729,40 @@ app.post("/crm/review/reject", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const mid = parseInt(match_id || "0", 10);
   if (!mid) return res.status(400).json({ ok: false, error: "match_id required" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4563,8 +7799,40 @@ app.post("/crm/review/reject", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, match: r.rows[0] });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4603,9 +7871,41 @@ app.post("/crm/ingest/email", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const from_email = normEmail(req.body?.from_email);
   const to_email = normEmail(req.body?.to_email);
   if (!from_email && !to_email) return res.status(400).json({ ok:false, error:"from_email or to_email required" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4652,8 +7952,40 @@ app.post("/crm/ingest/email", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok:true, ...out });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4692,8 +8024,40 @@ app.post("/crm/ingest/call", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const phone = normPhone(req.body?.phone);
   if (!phone) return res.status(400).json({ ok:false, error:"phone required" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4738,8 +8102,56 @@ app.post("/crm/ingest/call", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok:true, ...out });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4793,8 +8205,40 @@ app.get("/reports", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(req.query.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4838,6 +8282,22 @@ app.get("/reports", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.get("/reports/latest", asyncHandler(async (req, res) => {
   setNoStore(res);
 
@@ -4856,8 +8316,40 @@ app.get("/reports/latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(req.query.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4898,9 +8390,41 @@ app.get("/reports/latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
   res.json({ ok: true, report: r.rows[0] });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4935,8 +8459,40 @@ app.get("/reports/by-date", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(req.query.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4957,6 +8513,22 @@ app.get("/reports/by-date", asyncHandler(async (req, res) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return res.status(400).json({ ok: false, error: "date must be YYYY-MM-DD" });
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4997,9 +8569,41 @@ app.get("/reports/by-date", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   if (!r.rows.length) return res.status(404).json({ ok: false, error: "Report not found for that date" });
   res.json({ ok: true, report: r.rows[0] });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5040,8 +8644,40 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(req.query.token || req.body?.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Provide ?token=..." });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5078,6 +8714,22 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const leadRate = clamp01(req.body?.lead_rate ?? 0.02);
   const purchaseRate = clamp01(req.body?.purchase_rate ?? 0.004);
   const ctaRate = clamp01(req.body?.cta_rate ?? 0.06);
@@ -5097,8 +8749,40 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const pages = ["/", "/pricing", "/services", "/about", "/contact", "/blog", "/faq", "/checkout"];
   let inserted = 0;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5135,9 +8819,41 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     for (let i = 0; i < eventsPerDay; i++) {
       const seconds = Math.floor(Math.random() * 86400);
       const ts = new Date(dayStart.getTime() + seconds * 1000);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5177,7 +8893,39 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       const device = Math.random() < 0.62 ? "mobile" : "desktop";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5200,6 +8948,22 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
         [site_id, page, device, ts.toISOString()]
       );
       inserted++;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5241,6 +9005,14 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
         // Also seed CRM lead rows so the CRM tab is populated (not just analytics).
         try {
           const leadNames = ["Jordan Lee","Ava Martinez","Noah Patel","Mia Chen","Ethan Brooks","Sophia Rivera","Liam Johnson","Olivia King"];
@@ -5258,11 +9030,27 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
           await pool.query(
             `INSERT INTO crm_leads (site_id, email, name, phone, source_page, status, notes, created_at)
              VALUES ($1,$2,$3,$4,$5,'new',$6,$7)`,
             [site_id, safeEmail(email), nm, phone, "/contact", notes, ts.toISOString()]
           );
+
+
+
+
+
+
+
+
 
 
 
@@ -5289,6 +9077,14 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
             { emailA: email, emailB: bizEmail, phone, name: nm }
           );
         } catch (e) {}
+
+
+
+
+
+
+
+
 
 
 
@@ -5339,12 +9135,52 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // ---------------------------
   // CRM demo seed (clients + activities)
   // ---------------------------
   // This makes the CRM tab feel "alive" for demos.
   try {
     const bizEmail = (site.owner_email || "owner@example.com").toLowerCase();
+
+
+
+
+
+
+
+
 
 
 
@@ -5367,8 +9203,24 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
     const baseNow = new Date();
     const daysAgo = (n) => new Date(baseNow.getTime() - n * 24 * 60 * 60 * 1000);
+
+
+
+
+
+
+
+
 
 
 
@@ -5385,6 +9237,14 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
         phone: c.phone,
         stage: c.stage
       });
+
+
+
+
+
+
+
+
 
 
 
@@ -5420,9 +9280,25 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
       // ensure name identity too (helps fuzzy matching)
       if (c.name) await addIdentity(site_id, client.id, "name", normName(c.name));
     }
+
+
+
+
+
+
+
+
 
 
 
@@ -5455,6 +9331,14 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
     await createActivityWithMatch(
       site_id,
       {
@@ -5478,6 +9362,14 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
     await createActivityWithMatch(
       site_id,
       {
@@ -5492,6 +9384,14 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       },
       { phone: "+1 (555) 201-1002", name: "Brightside Dental" }
     );
+
+
+
+
+
+
+
+
 
 
 
@@ -5523,6 +9423,14 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
     await createActivityWithMatch(
       site_id,
       {
@@ -5538,6 +9446,14 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       },
       { emailA: "manager@northstarfitness.com", emailB: bizEmail, name: "Northstar Fitness" }
     );
+
+
+
+
+
+
+
+
 
 
 
@@ -5569,6 +9485,14 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
     // unmatched example (shows up in review queue)
     await createActivityWithMatch(
       site_id,
@@ -5584,6 +9508,14 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       },
       { emailA: "someone@unknown-example.com", emailB: bizEmail, name: "Unknown" }
     );
+
+
+
+
+
+
+
+
 
 
 
@@ -5619,6 +9551,14 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
 const sample1 =
     "Summary:\nTraffic is concentrating on Pricing and Services.\n\n" +
     "Trend:\nVisitors are exploring multiple pages.\n\n" +
@@ -5640,11 +9580,43 @@ const sample1 =
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const sample2 =
     "Summary:\nYou’re getting steady visits and people are checking Pricing.\n\n" +
     "Trend:\nInterest is consistent — conversion work likely helps.\n\n" +
     "Next steps:\n1) Strongest offer at top of Pricing\n2) Add a 3-step “what happens next”\n3) Shorten forms + speed up pages\n\n" +
     "Metric to watch:\nCTA clicks";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5683,12 +9655,44 @@ const sample1 =
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(
     `INSERT INTO daily_reports (site_id, report_date, report_text)
      VALUES ($1, CURRENT_DATE, $2)
      ON CONFLICT (site_id, report_date) DO NOTHING`,
     [site_id, sample2]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5732,11 +9736,43 @@ const sample1 =
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    AI endpoints (FULL AI only)
 ----------------------------*/
 app.post("/api/ai/chat", asyncHandler(async (req, res) => {
   setNoStore(res);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5772,8 +9808,40 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const gate = planGate(site, ["full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5810,7 +9878,39 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const days = 30;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5856,6 +9956,22 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const topPagesRes = await pool.query(
     `
     SELECT page_type, COUNT(*)::int AS views
@@ -5869,6 +9985,22 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
     `,
     [site.site_id, days]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5911,6 +10043,22 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const context = {
     site_id: site.site_id,
     plan: site.plan,
@@ -5919,6 +10067,22 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
     top_pages_30d: topPagesRes.rows,
     latest_report: lastReportRes.rows[0] || null
   };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5953,7 +10117,39 @@ You are Constrava's analytics coach.
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Return plain text formatted like this (keep the line breaks):
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5989,9 +10185,41 @@ WHAT'S HAPPENING
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 WHY IT MATTERS
 - bullet
 - bullet
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6028,8 +10256,40 @@ NEXT BEST ACTIONS
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 KPI TO WATCH
 - KPI: <name> — <why>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6051,6 +10311,54 @@ Rules:
 - Keep bullets short (one line each)
 - No long paragraphs
 `.trim();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6121,6 +10429,22 @@ Rules:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -6133,6 +10457,22 @@ Rules:
       temperature: 0.4
     })
   });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6168,8 +10508,56 @@ Rules:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, reply });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6224,6 +10612,22 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const token = req.query.token || req.body?.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok:false, error:"Unauthorized" });
@@ -6243,8 +10647,40 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const gate = planGate(site, ["full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok:false, error: gate.error });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6280,6 +10716,22 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // lightweight context: clients + latest touch + recent activities + review queue counts
   const clientsRes = await pool.query(
     `SELECT id, full_name, primary_email, primary_phone, stage, health, confidence, last_touch_at
@@ -6289,6 +10741,22 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
      LIMIT 120`,
     [site.site_id]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6333,12 +10801,44 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const reviewCountRes = await pool.query(
     `SELECT COUNT(*)::int as needs_review
      FROM crm_activity_matches
      WHERE site_id=$1 AND status='needs_review'`,
     [site.site_id]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6378,8 +10878,40 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const system = `
 You are Constrava's CRM autopilot.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6418,6 +10950,22 @@ The user will ask questions like:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 You MUST:
 - Answer with structured, scannable text (no wall of text).
 - If client matching is uncertain, say so and show your best guess + confidence.
@@ -6438,7 +10986,39 @@ You MUST:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Return EXACTLY this format:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6473,9 +11053,41 @@ ANSWER
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 EVIDENCE
 - <2–6 bullets referencing concrete data points (dates/emails/calls/subjects)>
 - If uncertain, include: "Uncertainty: <why>"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6512,8 +11124,40 @@ NEXT ACTIONS
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 CONFIDENCE
 - <0–100% and one-sentence reason>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6551,11 +11195,43 @@ Rules:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const messages = [
     { role:"system", content: system },
     { role:"user", content: "CRM context JSON:\n" + JSON.stringify(context) },
     { role:"user", content: question }
   ];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6597,6 +11273,22 @@ Rules:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const aiData = await aiRes.json().catch(()=>({}));
   const reply = aiData?.choices?.[0]?.message?.content;
   if (!reply) return res.status(500).json({ ok:false, error:"AI response missing" });
@@ -6616,8 +11308,40 @@ Rules:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok:true, reply });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6653,6 +11377,22 @@ app.post("/generate-report", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const gate = planGate(site, ["full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
 
@@ -6671,7 +11411,39 @@ app.post("/generate-report", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6717,7 +11489,39 @@ app.post("/generate-report", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const metrics = metricsRes.rows[0];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6764,6 +11568,22 @@ You are Constrava's analytics assistant.
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Write for a busy small-business owner.
 Make it friendly, simple, and easy to scan.
 Avoid jargon unless explained simply.
@@ -6791,7 +11611,39 @@ ${JSON.stringify(metrics)}
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Return EXACTLY this format:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6826,8 +11678,40 @@ SUMMARY:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 HIGHLIGHTS:
 - (max 3 bullets, short)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6862,8 +11746,40 @@ WHAT HAPPENED:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 WHY IT MATTERS:
 - (max 3 bullets)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6884,6 +11800,22 @@ NEXT STEPS:
 1) (step)
 2) (step)
 3) (step)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6922,8 +11854,40 @@ KPI: <name> — <value> (target: <target>)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const aiData = await aiRes.json().catch(() => ({}));
   const reportText = aiData?.choices?.[0]?.message?.content;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6947,6 +11911,38 @@ KPI: <name> — <value> (target: <target>)
       ai_preview: JSON.stringify(aiData).slice(0, 800)
     });
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7003,6 +11999,22 @@ KPI: <name> — <value> (target: <target>)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, report: saved.rows[0] });
 }));
 
@@ -7021,8 +12033,40 @@ KPI: <name> — <value> (target: <target>)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.post("/generate-action-plan", asyncHandler(async (req, res) => {
   setNoStore(res);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7058,8 +12102,40 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const gate = planGate(site, ["full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7094,6 +12170,22 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const trendRes = await pool.query(
     `
     SELECT created_at::date AS day, COUNT(*)::int AS visits
@@ -7106,6 +12198,22 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
     `,
     [site.site_id, days]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7152,6 +12260,22 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const goalsRes = await pool.query(
     `
     SELECT
@@ -7180,6 +12304,22 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const payload = {
     site_id: site.site_id,
     window_days: days,
@@ -7187,6 +12327,22 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
     top_pages: topPagesRes.rows,
     goals: goalsRes.rows[0] || { leads: 0, purchases: 0, cta_clicks: 0 }
   };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7240,9 +12396,41 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const aiData = await aiRes.json();
   const text = aiData?.choices?.[0]?.message?.content;
   if (!text) return res.status(500).json({ ok: false, error: "AI response missing" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7283,8 +12471,40 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, report: saved.rows[0] });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7324,6 +12544,22 @@ app.post("/email-latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Invalid token" });
 
@@ -7342,8 +12578,40 @@ app.post("/email-latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const gate = planGate(site, ["pro", "full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7385,8 +12653,40 @@ app.post("/email-latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const RESEND_API_KEY = requireEnv("RESEND_API_KEY");
   const from = requireEnv("FROM_EMAIL");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7432,9 +12732,41 @@ app.post("/email-latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const emailData = await emailRes.json();
   res.json({ ok: true, resend: emailData });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7475,8 +12807,40 @@ app.post("/demo/activate-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const { token, plan } = req.body || {};
   const allowed = new Set(["starter", "pro", "full_ai"]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7511,8 +12875,40 @@ app.post("/demo/activate-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7549,8 +12945,40 @@ app.post("/demo/activate-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, updated: r.rows[0] });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7591,6 +13019,22 @@ app.get("/storefront", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const token = req.query.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
@@ -7610,9 +13054,41 @@ app.get("/storefront", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site_id = site.site_id;
   const bizEmail = (site.owner_email || "owner@example.com").toLowerCase();
   const plan = site.plan || "unpaid";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7720,6 +13196,22 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     <div class="card">
       <h3 class="name">Pro</h3>
       <div class="price">$19 <span class="muted">/mo</span></div>
@@ -7730,6 +13222,22 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
       </ul>
       <button class="btn" onclick="activate('pro')">Activate Pro</button>
     </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7772,9 +13280,41 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       <div class="note">
         <b>Note:</b> These buttons call a demo activation endpoint. Later, Stripe will call a real webhook after payment.
       </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7811,9 +13351,41 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <script>
 const token = new URLSearchParams(location.search).get("token");
 const statusEl = document.getElementById("status");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7901,12 +13473,76 @@ async function activate(plan){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    Dashboard UI
    GET /dashboard?token=...
 ----------------------------*/
 app.get("/dashboard", asyncHandler(async (req, res) => {
   setNoStore(res);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7942,6 +13578,22 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const plan = site.plan || "unpaid";
   if (plan === "unpaid") return res.redirect("/storefront?token=" + encodeURIComponent(token));
 
@@ -7960,7 +13612,39 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.setHeader("Content-Type", "text/html; charset=utf-8");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8042,11 +13726,43 @@ body{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 .repWrap{
   display:grid;
   grid-template-columns:repeat(12,1fr);
   gap:12px;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8082,7 +13798,39 @@ body{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 @media (max-width: 980px){ .repCard{ grid-column: 1 / -1; } }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8151,6 +13899,22 @@ body{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 .brand{display:flex;align-items:center;gap:12px}
 .logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg, rgba(96,165,250,.95), rgba(52,211,153,.88));}
 h1{margin:0;font-size:18px;font-weight:950}
@@ -8198,6 +13962,10 @@ input,select{
 }
 select{appearance:none;-webkit-appearance:none;-moz-appearance:none}
 select option{color:var(--text)}
+
+
+
+
 
 
 
@@ -8270,6 +14038,14 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
 .tabBtn{
   border:1px solid var(--border);
   background: var(--panel2);
@@ -8296,6 +14072,22 @@ pre{
         <div class="sub">Token-auth dashboard • secure it later with accounts if desired</div>
       </div>
     </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8351,6 +14143,30 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     <div class="tabs" style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 6px">
       <button class="tabBtn active" id="tabAnalytics" type="button">Analytics</button>
       <button class="tabBtn" id="tabCRMTop" type="button">CRM</button>
@@ -8363,7 +14179,23 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
     <div id="sectionAnalytics">
+
+
+
+
+
+
+
+
 
 
 
@@ -8410,11 +14242,43 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     <div class="card span12">
       <div style="font-weight:950">Latest AI Report</div>
       <div class="muted">Your most recent report (or seed sample).</div>
       <div class="divider"></div>
       <div id="latestAiReportCards" class="repWrap">Loading latest report…</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8451,7 +14315,39 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8489,11 +14385,43 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     <div class="card span3">
       <div class="muted">Visits in range</div>
       <div class="kpi" id="kpiRange">—</div>
       <div class="muted" id="kpiRangeSub"></div>
     </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8531,11 +14459,43 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     <div class="card span3">
       <div class="muted">Purchase rate</div>
       <div class="kpi" id="kpiPurchaseRate">—</div>
       <div class="muted">Track “purchase” events</div>
     </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8579,6 +14539,22 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       <div class="chartBox" style="margin-top:10px">
         <svg id="trendSvg" viewBox="0 0 900 260" role="img" aria-label="Traffic trend chart"></svg>
       </div>
@@ -8598,7 +14574,39 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       <div class="divider"></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8638,10 +14646,42 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       <div class="muted" style="margin-top:10px">
         Seeder requires <span class="mono">ENABLE_DEMO_SEED=true</span>. Sim buttons work any time.
       </div>
     </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8695,6 +14735,22 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     <div class="card span6">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
@@ -8721,6 +14777,22 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     <div class="card span6">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
@@ -8729,6 +14801,22 @@ pre{
         </div>
         <span class="pill">Visits → Leads → Purchases</span>
       </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8772,6 +14860,22 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         <div class="card" style="grid-column: span 6; background: var(--panel2); box-shadow:none">
           <div class="muted">Goals in range</div>
           <div class="row" style="margin-top:6px">
@@ -8785,6 +14889,22 @@ pre{
         </div>
       </div>
     </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8849,10 +14969,58 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <details style="margin-top:10px">
   <summary class="muted" style="cursor:pointer">Show raw report</summary>
   <pre id="report" class="mono" style="max-height:320px;overflow:auto">Loading…</pre>
 </details>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8885,7 +15053,23 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
 </div>
+
+
+
+
+
+
+
+
 
 
 
@@ -8896,6 +15080,10 @@ pre{
 
 <div id="sectionCRM" style="display:none">
   <div class="grid">
+
+
+
+
 
 
 
@@ -8913,7 +15101,15 @@ pre{
 
 
 
+
+
+
+
       <div class="divider"></div>
+
+
+
+
 
 
 
@@ -8938,6 +15134,8 @@ pre{
           </div>
 
 
+
+
           <div class="row" style="margin-top:10px;gap:10px;align-items:stretch;flex-wrap:wrap">
             <input id="crmAiInput" placeholder='Try: "find noah" or "clients idle 30"' style="flex:1;min-width:260px" />
             <button class="btn" id="crmAiSend" type="button">Search</button>
@@ -8945,11 +15143,17 @@ pre{
           </div>
 
 
+
+
           <pre id="crmAiOut" class="mono" style="margin-top:10px;white-space:pre-wrap;background:rgba(20,20,30,0.08);border:1px solid var(--line);border-radius:14px;padding:12px;max-height:220px;overflow:auto"></pre>
+
+
 
 
           <div class="muted" style="margin-top:10px">Results populate the Leads + Clients lists below.</div>
         </div>
+
+
 
 
 <div class="card span6" id="crmLeadsCard">
@@ -8969,6 +15173,10 @@ pre{
 
 
 
+
+
+
+
     <div class="card span6" id="crmClientsCard">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
@@ -8981,7 +15189,15 @@ pre{
 
 
 
+
+
+
+
       <div class="divider"></div>
+
+
+
+
 
 
 
@@ -8994,6 +15210,10 @@ pre{
 
 
 
+
+
+
+
         <div class="row" style="margin-top:8px">
           <input id="crmClientFilter" placeholder="Filter loaded clients…" style="flex:1;min-width:220px" />
           <button class="btnGhost" id="crmClientFilterClear" type="button">Clear</button>
@@ -9002,9 +15222,17 @@ pre{
 
 
 
+
+
+
+
         <div class="list" id="crmClients" style="margin-top:10px">Loading…</div>
       </details>
     </div>
+
+
+
+
 
 
 
@@ -9019,6 +15247,10 @@ pre{
 
 
 
+
+
+
+
     <div class="card span6" id="crmReviewCard">
       <div style="font-weight:950">Review queue</div>
       <div class="muted">Unmatched or low-confidence activities. Confirm or reject.</div>
@@ -9029,11 +15261,47 @@ pre{
 
 
 
+
+
+
+
   </div>
 </div>
 window.CONSTRAVA_TOKEN = ${JSON.stringify(String(token || ""))};
 </script>
 <script src="/dashboard.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9085,6 +15353,22 @@ window.CONSTRAVA_TOKEN = ${JSON.stringify(String(token || ""))};
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    Dashboard client JS
    GET /dashboard.js?token=...
@@ -9108,9 +15392,41 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.send(String.raw`
 (() => {
   "use strict";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9147,7 +15463,31 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const $ = (id) => document.getElementById(id);
+
+
+
+
+
+
+
+
 
 
 
@@ -9170,8 +15510,24 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
     if (secA) secA.style.display = (which === "analytics") ? "" : "none";
     if (secC) secC.style.display = (which === "crm") ? "" : "none";
+
+
+
+
+
+
+
+
 
 
 
@@ -9183,6 +15539,14 @@ app.get("/dashboard.js", (req, res) => {
     if (btnA) btnA.classList.toggle("active", which === "analytics");
     if (btnC) btnC.classList.toggle("active", which === "crm");
   }
+
+
+
+
+
+
+
+
 
 
 
@@ -9203,10 +15567,42 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
     if (btnA) btnA.addEventListener("click", () => setActiveTab("analytics"));
     if (btnC) btnC.addEventListener("click", () => setActiveTab("crm"));
     if (topC) topC.addEventListener("click", () => setActiveTab("crm"));
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9251,9 +15647,41 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   function pct(n){
     return (Math.round((Number(n) || 0) * 10000) / 100).toFixed(2) + "%";
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9274,6 +15702,22 @@ app.get("/dashboard.js", (req, res) => {
     n = Number(n) || 0;
     return Math.max(min, Math.min(max, n));
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9315,10 +15759,42 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   function renderTrend(svgEl, trend) {
     if (!svgEl) return;
     const W = 900, H = 260, p = 18;
     while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9360,8 +15836,40 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const n = (trend && trend.length) ? trend.length : 0;
     if (!n) return;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9397,6 +15905,22 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     if ($("maxDay")) $("maxDay").textContent = String(maxV);
     if ($("avgDay")) $("avgDay").textContent = String(Math.round(avg * 10) / 10);
 
@@ -9415,8 +15939,40 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const innerW = W - p * 2;
     const innerH = H - p * 2;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9455,8 +16011,40 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     let d = "";
     for (let i = 0; i < n; i++) d += (i === 0 ? "M " : " L ") + x(i) + " " + y(trend[i].visits || 0);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9498,9 +16086,41 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   function renderDevice(svgEl, mobile, desktop) {
     if (!svgEl) return;
     while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9536,8 +16156,40 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const start = -Math.PI / 2;
     const mid = start + Math.PI * 2 * m;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9558,6 +16210,22 @@ app.get("/dashboard.js", (req, res) => {
       const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
       const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
       const large = (a1 - a0) > Math.PI ? 1 : 0;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9598,6 +16266,22 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
     ring.setAttribute("cx", String(cx));
     ring.setAttribute("cy", String(cy));
@@ -9606,6 +16290,22 @@ app.get("/dashboard.js", (req, res) => {
     ring.setAttribute("stroke-width", String(w));
     ring.setAttribute("fill", "none");
     svgEl.appendChild(ring);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9641,9 +16341,41 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   function renderTopPages(container, rows) {
     if (!container) return;
     container.innerHTML = "";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9680,9 +16412,41 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     for (const r of rows) {
       const item = document.createElement("div");
       item.className = "item";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9724,8 +16488,40 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       const barWrap = document.createElement("div");
       barWrap.className = "barWrap";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9760,6 +16556,22 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       const fill = document.createElement("div");
       fill.style.width = clamp(r.share || 0, 0, 100) + "%";
 
@@ -9778,8 +16590,40 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       bar.appendChild(fill);
       barWrap.appendChild(bar);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9817,9 +16661,41 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   
   // ===== CRM (Leads) =====
   let crmCache = [];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9859,6 +16735,22 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   function renderCRM(container, leads){
     if (!container) return;
     container.innerHTML = "";
@@ -9878,8 +16770,40 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const rows = Array.isArray(leads) ? leads : [];
     crmCache = rows;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9916,9 +16840,41 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     for (const l of rows){
       const item = document.createElement("div");
       item.className = "item";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9960,10 +16916,42 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       left.innerHTML =
         "<b>" + esc(title) + "</b>" +
         "<div class='muted'>" + esc(sub) + "</div>" +
         (l.notes ? "<div class='muted' style='margin-top:6px'>Notes: " + esc(l.notes) + "</div>" : "");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10000,6 +16988,22 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       const btn = document.createElement("button");
       btn.className = "btnGhost";
       btn.textContent = "Edit";
@@ -10008,6 +17012,22 @@ app.get("/dashboard.js", (req, res) => {
         if (newStatus === null) return;
         const newNotes = prompt("Notes (optional):", l.notes || "");
         if (newNotes === null) return;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10050,7 +17070,39 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       right.appendChild(btn);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10072,6 +17124,22 @@ app.get("/dashboard.js", (req, res) => {
       container.appendChild(item);
     }
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10118,6 +17186,22 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   async function loadCRM(){
     const box = $("crmLeads");
     if (box) box.textContent = "Loading…";
@@ -10139,6 +17223,14 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
   function leadMatches(l, q){
     q = String(q||"").trim().toLowerCase();
     if(!q) return true;
@@ -10151,6 +17243,10 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
   function applyLeadFilter(){
     const q = $("crmLeadSearch") ? $("crmLeadSearch").value : "";
     const box = $("crmLeads");
@@ -10158,6 +17254,10 @@ app.get("/dashboard.js", (req, res) => {
     const rows = (crmCache || []).filter(l => leadMatches(l, q));
     renderCRM(box, rows);
   }
+
+
+
+
 
 
 
@@ -10176,6 +17276,10 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
   async function crmChatRun(){
     const out = $("crmChatOut");
     const inp = $("crmChatInput");
@@ -10186,7 +17290,15 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
     out.textContent = "Searching…";
+
+
+
+
 
 
 
@@ -10199,8 +17311,16 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
     const q = qRaw.toLowerCase();
     const leadHits = (crmCache || []).filter(l => leadMatches(l, qRaw)).slice(0, 12);
+
+
+
+
 
 
 
@@ -10216,9 +17336,17 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
     const lines = [];
     lines.push("QUERY: " + qRaw);
     lines.push("");
+
+
+
+
 
 
 
@@ -10241,6 +17369,10 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
     lines.push("");
     lines.push("CLIENTS (" + clientHits.length + (clientHits.length === 12 ? "+": "") + ")");
     if(!clientHits.length) lines.push("- —");
@@ -10258,14 +17390,54 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
+
+
+
+
     lines.push("");
     lines.push("Tip: Click a client in the list to open status + activity.");
 
 
 
 
+
+
+
+
     out.textContent = lines.join("\n");
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10316,6 +17488,22 @@ let crmSelectedClientId = null;
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function fmtWhen(iso){
   try{
     if(!iso) return "—";
@@ -10324,6 +17512,22 @@ function fmtWhen(iso){
     return d.toISOString().slice(0,19).replace("T"," ");
   }catch{ return String(iso||"—"); }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10359,9 +17563,41 @@ function makeListItem(title, sub, right){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const left = document.createElement("div");
   left.style.minWidth = "0";
   left.innerHTML = "<b>" + esc(title) + "</b><div class='muted'>" + esc(sub || "") + "</div>";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10397,10 +17633,42 @@ function makeListItem(title, sub, right){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   item.appendChild(left);
   item.appendChild(r);
   return item;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10442,7 +17710,39 @@ async function loadCrmClients(q){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   if(!j.clients || !j.clients.length){ box.textContent = "No clients yet."; return; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10466,6 +17766,22 @@ async function loadCrmClients(q){
       c.primary_phone ? ("phone: " + c.primary_phone) : null,
       ("last touch: " + fmtWhen(c.last_touch_at))
     ].filter(Boolean).join(" • ");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10507,10 +17823,42 @@ async function loadCrmClients(q){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async function loadCrmClientDetail(clientId){
   const pre = $("crmClientDetail");
   if(!pre) return;
   pre.textContent = "Loading client…";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10546,9 +17894,41 @@ async function loadCrmClientDetail(clientId){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const c = j.client || {};
   const acts = Array.isArray(j.activities) ? j.activities : [];
   const ids = Array.isArray(j.identities) ? j.identities : [];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10596,7 +17976,23 @@ async function loadCrmClientDetail(clientId){
 
 
 
+
+
+
+
   try{ applyClientFilter(); }catch{}
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10611,6 +18007,22 @@ async function loadCrmClientDetail(clientId){
 
   pre.textContent = lines.join("\n");
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10647,6 +18059,22 @@ async function loadCrmReview(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const r = await fetch("/crm/review?token=" + encodeURIComponent(TOKEN));
   const j = await r.json().catch(()=>({}));
   box.innerHTML = "";
@@ -10667,8 +18095,40 @@ async function loadCrmReview(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const q = Array.isArray(j.queue) ? j.queue : [];
   if(!q.length){ box.textContent = "Queue is empty ✅"; return; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10707,8 +18167,40 @@ async function loadCrmReview(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const row = makeListItem(title, sub, "Review");
     row.style.cursor = "pointer";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10749,6 +18241,22 @@ async function loadCrmReview(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       const rr = await fetch("/crm/review/confirm", {
         method:"POST",
         headers:{ "Content-Type":"application/json" },
@@ -10759,6 +18267,22 @@ async function loadCrmReview(){
       await loadCrmReview();
       if(crmSelectedClientId) await loadCrmClientDetail(crmSelectedClientId);
     });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10809,6 +18333,22 @@ async function loadCrmReview(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     // replace right pill with button group
     row.removeChild(row.lastChild);
     const right = document.createElement("div");
@@ -10820,6 +18360,22 @@ async function loadCrmReview(){
     hint.textContent = "Assign";
     right.appendChild(hint);
     row.appendChild(right);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10855,11 +18411,43 @@ async function loadCrmReview(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async function crmCreateClient(){
   const n = $("crmNewName") ? $("crmNewName").value.trim() : "";
   const e = $("crmNewEmail") ? $("crmNewEmail").value.trim() : "";
   const p = $("crmNewPhone") ? $("crmNewPhone").value.trim() : "";
   if(!n && !e && !p){ alert("Add at least a name, email, or phone."); return; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10899,6 +18487,22 @@ async function crmCreateClient(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   if ($("crmNewName")) $("crmNewName").value = "";
   if ($("crmNewEmail")) $("crmNewEmail").value = "";
   if ($("crmNewPhone")) $("crmNewPhone").value = "";
@@ -10918,8 +18522,40 @@ async function crmCreateClient(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await loadCrmClients($("crmClientSearch") ? $("crmClientSearch").value.trim() : "");
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10956,9 +18592,41 @@ async function crmAsk(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const q = input.value.trim();
   if(!q) return;
   out.textContent = "Thinking…";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11000,10 +18668,42 @@ async function crmAsk(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async function loadCRMv2(){
   await loadCrmClients("");
   await loadCrmReview();
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11040,6 +18740,22 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   function parseReportSections(text){
     const lines = splitLines(text);
     const sections = { summary: "", highlights: [], steps: [], kpi: "" };
@@ -11060,8 +18776,40 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     for (const line0 of lines){
       const line = line0.replace(/\*\*/g,"");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11102,8 +18850,40 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       const cleaned = line.replace(/^[-•]\s*/,"").replace(/^\d+\)\s*/,"").trim();
       if (!cleaned) continue;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11140,8 +18920,40 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     return sections;
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11176,10 +18988,42 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const s = parseReportSections(text);
     const escHtml = (v) => String(v || "").replace(/[&<>"']/g, (c) => ({
       "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
     }[c]));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11217,7 +19061,39 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       if (!shown.length) return '<div class="muted">—</div>';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11254,6 +19130,22 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       return '<ul class="repList">' + lis + '</ul>' + more;
     }
 
@@ -11272,7 +19164,39 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const kpiHtml = s.kpi ? '<div class="repKpi"><b>' + escHtml(s.kpi) + '</b></div>' : "";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11310,6 +19234,22 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   async function loadLatestReport() {
     const pre1 = $("latestAiReport");
     const cards1 = $("latestAiReportCards");
@@ -11330,8 +19270,40 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
     const jj = await rr.json().catch(()=>({}));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11368,9 +19340,41 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   async function loadReportsList() {
     const list = $("reportsList");
     if (!list) return;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11406,9 +19410,41 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     list.innerHTML = "";
     if (!j.ok) { list.textContent = j.error || "Failed to load reports"; return; }
     if (!j.reports || !j.reports.length) { list.textContent = "No reports yet."; return; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11444,8 +19480,40 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       const left = document.createElement("div");
       left.innerHTML = "<b>" + esc(rep.report_date) + "</b><div class='muted'>" + esc(rep.preview || "") + "</div>";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11465,6 +19533,22 @@ async function loadCRMv2(){
       const right = document.createElement("div");
       right.className = "pill";
       right.textContent = "Open";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11502,6 +19586,22 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   async function refresh() {
     try {
       const days = $("days") ? $("days").value : "7";
@@ -11522,9 +19622,41 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
       const j = await r.json().catch(() => ({}));
       if (!j.ok) { setStatus(j.error || "error"); return; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11561,9 +19693,41 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       if ($("leads")) $("leads").textContent = j.leads || 0;
       if ($("purchases")) $("purchases").textContent = j.purchases || 0;
       if ($("cta")) $("cta").textContent = j.cta_clicks || 0;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11600,7 +19764,39 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       if ($("lastEvent")) $("lastEvent").textContent = j.last_event ? JSON.stringify(j.last_event, null, 2) : "No events yet.";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11636,9 +19832,41 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       await loadCRM();
       await loadLatestReport();
       await loadReportsList();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11660,6 +19888,22 @@ async function loadCRMv2(){
       setStatus("error: " + (e && e.message ? e.message : "unknown"));
     }
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11709,6 +19953,22 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   async function seed() {
     setStatus("seeding…");
     const r = await fetch("/demo/seed?token=" + encodeURIComponent(TOKEN), {
@@ -11722,6 +19982,22 @@ async function loadCRMv2(){
     // Refresh both Analytics and CRM so the CRM tab isn't empty after seeding.
     setTimeout(() => { refresh(); loadCRM(); loadCrmClients(""); }, 350);
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11763,9 +20039,41 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     try { await navigator.clipboard.writeText(d.url); setStatus("copied ✅"); }
     catch { setStatus("share link: " + d.url); }
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11786,6 +20094,22 @@ async function loadCRMv2(){
   let liveSince = new Date().toISOString();
   let liveOn = true;
   let liveTimer = null;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11830,10 +20154,42 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   function startLive() {
     if (liveTimer) clearInterval(liveTimer);
     liveTimer = setInterval(() => { if (liveOn) liveCheck(); }, 3500);
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11879,8 +20235,40 @@ async function loadCRMv2(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // ===== AI CHAT =====
 let chatHistory = [];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11916,6 +20304,22 @@ function addMsg(role, text){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const div = document.createElement("div");
   div.style.marginBottom = "10px";
   div.style.lineHeight = "1.45";
@@ -11935,7 +20339,39 @@ function addMsg(role, text){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const label = (role === "user") ? "You" : "AI";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11970,9 +20406,41 @@ function addMsg(role, text){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   div.innerHTML =
     "<b>" + label + ":</b> " +
     "<span style=\"white-space:normal\">" + safe + "</span>";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12024,9 +20492,57 @@ function addMsg(role, text){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async function sendChat(){
   const input = $("chatInput");
   if (!input) return;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12062,7 +20578,39 @@ async function sendChat(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   addMsg("user", msg);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12105,6 +20653,22 @@ async function sendChat(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   try{
     const r = await fetch("/api/ai/chat", {
       method: "POST",
@@ -12128,7 +20692,39 @@ async function sendChat(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     if (thinkingEl && box) box.removeChild(thinkingEl);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12165,8 +20761,40 @@ async function sendChat(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const reply = j.reply || "(no reply)";
     addMsg("ai", reply);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12206,12 +20834,44 @@ async function sendChat(){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function clearChat(){
   const box = $("chatBox");
   if (!box) return;
   box.innerHTML = '<div class="muted">Chat cleared.</div>';
   chatHistory = [];
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12245,7 +20905,31 @@ window.addEventListener("DOMContentLoaded", () => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     if (!TOKEN) { setStatus("missing token"); return; }
+
+
+
+
+
+
+
+
 
 
 
@@ -12265,10 +20949,34 @@ window.addEventListener("DOMContentLoaded", () => {
 
 
 
+
+
+
+
+
+
+
+
     if ($("refresh")) $("refresh").addEventListener("click", refresh);
     if ($("days")) $("days").addEventListener("change", refresh);
     if ($("chatSend")) $("chatSend").addEventListener("click", sendChat);
 if ($("chatClear")) $("chatClear").addEventListener("click", clearChat);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12322,6 +21030,38 @@ if ($("chatInput")) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     if ($("simView")) $("simView").addEventListener("click", () => fire("page_view"));
     if ($("simLead")) $("simLead").addEventListener("click", () => fire("lead"));
     if ($("simPurchase")) $("simPurchase").addEventListener("click", () => fire("purchase"));
@@ -12342,8 +21082,40 @@ if ($("chatInput")) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     if ($("share")) $("share").addEventListener("click", share);
     if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12396,12 +21168,30 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // CRM AI Search: single search box that returns leads + clients and updates BOTH lists.
   function renderClientsFromArray(clients){
     const box = $("crmClients");
     if(!box) return;
     box.innerHTML = "";
     if(!clients || !clients.length){ box.textContent = "No clients matched."; return; }
+
+
 
 
     for(const c of clients){
@@ -12413,6 +21203,8 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
       ].filter(Boolean).join(" • ");
 
 
+
+
       const item = makeListItem(title, sub, "Select");
       item.style.cursor = "pointer";
       item.addEventListener("click", () => loadCrmClientDetail(c.id));
@@ -12420,8 +21212,12 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
     }
 
 
+
+
     try{ applyClientFilter(); }catch{}
   }
+
+
 
 
   async function crmAiRun(){
@@ -12430,9 +21226,13 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
     if(!out || !inp) return;
 
 
+
+
     const q = inp.value.trim();
     if(!q){ out.textContent = "—"; return; }
     out.textContent = "Searching…";
+
+
 
 
     try{
@@ -12445,10 +21245,14 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
       if(!j.ok){ out.textContent = j.error || "Search failed."; return; }
 
 
+
+
       // Update lists in-place
       const leadsBox = $("crmLeads");
       if(leadsBox) renderCRM(leadsBox, j.leads || []);
       renderClientsFromArray(j.clients || []);
+
+
 
 
       // Summary
@@ -12466,6 +21270,8 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
       });
 
 
+
+
       out.textContent = lines.join("\n");
       const leadsEl = $("crmLeads");
       if (leadsEl) leadsEl.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -12473,6 +21279,12 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
       out.textContent = "Search error: " + (e && e.message ? e.message : String(e)); console.error(e);
     }
   }
+
+
+
+
+
+
 
 
 
@@ -12490,6 +21302,8 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
     });
 
 
+
+
 // CRM v2 listeners
 if ($("crmClientSearchBtn")) $("crmClientSearchBtn").addEventListener("click", () => {
   const q = $("crmClientSearch") ? $("crmClientSearch").value.trim() : "";
@@ -12505,8 +21319,28 @@ if ($("crmClientSearch")) $("crmClientSearch").addEventListener("keydown", (e) =
 
 
 
+
+
+
+
 if ($("crmClientFilter")) $("crmClientFilter").addEventListener("input", applyClientFilter);
 if ($("crmClientFilterClear")) $("crmClientFilterClear").addEventListener("click", () => { if ($("crmClientFilter")) $("crmClientFilter").value=""; applyClientFilter(); });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12540,26 +21374,25 @@ if ($("crmCreateClient")) $("crmCreateClient").addEventListener("click", crmCrea
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 if ($("crmChatSend")) $("crmChatSend").addEventListener("click", crmChatRun);
 if ($("crmChatClear")) $("crmChatClear").addEventListener("click", () => { if ($("crmChatInput")) $("crmChatInput").value=""; if ($("crmChatOut")) $("crmChatOut").textContent="—"; });
 if ($("crmChatInput")) $("crmChatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") crmChatRun(); });
-    });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     if ($("loadReports")) $("loadReports").addEventListener("click", loadReportsList);
     if ($("aiReportTopBtn")) $("aiReportTopBtn").addEventListener("click", aiReport);
     if ($("liveToggle")) $("liveToggle").addEventListener("click", () => {
@@ -12584,12 +21417,60 @@ if ($("crmChatInput")) $("crmChatInput").addEventListener("keydown", (e) => { if
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     startLive();
     liveCheck();
     refresh();
   });
 })();`.trim());
   });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12654,7 +21535,39 @@ async function generateNonAiDailyReport(site_id) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const m = metricsRes.rows[0] || { total_events: 0, page_views: 0, leads: 0, purchases: 0 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12682,6 +21595,22 @@ async function generateNonAiDailyReport(site_id) {
     `,
     [site_id]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12730,8 +21659,40 @@ async function generateNonAiDailyReport(site_id) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   return lines.join("\n");
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12767,6 +21728,22 @@ async function runDailyForAllSites() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   for (const s of sites.rows) {
     const plan = s.plan || "unpaid";
     if (plan !== "pro" && plan !== "full_ai") continue;
@@ -12786,7 +21763,39 @@ async function runDailyForAllSites() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const txt = await generateNonAiDailyReport(s.site_id);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12828,8 +21837,40 @@ async function runDailyForAllSites() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   return { ok: true, updated_sites: made };
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12850,6 +21891,22 @@ app.post("/jobs/run-daily", asyncHandler(async (req, res) => {
   const result = await runDailyForAllSites();
   res.json(result);
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12887,6 +21944,22 @@ if (process.env.ENABLE_SCHEDULER === "true") {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    Errors
 ----------------------------*/
@@ -12894,6 +21967,22 @@ app.use((err, req, res, next) => {
   console.error("ERROR:", err && err.stack ? err.stack : err);
   res.status(500).json({ ok: false, error: String(err.message || err) });
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
