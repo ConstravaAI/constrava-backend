@@ -48653,11 +48653,63 @@ app.get("/dashboard.js", (req, res) => {
   loadAndRender();
 })();
 `);
-  lines.push(`Leads: ${m.leads || 0} • Purchases: ${m.purchases || 0}`);
+});
+
+// ---------- Non-AI daily report (simple, safe) ----------
+async function generateNonAiDailyReport(site_id) {
+  // Minimal, DB-backed summary using events_raw (mirrors /metrics logic)
+  const days = 7;
+  const countsRes = await pool.query(
+    `
+    SELECT
+      SUM(CASE WHEN event_name = 'page_view' THEN 1 ELSE 0 END)::int AS visits,
+      SUM(CASE WHEN event_name = 'lead' THEN 1 ELSE 0 END)::int AS leads,
+      SUM(CASE WHEN event_name = 'purchase' THEN 1 ELSE 0 END)::int AS purchases,
+      SUM(CASE WHEN event_name = 'cta_click' THEN 1 ELSE 0 END)::int AS cta_clicks
+    FROM events_raw
+    WHERE site_id = $1
+      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+    `,
+    [site_id, days]
+  );
+
+  const topRes = await pool.query(
+    `
+    SELECT page_type, COUNT(*)::int AS views
+    FROM events_raw
+    WHERE site_id = $1
+      AND event_name = 'page_view'
+      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
+      AND page_type IS NOT NULL
+    GROUP BY page_type
+    ORDER BY views DESC
+    LIMIT 10
+    `,
+    [site_id, days]
+  );
+
+  const m = countsRes.rows[0] || { visits: 0, leads: 0, purchases: 0, cta_clicks: 0 };
+  const visits = Number(m.visits || 0);
+  const leads = Number(m.leads || 0);
+  const purchases = Number(m.purchases || 0);
+  const leadRate = visits ? Math.round((leads / visits) * 1000) / 10 : 0; // 1 decimal
+  const purchaseRate = visits ? Math.round((purchases / visits) * 1000) / 10 : 0;
+
+  const lines = [];
+  lines.push("Constrava — Daily summary (last 7 days)");
+  lines.push("Visits: " + visits);
+  lines.push("Leads: " + leads + " (" + leadRate + "% lead rate)");
+  lines.push("Purchases: " + purchases + " (" + purchaseRate + "% purchase rate)");
+  lines.push("CTA clicks: " + Number(m.cta_clicks || 0));
   lines.push("");
+
   lines.push("Top pages (7d):");
-  if (!topRes.rows.length) lines.push("- (no data yet)");
-  for (const r of topRes.rows) lines.push(`- ${r.page_type || "/"}: ${r.views}`);
+  if (!topRes.rows.length) {
+    lines.push("- (no data yet)");
+  } else {
+    for (const r of topRes.rows) lines.push("- " + (r.page_type || "/") + ": " + r.views);
+  }
+
   lines.push("");
   lines.push("Next steps:");
   lines.push("1) Put your strongest CTA on the top page");
@@ -48667,136 +48719,8 @@ app.get("/dashboard.js", (req, res) => {
   lines.push("Metric to watch:");
   lines.push("Lead rate (leads / visits)");
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   return lines.join("\n");
 }
-
 
 
 
