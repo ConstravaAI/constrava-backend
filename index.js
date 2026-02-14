@@ -29624,7 +29624,7 @@ app.get("/dashboard.js", (req, res) => {
       t.setAttribute("fill", "rgba(255,255,255,.85)");
       t.setAttribute("font-size", "16");
       t.setAttribute("font-weight", "800");
-      t.textContent = `${st.label}: ${st.value}`;
+      t.textContent = (st.label + ": " + st.value);
       svgEl.appendChild(t);
     });
   }
@@ -29674,7 +29674,7 @@ app.get("/dashboard.js", (req, res) => {
       let d = "";
       arr.forEach((v,i) => {
         const x = xFor(i), y = yFor(v);
-        d += (i===0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
+        d += (i===0 ? ("M " + x + " " + y) : (" L " + x + " " + y));
       });
       return d;
     }
@@ -36618,7 +36618,7 @@ async function loadCRMv2(){
       const purchases = (j.summary && j.summary.purchases) ? j.summary.purchases : Math.round(visits * 0.03);
 
       renderFunnel($("funnelSvg"), visits, leads, purchases);
-      if ($("funnelNote")) $("funnelNote").textContent = `Lead rate: ${Math.round((leads/Math.max(1,visits))*1000)/10}% • Purchase rate: ${Math.round((purchases/Math.max(1,visits))*1000)/10}%`;
+      if ($("funnelNote")) $("funnelNote").textContent = "Lead rate: " + (Math.round((leads/Math.max(1,visits))*1000)/10) + "% • Purchase rate: " + (Math.round((purchases/Math.max(1,visits))*1000)/10) + "%";
 
       const sources = (j.top_sources || j.sources || []).slice(0, 8).map(x => ({ label: x.source || x.label || x.name || "src", value: x.count || x.value || 0 }));
       if (sources.length) {
