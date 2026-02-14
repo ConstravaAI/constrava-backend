@@ -24066,6 +24066,15 @@ app.get("/storefront", asyncHandler(async (req, res) => {
 <title>Constrava — Plans</title>
 <style>
 
+
+
+/* --- Fix: analytics chat sizing --- */
+#chatCard .chatBox, #chatBox { min-height:220px; height:220px; }
+#chatCard .row { align-items:stretch; }
+
+/* --- Fix: hide broken floating chat pill --- */
+#chatToggle, #chatPill { display:none !important; }
+
 /* ---- GA-like Analytics Layout ---- */
 .gaWrap{display:flex;gap:14px;align-items:stretch}
 .gaSide{width:220px;flex:0 0 220px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:12px;position:sticky;top:10px;height:fit-content}
@@ -25651,14 +25660,14 @@ pre{
         </div>
       </div>
       <div class="gaNav">
-        <button class="gaBtn active" data-ga="gaOverview" type="button">Home</button>
-        <button class="gaBtn" data-ga="gaRealtime" type="button">Realtime</button>
-        <button class="gaBtn" data-ga="gaAcq" type="button">Acquisition</button>
-        <button class="gaBtn" data-ga="gaEng" type="button">Engagement</button>
-        <button class="gaBtn" data-ga="gaMon" type="button">Monetization</button>
-        <button class="gaBtn" data-ga="gaExplore" type="button">Explore</button>
-        <button class="gaBtn" data-ga="gaAI" type="button">AI Studio</button>
-        <button class="gaBtn" data-ga="gaConfig" type="button">Configure</button>
+        <button class="gaBtn active gaBtn" data-ga="gaOverview" type="button">Home</button>
+        <button class="gaBtn gaBtn" data-ga="gaRealtime" type="button">Realtime</button>
+        <button class="gaBtn gaBtn" data-ga="gaAcq" type="button">Acquisition</button>
+        <button class="gaBtn gaBtn" data-ga="gaEng" type="button">Engagement</button>
+        <button class="gaBtn gaBtn" data-ga="gaMon" type="button">Monetization</button>
+        <button class="gaBtn gaBtn" data-ga="gaExplore" type="button">Explore</button>
+        <button class="gaBtn gaBtn" data-ga="gaAI" type="button">AI Studio</button>
+        <button class="gaBtn gaBtn" data-ga="gaConfig" type="button">Configure</button>
       </div>
       <div style="margin-top:10px" class="muted">
         Tip: Click any purple chip to ask the AI.
@@ -26449,7 +26458,7 @@ pre{
         <button class="btnGhost" id="simLead">Sim lead</button>
         <button class="btnGhost" id="simPurchase">Sim purchase</button>
         <button class="btnGhost" id="simCta">Sim cta_click</button>
-        <button class="btn" id="share">Copy share link</button>
+        <button class="btn" id="share" id="share2">Copy share link</button>
       </div>
 
 
@@ -26977,7 +26986,7 @@ pre{
           <button class="btnGhost" id="loadReports">Refresh list</button>
         </div>
       </div>
-      <div class="grid" style="margin-top:10px;gap:12px">
+      <div class="loadReports2"grid" style="margin-top:10px;gap:12px">
         <div class="card span6" style="background: var(--panel2); box-shadow:none">
           <div class="muted">Latest</div>
           <div id="reportCards" class="repWrap">Loading…</div>
@@ -27395,7 +27404,7 @@ span12">
           <button class="btnGhost" id="loadReports">Refresh list</button>
         </div>
       </div>
-      <div class="grid" style="margin-top:10px;gap:12px">
+      <div class="loadReports2"grid" style="margin-top:10px;gap:12px">
         <div class="card span6" style="background: var(--panel2); box-shadow:none">
           <div class="muted">Latest</div>
           <div id="reportCards" class="repWrap">Loading…</div>
@@ -38711,7 +38720,10 @@ window.addEventListener("DOMContentLoaded", () => {
     const el = document.getElementById(id);
     if (el) el.classList.add("active");
     document.querySelectorAll(".gaBtn").forEach(b => b.classList.toggle("active", b.getAttribute("data-ga") === id));
-  }
+  
+  // Default to Home panel
+  setGaPanel("gaOverview");
+}
   document.querySelectorAll(".gaBtn").forEach(btn => {
     btn.addEventListener("click", () => setGaPanel(btn.getAttribute("data-ga")));
   });
