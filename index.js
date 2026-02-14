@@ -47833,923 +47833,5396 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Constrava Dashboard</title>
 <style>
-  :root{
-    --bg:#0b0710;
-    --panel:#120a1f;
-    --panel2:#160c28;
-    --stroke:rgba(255,255,255,.10);
-    --stroke2:rgba(200,160,255,.22);
-    --text:#f5f2ff;
-    --muted:rgba(245,242,255,.72);
-    --purple:#8b5cf6;
-    --purple2:#a78bfa;
-    --good:#22c55e;
-    --warn:#f59e0b;
-    --bad:#ef4444;
-    --card:#0f0a18;
-    --shadow:0 10px 30px rgba(0,0,0,.35);
-    --radius:16px;
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%}
-  body{
-    margin:0;
-    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-    background:
-      radial-gradient(1200px 700px at 20% -10%, rgba(139,92,246,.35), transparent 55%),
-      radial-gradient(900px 500px at 90% 10%, rgba(167,139,250,.22), transparent 55%),
-      linear-gradient(180deg, #07040b, #0b0710 40%, #07040b);
-    color:var(--text);
-  }
-  a{color:inherit}
-  .app{
-    display:grid;
-    grid-template-columns: 260px 1fr;
-    min-height:100vh;
-  }
-  .sidebar{
-    border-right:1px solid var(--stroke);
-    background: linear-gradient(180deg, rgba(18,10,31,.95), rgba(11,7,16,.92));
-    padding:18px 14px;
-    position:sticky; top:0; height:100vh;
-  }
-  .brand{
-    display:flex; align-items:center; gap:10px;
-    padding:10px 10px 14px;
-    border-bottom:1px solid var(--stroke);
-    margin-bottom:14px;
-  }
-  .logo{
-    width:38px; height:38px; border-radius:12px;
-    background: radial-gradient(circle at 30% 30%, rgba(167,139,250,.95), rgba(139,92,246,.75));
-    box-shadow: 0 10px 25px rgba(139,92,246,.25);
-  }
-  .brand h1{font-size:14px; margin:0}
-  .brand p{font-size:12px; margin:2px 0 0; color:var(--muted)}
-  .nav{
-    display:flex; flex-direction:column; gap:6px; margin-top:10px;
-  }
-  .nav button{
-    appearance:none; border:1px solid transparent;
-    background:transparent;
-    color:var(--muted);
-    padding:10px 12px;
-    border-radius:12px;
-    cursor:pointer;
-    text-align:left;
-    display:flex; align-items:center; justify-content:space-between;
-    transition: all .12s ease;
-  }
-  .nav button:hover{
-    background: rgba(139,92,246,.10);
-    border-color: rgba(167,139,250,.28);
-    color: var(--text);
-  }
-  .nav button[aria-selected="true"]{
-    background: rgba(139,92,246,.18);
-    border-color: rgba(167,139,250,.35);
-    color: var(--text);
-  }
-  .pill{
-    font-size:11px; padding:2px 8px; border-radius:999px;
-    border:1px solid rgba(167,139,250,.30);
-    color: rgba(245,242,255,.86);
-    background: rgba(139,92,246,.14);
-  }
-  .main{
-    padding:18px 18px 80px;
-  }
-  .topbar{
-    display:flex; gap:12px; align-items:center; justify-content:space-between;
-    padding:14px 16px;
-    background: rgba(15,10,24,.62);
-    border:1px solid var(--stroke);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-  }
-  .topbar .left{display:flex; flex-direction:column; gap:4px}
-  .title{font-size:18px; margin:0}
-  .subtitle{font-size:12px; margin:0; color:var(--muted)}
-  .controls{display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end}
-  select, input, .btn{
-    border-radius:12px;
-    border:1px solid rgba(167,139,250,.25);
-    background: rgba(255,255,255,.04);
-    color: var(--text);
-    padding:10px 10px;
-    outline:none;
-  }
-  select option{background:#130b22; color:var(--text)}
-  .btn{
-    cursor:pointer;
-    background: linear-gradient(180deg, rgba(139,92,246,.22), rgba(139,92,246,.12));
-    transition: transform .06s ease, background .12s ease;
-    font-weight:600;
-  }
-  .btn:hover{background: linear-gradient(180deg, rgba(167,139,250,.26), rgba(139,92,246,.16));}
-  .btn:active{transform: translateY(1px);}
-  .btn.secondary{
-    background: rgba(255,255,255,.04);
-    font-weight:600;
-  }
-  .grid{
-    margin-top:16px;
-    display:grid;
-    grid-template-columns: repeat(12, 1fr);
-    gap:14px;
-  }
-  .card{
-    background: rgba(15,10,24,.60);
-    border:1px solid var(--stroke);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    padding:14px;
-    min-height:120px;
-  }
-  .card h3{margin:0 0 10px; font-size:13px; color: rgba(245,242,255,.90)}
-  .kpis{display:grid; grid-template-columns: repeat(4, 1fr); gap:10px}
-  .kpi{
-    padding:12px; border-radius:14px;
-    border:1px solid rgba(167,139,250,.18);
-    background: rgba(0,0,0,.14);
-  }
-  .kpi .k{font-size:11px; color:var(--muted)}
-  .kpi .v{font-size:18px; font-weight:800; margin-top:4px}
-  .row{display:flex; gap:10px; flex-wrap:wrap}
-  .muted{color:var(--muted)}
-  .split{
-    display:grid;
-    grid-template-columns: 1.4fr .6fr;
-    gap:14px;
-    align-items:stretch;
-  }
-  .chartWrap{position:relative; width:100%; height:260px}
-  canvas{width:100%; height:100%}
-  .actions{display:flex; gap:10px; flex-wrap:wrap}
-  .tag{
-    font-size:12px; padding:6px 10px; border-radius:999px;
-    border:1px solid rgba(167,139,250,.22);
-    background: rgba(139,92,246,.10);
-    cursor:pointer;
-  }
-  .table{width:100%; border-collapse:collapse; font-size:12px}
-  .table th, .table td{padding:10px 8px; border-bottom:1px solid rgba(255,255,255,.08); text-align:left}
-  .table th{color:rgba(245,242,255,.86); font-weight:700}
-  .right{justify-content:flex-end}
-  .hidden{display:none !important}
-  /* Modal */
-  .overlay{
-    position:fixed; inset:0;
-    background: rgba(0,0,0,.55);
-    display:flex; align-items:center; justify-content:center;
-    padding:18px;
-    z-index:50;
-  }
-  .modal{
-    width:min(920px, 96vw);
-    border-radius: 20px;
-    border:1px solid rgba(167,139,250,.25);
-    background: linear-gradient(180deg, rgba(20,12,35,.96), rgba(11,7,16,.96));
-    box-shadow: 0 30px 90px rgba(0,0,0,.55);
-    overflow:hidden;
-  }
-  .modalHead{
-    padding:14px 16px;
-    display:flex; align-items:flex-start; justify-content:space-between;
-    border-bottom:1px solid rgba(255,255,255,.08);
-  }
-  .modalHead h2{margin:0; font-size:15px}
-  .modalHead p{margin:6px 0 0; font-size:12px; color:var(--muted)}
-  .modalBody{padding:16px}
-  .modalGrid{display:grid; grid-template-columns: 1fr 1fr; gap:14px}
-  .modalClose{cursor:pointer; border:1px solid rgba(167,139,250,.30); background: rgba(255,255,255,.05); color:var(--text); border-radius:12px; padding:8px 10px}
-  .note{
-    font-size:12px; color:var(--muted);
-    line-height:1.45;
-    white-space:pre-wrap;
-    border:1px solid rgba(167,139,250,.14);
-    border-radius:14px;
-    padding:12px;
-    background: rgba(0,0,0,.12);
-  }
-  .miniKpis{display:grid; grid-template-columns: repeat(3, 1fr); gap:10px}
-  @media (max-width: 980px){
-    .app{grid-template-columns: 1fr}
-    .sidebar{position:relative; height:auto}
-    .modalGrid{grid-template-columns:1fr}
-    .split{grid-template-columns:1fr}
-    .kpis{grid-template-columns: repeat(2,1fr)}
-  }
+:root{
+  --bg:#ffffff;
+  --panel:#ffffff;
+  --panel2:#f6f3ff;
+  --text:#111827;
+  --muted:#6b7280;
+  --border: rgba(124,58,237,.18);
+  --accent:#7c3aed;      /* purple */
+  --accent2:#a78bfa;     /* light purple */
+  --danger:#ef4444;
+  --shadow: 0 18px 50px rgba(17,24,39,.12);
+  --radius: 16px;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  background:
+    radial-gradient(1100px 720px at 20% -10%, rgba(167,139,250,.35), transparent 60%),
+    radial-gradient(900px 620px at 90% 0%, rgba(124,58,237,.18), transparent 55%),
+    var(--bg);
+  color: var(--text);
+}
+.wrap{max-width:1180px;margin:0 auto;padding:22px 16px 60px}
+.top{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  padding:16px;
+  border:1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
+  box-shadow: var(--shadow);
+}
+/* ---------- Report UI (cards) ---------- */
+.repCard{
+  grid-column: span 6;
+  border:1px solid var(--border);
+  background: var(--panel2);
+  border-radius: 16px;
+  padding:12px;
+  min-width:0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.repWrap{
+  display:grid;
+  grid-template-columns:repeat(12,1fr);
+  gap:12px;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.repCard:nth-child(3){
+  grid-column: 1 / -1;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@media (max-width: 980px){ .repCard{ grid-column: 1 / -1; } }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.repTitle{
+  font-weight:950;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.repBadge{
+  font-size:11px;
+  color: rgba(229,231,235,.75);
+  border:1px solid var(--border);
+  padding:4px 8px;
+  border-radius:999px;
+  background: rgba(255,255,255,.04);
+}
+.repText{
+  margin-top:8px;
+  color: rgba(229,231,235,.90);
+  font-size:13px;
+  line-height:1.55;
+}
+.repList{
+  margin:8px 0 0 0;
+  padding-left:18px;
+  color: rgba(229,231,235,.92);
+  line-height:1.6;
+}
+.repList li{ margin:4px 0; }
+.repKpi{
+  margin-top:10px;
+  padding:10px;
+  border-radius:14px;
+  border:1px solid var(--border);
+  background: rgba(96,165,250,.10);
+}
+.repKpi b{ font-size:14px; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.brand{display:flex;align-items:center;gap:12px}
+.logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg, rgba(96,165,250,.95), rgba(52,211,153,.88));}
+h1{margin:0;font-size:18px;font-weight:950}
+.sub{margin-top:3px;font-size:12px;color:var(--muted)}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.pill{
+  display:inline-block;
+  padding:7px 10px;
+  border:1px solid rgba(124,58,237,.25);
+  border-radius:999px;
+  background: var(--panel2);
+  font-size:12px;
+  color: var(--accent);
+  white-space:nowrap;
+}
+.grid{margin-top:14px;display:grid;grid-template-columns:repeat(12,1fr);gap:12px;}
+.card{
+  border:1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel2);
+  box-shadow: var(--shadow);
+  padding:14px;
+  min-width:0;
+}
+.kpi{font-size:28px;font-weight:1000;letter-spacing:-0.5px}
+.kpiSmall{font-size:18px;font-weight:950}
+.muted{color:var(--muted);font-size:12px;line-height:1.5}
+button,a{
+  border-radius:12px;border:1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  padding:10px 12px;
+  font-weight:900;
+  cursor:pointer;
+  text-decoration:none;
+  outline:none;
+}
+input,select{
+  border-radius:12px;border:1px solid var(--border);
+  background: var(--panel2);
+  color: var(--text);
+  padding:10px 12px;
+  font-weight:900;
+  outline:none;
+}
+select{appearance:none;-webkit-appearance:none;-moz-appearance:none}
+select option{color:var(--text)}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+button:hover,a:hover,select:hover{border-color: var(--accent2)}
+/* Buttons: purple + white theme (no "greyed" look) */
+.btn{
+  background: var(--accent);
+  color: #fff;
+  border-color: rgba(124,58,237,.55);
+  box-shadow: 0 10px 24px rgba(124,58,237,.18);
+}
+.btnGreen{
+  background: rgba(124,58,237,.12);
+  color: var(--accent);
+  border-color: rgba(124,58,237,.30);
+}
+.btnDanger{
+  background: rgba(124,58,237,.10);
+  color: var(--accent);
+  border-color: rgba(124,58,237,.35);
+}
+.btnGhost{
+  background: #fff;
+  color: var(--accent);
+  border-color: rgba(124,58,237,.25);
+}
+button:disabled, select:disabled, input:disabled{
+  opacity: .70;
+  cursor: not-allowed;
+}
+.divider{height:1px;background: rgba(255,255,255,.10);margin:12px 0;}
+.span12{grid-column:1 / -1}
+.span8{grid-column: span 8}
+.span6{grid-column: span 6}
+.span4{grid-column: span 4}
+.span3{grid-column: span 3}
+@media (max-width: 980px){
+  .span8,.span6,.span4,.span3{grid-column:1 / -1}
+}
+.chartBox{padding:10px;border-radius:14px;border:1px solid var(--border);background: rgba(15,23,42,.35)}
+svg{display:block;width:100%;height:auto}
+.list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.item{
+  display:flex;justify-content:space-between;gap:10px;align-items:center;
+  padding:10px 10px;border:1px solid var(--border);
+  border-radius:14px;background: var(--panel2);
+}
+.barWrap{flex:1;min-width:0}
+.bar{
+  height:10px;border-radius:999px;background: rgba(96,165,250,.20);
+  border:1px solid var(--border);
+  overflow:hidden;
+}
+.bar > div{height:100%;background: rgba(96,165,250,.70)}
+.mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace}
+pre{
+  margin:10px 0 0 0;
+  white-space:pre-wrap;
+  background: rgba(15,23,42,.55);
+  border:1px solid var(--border);
+  padding:12px;border-radius:14px;
+}
+.rightBtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.tabBtn{
+  border:1px solid var(--border);
+  background: var(--panel2);
+  color: var(--text);
+  padding:10px 14px;
+  border-radius: 999px;
+  cursor:pointer;
+  font-weight:800;
+}
+.tabBtn.active{
+  background: rgba(124,58,237,.10);
+  border-color: rgba(124,58,237,.35);
+  color: #5b21b6;
+}
 </style>
 </head>
 <body>
-<div class="app">
-  <aside class="sidebar">
+<div class="wrap">
+  <div class="top">
     <div class="brand">
-      <div class="logo" aria-hidden="true"></div>
-      <div>
-        <h1 id="siteTitle">Constrava</h1>
-        <p id="siteSub">Analytics Dashboard</p>
-      </div>
-    </div>
-    <div class="nav" id="nav">
-      <button class="navBtn" data-panel="home" aria-selected="true"><span>Home</span><span class="pill">AI</span></button>
-      <button class="navBtn" data-panel="realtime" aria-selected="false"><span>Realtime</span><span class="pill">Live</span></button>
-      <button class="navBtn" data-panel="acq" aria-selected="false"><span>Acquisition</span><span class="pill">GA</span></button>
-      <button class="navBtn" data-panel="eng" aria-selected="false"><span>Engagement</span><span class="pill">GA</span></button>
-      <button class="navBtn" data-panel="mon" aria-selected="false"><span>Monetization</span><span class="pill">GA</span></button>
-      <button class="navBtn" data-panel="explore" aria-selected="false"><span>Explore</span><span class="pill">Charts</span></button>
-      <button class="navBtn" data-panel="ai" aria-selected="false"><span>AI Studio</span><span class="pill">Helper</span></button>
-      <button class="navBtn" data-panel="configure" aria-selected="false"><span>Configure</span><span class="pill">Prefs</span></button>
-      <div style="height:10px"></div>
-      <div class="note" style="margin-top:8px">
-Tip: Click any “Explain” button to get a business summary pop-up (it will NOT spam the chat).
-      </div>
-    </div>
-  </aside>
-
-  <main class="main">
-    <div class="topbar">
-      <div class="left">
-        <h2 class="title">Analytics</h2>
-        <p class="subtitle" id="lastUpdated">Loading metrics…</p>
-      </div>
-      <div class="controls">
-        <label class="muted" style="font-size:12px">Range</label>
-        <select id="daysSel">
-          <option value="1">1 day</option>
-          <option value="7" selected>7 days</option>
-          <option value="30">30 days</option>
-          <option value="365">1 year</option>
-        </select>
-        <button class="btn secondary" id="refreshBtn">Refresh</button>
-        <button class="btn" data-ai="weekly">Explain performance</button>
-        <button class="btn" data-ai="bottleneck">Find bottleneck</button>
-        <button class="btn" data-ai="experiments">Suggest experiments</button>
-      </div>
-    </div>
-
-    <section id="panel-home" class="grid">
-      <div class="card" style="grid-column: span 12">
-        <div class="kpis" id="kpis">
-          <div class="kpi"><div class="k">Visits</div><div class="v" id="k_visits">—</div></div>
-          <div class="kpi"><div class="k">Leads</div><div class="v" id="k_leads">—</div></div>
-          <div class="kpi"><div class="k">Purchases</div><div class="v" id="k_purchases">—</div></div>
-          <div class="kpi"><div class="k">Lead rate</div><div class="v" id="k_lead_rate">—</div></div>
-        </div>
-        <div style="margin-top:12px" class="actions">
-          <span class="tag" data-demo="page_view">Sim page views</span>
-          <span class="tag" data-demo="lead">Sim leads</span>
-          <span class="tag" data-demo="purchase">Sim purchases</span>
-          <span class="tag" data-demo="cta_click">Sim CTA clicks</span>
-          <span class="tag" data-ai="pages">Explain top pages</span>
+      
+<div id="sectionAnalytics">
+  <div class="gaWrap">
+    <aside class="gaSide">
+      <div class="gaBrand">
+        <div class="gaDot"></div>
+        <div>
+          <div class="gaTitle">Analytics</div>
+          <div class="muted" style="font-size:12px">GA-style + AI helpers</div>
         </div>
       </div>
-
-      <div class="card" style="grid-column: span 8">
-        <div class="row" style="justify-content:space-between; align-items:center">
-          <h3 style="margin:0">Visits over time</h3>
-          <button class="btn secondary" data-ai="trend">Explain this chart</button>
-        </div>
-        <div class="chartWrap"><canvas id="trendCanvas" width="900" height="300"></canvas></div>
+      <div class="gaNav">
+        <button class="gaBtn active gaBtn" data-ga="gaOverview" type="button">Home</button>
+        <button class="gaBtn gaBtn" data-ga="gaRealtime" type="button">Realtime</button>
+        <button class="gaBtn gaBtn" data-ga="gaAcq" type="button">Acquisition</button>
+        <button class="gaBtn gaBtn" data-ga="gaEng" type="button">Engagement</button>
+        <button class="gaBtn gaBtn" data-ga="gaMon" type="button">Monetization</button>
+        <button class="gaBtn gaBtn" data-ga="gaExplore" type="button">Explore</button>
+        <button class="gaBtn gaBtn" data-ga="gaAI" type="button">AI Studio</button>
+        <button class="gaBtn gaBtn" data-ga="gaConfig" type="button">Configure</button>
       </div>
-
-      <div class="card" style="grid-column: span 4">
-        <div class="row" style="justify-content:space-between; align-items:center">
-          <h3 style="margin:0">Device mix</h3>
-          <button class="btn secondary" data-ai="devices">Explain</button>
-        </div>
-        <div class="chartWrap" style="height:260px"><canvas id="deviceCanvas" width="600" height="300"></canvas></div>
+      <div style="margin-top:10px" class="muted">
+        Tip: Click any purple chip to ask the AI.
       </div>
+    </aside>
 
-      <div class="card" style="grid-column: span 12">
-        <div class="row" style="justify-content:space-between; align-items:center">
-          <h3 style="margin:0">Top pages</h3>
-          <button class="btn secondary" data-ai="pages">Explain</button>
-        </div>
-        <table class="table" id="pagesTable">
-          <thead><tr><th>Page</th><th>Views</th><th>Share</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
 
-    <section id="panel-realtime" class="grid hidden">
-      <div class="card" style="grid-column: span 12">
-        <div class="row" style="justify-content:space-between; align-items:center">
-          <h3 style="margin:0">Realtime</h3>
-          <div class="row right">
-            <button class="btn secondary" id="rtToggle">Pause</button>
-            <button class="btn" id="rtNow">Check now</button>
+    <main class="gaMain">
+      <div class="gaTop">
+        <div>
+          <h2>Constrava Analytics</h2>
+          <div class="gaSub">Google Analytics-like layout with AI assistants in every section.</div>
+          <div class="aiChips">
+            <button class="aiChip" data-ai="Summarize my last 7 days: traffic, top pages, conversions, and what to fix next." type="button">Weekly summary</button>
+            <button class="aiChip" data-ai="What is my biggest conversion bottleneck right now? Use the data on this dashboard." type="button">Find bottleneck</button>
+            <button class="aiChip" data-ai="Give me 3 experiments to increase leads this week, with steps." type="button">3 experiments</button>
+            <button class="aiChip" data-ai="Which pages should I improve first, and why? Give an ordered list." type="button">Prioritize pages</button>
           </div>
         </div>
-        <div class="note" id="rtBox">Loading…</div>
-      </div>
-    </section>
-
-    <section id="panel-acq" class="grid hidden">
-      <div class="card" style="grid-column: span 12">
-        <h3>Acquisition</h3>
-        <div class="note">This demo focuses on event-driven analytics. Next: connect channels (UTMs, referrers) and show source/medium tables like GA.</div>
-        <div class="actions" style="margin-top:10px">
-          <button class="btn" data-ai="acq">AI: what’s driving traffic?</button>
-          <button class="btn secondary" data-ai="next">AI: next best growth move</button>
+        <div class="row" style="gap:10px;flex-wrap:wrap">
+          <button class="btnGhost" id="share" type="button">Share</button>
+          <button class="btn" id="loadReports" type="button">Load reports</button>
         </div>
       </div>
-    </section>
 
-    <section id="panel-eng" class="grid hidden">
-      <div class="card" style="grid-column: span 12">
-        <h3>Engagement</h3>
-        <div class="note">Add: session duration, scroll depth, engaged sessions, returning users.</div>
-        <div class="actions" style="margin-top:10px">
-          <button class="btn" data-ai="eng">AI: engagement diagnosis</button>
-        </div>
-      </div>
-    </section>
 
-    <section id="panel-mon" class="grid hidden">
-      <div class="card" style="grid-column: span 12">
-        <h3>Monetization</h3>
-        <div class="note">Add: revenue, AOV, cohort purchase rate, checkout funnel.</div>
-        <div class="actions" style="margin-top:10px">
-          <button class="btn" data-ai="mon">AI: monetization summary</button>
+      <section class="gaPanel active" id="gaOverview">
+        <div class="grid">
+          <div class="grid">
+    <div class="muted">Ask questions about your traffic, pages, conversions, and next steps.</div>
         </div>
+        <span class="pill">Chat</span>
       </div>
-    </section>
-
-    <section id="panel-explore" class="grid hidden">
-      <div class="card" style="grid-column: span 12">
-        <div class="row" style="justify-content:space-between; align-items:center">
-          <h3 style="margin:0">Explore</h3>
-          <button class="btn secondary" data-ai="explore">AI: how to read this</button>
-        </div>
-        <div class="row" style="margin-top:10px">
-          <label class="muted" style="font-size:12px">Metric</label>
-          <select id="exploreMetric">
-            <option value="visits">Visits</option>
-            <option value="leads">Leads</option>
-            <option value="purchases">Purchases</option>
-            <option value="cta_clicks">CTA clicks</option>
-          </select>
-          <button class="btn" id="exploreRender">Render</button>
-        </div>
-        <div class="chartWrap" style="margin-top:12px"><canvas id="exploreCanvas" width="900" height="300"></canvas></div>
+      <div class="divider"></div>
+      <div id="chatBox" style="height:220px;overflow:auto;padding:12px;border-radius:14px;border:1px solid var(--border);background: var(--panel2);">
+        <div class="muted">Start by asking: “What should I improve first?”</div>
       </div>
-    </section>
-
-    <section id="panel-ai" class="grid hidden">
-      <div class="card" style="grid-column: span 12">
-        <h3>AI Studio</h3>
-        <div class="note">In this demo, AI pop-ups are local and deterministic (no OpenAI key required). When you’re ready, we can connect these prompts to the OpenAI API and let the assistant reference more tables.</div>
-        <div class="actions" style="margin-top:10px">
-          <button class="btn" data-ai="weekly">Generate executive summary</button>
-          <button class="btn secondary" data-ai="bottleneck">Diagnose bottleneck</button>
-          <button class="btn secondary" data-ai="experiments">Propose experiments</button>
-        </div>
+      <div class="row" style="margin-top:10px">
+        <input id="chatInput" placeholder="Type a message…" style="flex:1;min-width:220px" />
+        <button class="btnGreen" id="chatSend">Send</button>
+        <button class="btnGhost" id="chatClear">Clear</button>
       </div>
-    </section>
-
-    <section id="panel-configure" class="grid hidden">
-      <div class="card" style="grid-column: span 12">
-        <h3>Configure</h3>
-        <div class="row" style="margin-top:8px">
-          <label class="muted" style="font-size:12px">Chart style</label>
-          <select id="chartStyle">
-            <option value="smooth" selected>Smooth</option>
-            <option value="linear">Linear</option>
-            <option value="bars">Bars</option>
-          </select>
-          <button class="btn" id="savePrefs">Save preferences</button>
-        </div>
-        <div class="note" style="margin-top:10px">Preferences are stored in your browser for this demo.</div>
+      <div class="muted" style="margin-top:8px">
+        Note: Requires the <b>Full AI</b> plan (or the endpoint will return 403).
       </div>
-    </section>
-  </main>
-</div>
-
-<!-- Modal -->
-<div class="overlay hidden" id="overlay">
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
-    <div class="modalHead">
-      <div>
-        <h2 id="mTitle">Insight</h2>
-        <p id="mSub">Summary</p>
-      </div>
-      <button class="modalClose" id="mClose">Close</button>
     </div>
-    <div class="modalBody">
-      <div class="miniKpis" id="mKpis"></div>
-      <div style="height:10px"></div>
-      <div class="modalGrid">
-        <div class="note" id="mBody"></div>
-        <div class="note" id="mNext"></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div class="card span12">
+      <div style="font-weight:950">Latest AI Report</div>
+      <div class="muted">Your most recent report (or seed sample).</div>
+      <div class="divider"></div>
+      <details style="margin-top:10px">
+  <summary class="muted" style="cursor:pointer">Show raw report</summary>
+  <pre id="latestAiReport" class="mono" style="max-height:320px;overflow:auto">Loading…</pre>
+</details>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div class="card span3">
+      <div class="muted">Visits today</div>
+      <div class="kpi" id="kpiToday">—</div>
+      <div class="muted" id="kpiTodaySub"></div>
+    </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div class="card span3">
+      <div class="muted">Visits in range</div>
+      <div class="kpi" id="kpiRange">—</div>
+      <div class="muted" id="kpiRangeSub"></div>
+    </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div class="card span3">
+      <div class="muted">Lead rate (leads/visits)</div>
+      <div class="kpi" id="kpiLeadRate">—</div>
+      <div class="muted">Goal: improve CTA + forms</div>
+    </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div class="card span3">
+      <div class="muted">Purchase rate</div>
+      <div class="kpi" id="kpiPurchaseRate">—</div>
+      <div class="muted">Track “purchase” events</div>
+    </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div class="card span8">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Traffic trend</div>
+          <div class="muted">Visits per day (selected window)</div>
+        </div>
+        <div class="row">
+          <span class="pill">Max/day: <b id="maxDay">—</b></span>
+          <span class="pill">Avg/day: <b id="avgDay">—</b></span>
+        </div>
+      </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      <div class="chartBox" style="margin-top:10px">
+        <svg id="trendSvg" viewBox="0 0 900 260" role="img" aria-label="Traffic trend chart"></svg>
+      </div>
+
+
+      <div class="grid" style="margin-top:12px">
+        <div class="card span6" style="background:var(--panel2)">
+          <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px">
+            <div>
+              <div style="font-weight:950">Conversion funnel</div>
+              <div class="muted">Visits → Leads → Purchases (estimated)</div>
+            </div>
+            <button class="btnGhost" type="button" data-ai="Explain my funnel. Where are people dropping off and what should I change first?">AI explain</button>
+          </div>
+          <div class="chartBox" style="margin-top:10px">
+            <svg id="funnelSvg" viewBox="0 0 900 260" role="img" aria-label="Conversion funnel chart"></svg>
+          </div>
+          <div class="muted" id="funnelNote" style="margin-top:8px"></div>
+        </div>
+
+
+        <div class="card span6" style="background:var(--panel2)">
+          <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px">
+            <div>
+              <div style="font-weight:950">Traffic sources</div>
+              <div class="muted">Where visitors come from (approx.)</div>
+            </div>
+            <button class="btnGhost" type="button" data-ai="Which traffic sources are best, which are wasting time, and what should I do next?">AI explain</button>
+          </div>
+          <div class="chartBox" style="margin-top:10px">
+            <svg id="sourcesSvg" viewBox="0 0 900 260" role="img" aria-label="Traffic sources chart"></svg>
+          </div>
+          <div class="muted" id="sourcesNote" style="margin-top:8px"></div>
+        </div>
+
+
+        <div class="card span8" style="background:var(--panel2)">
+          <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px">
+            <div>
+              <div style="font-weight:950">Events over time</div>
+              <div class="muted">Clicks / leads / purchases trend (simulated from events)</div>
+            </div>
+            <button class="btnGhost" type="button" data-ai="Spot anomalies in my events over time and tell me why they might be happening.">AI anomalies</button>
+          </div>
+          <div class="chartBox" style="margin-top:10px">
+            <svg id="eventsSvg" viewBox="0 0 900 260" role="img" aria-label="Events chart"></svg>
+          </div>
+        </div>
+
+
+        <div class="card span4" style="background:var(--panel2)">
+          <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px">
+            <div>
+              <div style="font-weight:950">Retention snapshot</div>
+              <div class="muted">Returning visitors proxy</div>
+            </div>
+            <button class="btnGhost" type="button" data-ai="Explain retention: are people coming back? What would improve it?">AI explain</button>
+          </div>
+          <div class="chartBox" style="margin-top:10px">
+            <svg id="retentionSvg" viewBox="0 0 900 260" role="img" aria-label="Retention chart"></svg>
+          </div>
+        </div>
+      </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      <div class="divider"></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      <div class="row">
+        <button class="btnGhost" id="simView">Sim page_view</button>
+        <button class="btnGhost" id="simLead">Sim lead</button>
+        <button class="btnGhost" id="simPurchase">Sim purchase</button>
+        <button class="btnGhost" id="simCta">Sim cta_click</button>
+        <button class="btn" id="share" id="share2">Copy share link</button>
+      </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      <div class="muted" style="margin-top:10px">
+        Seeder requires <span class="mono">ENABLE_DEMO_SEED=true</span>. Sim buttons work any time.
+      </div>
+    </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div class="card span4">
+      <div style="font-weight:950">Live</div>
+      <div class="muted">Polls every few seconds for new page_views</div>
+      <div class="divider"></div>
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <div class="muted">New page_views</div>
+          <div class="kpiSmall" id="liveNew">—</div>
+        </div>
+        <div>
+          <div class="muted">Last event</div>
+          <div class="kpiSmall" id="liveLast">—</div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <pre id="liveJson">Loading…</pre>
+      <div class="row" style="margin-top:10px">
+        <button class="btnGhost" id="liveToggle">Pause</button>
+        <button class="btnGhost" id="liveNow">Check now</button>
+      </div>
+    </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div class="card span6">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Top pages</div>
+          <div class="muted">Most viewed pages in range</div>
+        </div>
+        <span class="pill">Top 10</span>
+      </div>
+      <div class="list" id="topPages">Loading…</div>
+    </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div class="card span6">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Device mix & goals</div>
+          <div class="muted">Breakdown + conversions</div>
+        </div>
+        <span class="pill">Visits → Leads → Purchases</span>
+      </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      <div class="grid" style="margin-top:10px;gap:10px">
+        <div class="card" style="grid-column: span 6; background: var(--panel2); box-shadow:none">
+          <div class="muted">Device donut</div>
+          <div class="chartBox" style="margin-top:8px">
+            <svg id="deviceSvg" viewBox="0 0 240 160"></svg>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <span class="pill">Mobile: <b id="mob">—</b></span>
+            <span class="pill">Desktop: <b id="desk">—</b></span>
+          </div>
+        </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        <div class="card" style="grid-column: span 6; background: var(--panel2); box-shadow:none">
+          <div class="muted">Goals in range</div>
+          <div class="row" style="margin-top:6px">
+            <span class="pill">Leads: <b id="leads">—</b></span>
+            <span class="pill">Purchases: <b id="purchases">—</b></span>
+            <span class="pill">CTA: <b id="cta">—</b></span>
+          </div>
+          <div class="divider"></div>
+          <div class="muted">Last event</div>
+          <pre id="lastEvent">Loading…</pre>
+        </div>
+      </div>
+    </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+    <div class="card span12">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Reports</div>
+          <div class="muted">History list</div>
+        </div>
+        <div class="rightBtns">
+          <button class="btnGhost" id="loadReports">Refresh list</button>
+        </div>
+      </div>
+      <div class="loadReports2"grid" style="margin-top:10px;gap:12px">
+        <div class="card span6" style="background: var(--panel2); box-shadow:none">
+          <div class="muted">Latest</div>
+          <div id="reportCards" class="repWrap">Loading…</div>
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<details style="margin-top:10px">
+  <summary class="muted" style="cursor:pointer">Show raw report</summary>
+  <pre id="report" class="mono" style="max-height:320px;overflow:auto">Loading…</pre>
+</details>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        </div>
+        <div class="card span6" style="background: var(--panel2); box-shadow:none">
+          <div class="muted">History</div>
+          <div class="list" id="reportsList">Loading…</div>
+        </div>
       </div>
     </div>
   </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        </div>
+      </section>
+
+
+      <section class="gaPanel" id="gaRealtime">
+        <div class="grid">
+          <div class="card span12" style="background:var(--panel2)">
+            <div style="font-weight:950">Realtime overview</div>
+            <div class="muted">Live visitors and events. Use AI to interpret spikes.</div>
+            <div class="aiChips">
+              <button class="aiChip" data-ai="Explain what is happening in realtime right now, and what I should do." type="button">Explain realtime</button>
+              <button class="aiChip" data-ai="Do you see any anomaly in realtime? If yes, what likely caused it?" type="button">Detect anomaly</button>
+            </div>
+          </div>
+          <div class="card span12">
+            <div style="font-weight:950">Tip</div>
+            <div class="muted">Your live widgets (events, now/last/new) are still shown on the Home tab. This tab is a focused place to ask realtime questions.</div>
+          </div>
+        </div>
+      </section>
+
+
+      <section class="gaPanel" id="gaAcq">
+        <div class="grid">
+          <div class="card span12" style="background:var(--panel2)">
+            <div style="font-weight:950">Acquisition</div>
+            <div class="muted">Where your traffic comes from and what converts.</div>
+            <div class="aiChips">
+              <button class="aiChip" data-ai="Based on this data, what acquisition sources should I double down on? Explain." type="button">Double down</button>
+              <button class="aiChip" data-ai="Suggest 3 new acquisition channels to test next and what to post/run." type="button">New channels</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+      <section class="gaPanel" id="gaEng">
+        <div class="grid">
+          <div class="card span12" style="background:var(--panel2)">
+            <div style="font-weight:950">Engagement</div>
+            <div class="muted">Pages, actions, and user behavior.</div>
+            <div class="aiChips">
+              <button class="aiChip" data-ai="Which pages are underperforming? Give fixes for each." type="button">Underperforming pages</button>
+              <button class="aiChip" data-ai="Write 5 copy improvements for the top landing page." type="button">Improve copy</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+      <section class="gaPanel" id="gaMon">
+        <div class="grid">
+          <div class="card span12" style="background:var(--panel2)">
+            <div style="font-weight:950">Monetization</div>
+            <div class="muted">Lead rate, purchase rate, and conversion strategy.</div>
+            <div class="aiChips">
+              <button class="aiChip" data-ai="Give me a 7-day conversion plan to increase purchases." type="button">7-day plan</button>
+              <button class="aiChip" data-ai="Estimate what my revenue could be with a 20% lift in lead rate and purchase rate." type="button">Forecast lift</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+      <section class="gaPanel" id="gaExplore">
+        <div class="grid">
+          <div class="card span12" style="background:var(--panel2)">
+            <div style="font-weight:950">Explore</div>
+            <div class="muted">Ask advanced questions and get evidence-backed answers.</div>
+            <div class="aiChips">
+              <button class="aiChip" data-ai="Find visitor segments from the last 30 days and what each segment cares about." type="button">Segments</button>
+              <button class="aiChip" data-ai="If I can only fix one thing on this site this week, what should it be and why?" type="button">One fix</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+      <section class="gaPanel" id="gaAI">
+        <div class="grid">
+          <div class="card span12" id="chatCard">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Live AI Helper</div>
+          
+          
+          <div id="latestAiReportCards" class="repWrap">Loading latest report…</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        </div>
+      </section>
+
+
+      <section class="gaPanel" id="gaConfig">
+        <div class="grid">
+          <div class="card span12" style="background:var(--panel2)">
+            <div style="font-weight:950">Configure</div>
+            <div class="muted">Saved reports and analytics settings.</div>
+            <div class="aiChips">
+              <button class="aiChip" data-ai="What reports should I review weekly and why? Keep it short." type="button">Weekly reports</button>
+              <button class="aiChip" data-ai="What data is missing from my tracking, and how do I capture it?" type="button">Tracking gaps</button>
+            </div>
+          </div>
+          <div class="card span12" id="reportsList"></div>
+          <div class="card span12" id="report"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+span12">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Reports</div>
+          <div class="muted">History list</div>
+        </div>
+        <div class="rightBtns">
+          <button class="btnGhost" id="loadReports">Refresh list</button>
+        </div>
+      </div>
+      <div class="loadReports2"grid" style="margin-top:10px;gap:12px">
+        <div class="card span6" style="background: var(--panel2); box-shadow:none">
+          <div class="muted">Latest</div>
+          <div id="reportCards" class="repWrap">Loading…</div>
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<details style="margin-top:10px">
+  <summary class="muted" style="cursor:pointer">Show raw report</summary>
+  <pre id="report" class="mono" style="max-height:320px;overflow:auto">Loading…</pre>
+</details>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        </div>
+        <div class="card span6" style="background: var(--panel2); box-shadow:none">
+          <div class="muted">History</div>
+          <div class="list" id="reportsList">Loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 </div>
 
-<script>
-(function(){
-  var TOKEN = ${JSON.stringify(token||'')};
-  var SITE_NAME = ${JSON.stringify(site.site_name||'Constrava')};
-  var SITE_ID = ${JSON.stringify(site.site_id)};
 
-  var state = {
-    panel: 'home',
-    days: 7,
-    metrics: null,
-    rtTimer: null,
-    rtPaused: false,
-    prefs: { chartStyle: 'smooth' }
-  };
 
-  function byId(id){ return document.getElementById(id); }
-  function fmt(n){ try{ return Intl.NumberFormat().format(Number(n||0)); }catch(e){ return String(n||0); } }
-  function pct(a,b){
-    a = Number(a||0); b = Number(b||0);
-    if(!b) return '0%';
-    var p = (a/b)*100;
-    return (Math.round(p*10)/10).toFixed(1) + '%';
-  }
 
-  // Set header
-  byId('siteTitle').textContent = SITE_NAME || 'Constrava';
-  byId('siteSub').textContent = 'Site: ' + (SITE_ID || '—');
 
-  // prefs
-  try{
-    var saved = localStorage.getItem('constrava_prefs_'+SITE_ID);
-    if(saved){ state.prefs = Object.assign(state.prefs, JSON.parse(saved)); }
-  }catch(e){}
-  var chartStyleSel = byId('chartStyle');
-  if(chartStyleSel && state.prefs.chartStyle){ chartStyleSel.value = state.prefs.chartStyle; }
 
-  function setPanel(name){
-    state.panel = name;
-    var panels = ['home','realtime','acq','eng','mon','explore','ai','configure'];
-    for(var i=0;i<panels.length;i++){
-      var el = byId('panel-'+panels[i]);
-      if(el) el.classList.toggle('hidden', panels[i] !== name);
-    }
-    var buttons = document.querySelectorAll('.navBtn');
-    buttons.forEach(function(b){
-      b.setAttribute('aria-selected', b.getAttribute('data-panel') === name ? 'true' : 'false');
-    });
-  }
 
-  // Sidebar navigation (delegated)
-  byId('nav').addEventListener('click', function(e){
-    var btn = e.target.closest('.navBtn');
-    if(!btn) return;
-    setPanel(btn.getAttribute('data-panel'));
-  });
 
-  // days
-  var daysSel = byId('daysSel');
-  daysSel.addEventListener('change', function(){
-    state.days = Number(daysSel.value||7);
-    loadMetrics();
-  });
 
-  byId('refreshBtn').addEventListener('click', function(){ loadMetrics(); });
 
-  // Demo event tags (delegated)
-  document.body.addEventListener('click', function(e){
-    var t = e.target.closest('[data-demo]');
-    if(!t) return;
-    var ev = t.getAttribute('data-demo');
-    fireDemo(ev);
-  });
 
-  // AI explain buttons (delegated)
-  document.body.addEventListener('click', function(e){
-    var b = e.target.closest('[data-ai]');
-    if(!b) return;
-    openInsight(b.getAttribute('data-ai'));
-  });
 
-  // Modal close
-  byId('mClose').addEventListener('click', closeModal);
-  byId('overlay').addEventListener('click', function(e){
-    if(e.target && e.target.id === 'overlay') closeModal();
-  });
 
-  function openModal(title, sub, kpis, body, next){
-    byId('mTitle').textContent = title || 'Insight';
-    byId('mSub').textContent = sub || '';
-    var box = byId('mKpis');
-    box.innerHTML = '';
-    (kpis||[]).forEach(function(it){
-      var d = document.createElement('div');
-      d.className = 'kpi';
-      d.innerHTML = '<div class="k">'+ String(it.k||'') +'</div><div class="v">'+ String(it.v||'') +'</div>';
-      box.appendChild(d);
-    });
-    byId('mBody').textContent = body || '';
-    byId('mNext').textContent = next || '';
-    byId('overlay').classList.remove('hidden');
-  }
-  function closeModal(){ byId('overlay').classList.add('hidden'); }
 
-  function insightFrom(kind){
-    var j = state.metrics || {};
-    var sum = {
-      visits: j.visits_range || 0,
-      leads: j.leads || 0,
-      purchases: j.purchases || 0,
-      cta: j.cta_clicks || 0
-    };
-    var leadRate = pct(sum.leads, sum.visits);
-    var buyRate = pct(sum.purchases, sum.visits);
 
-    var k = [
-      {k:'Visits', v: fmt(sum.visits)},
-      {k:'Leads', v: fmt(sum.leads)+' ('+leadRate+')'},
-      {k:'Purchases', v: fmt(sum.purchases)+' ('+buyRate+')'}
-    ];
 
-    function topPagesLines(){
-      var arr = (j.top_pages_range || []).slice(0,5).map(function(x){
-        return (x.page_type || 'page') + ' — ' + (x.views||0) + ' views';
-      });
-      return arr.length ? arr.join('\n') : '(No page data yet — use the sim buttons.)';
-    }
 
-    if(kind === 'bottleneck'){
-      return {
-        title:'Bottleneck analysis',
-        sub:'What to fix first for maximum impact.',
-        kpis:k,
-        body:
-          'Your funnel:\n' +
-          '- Visits → Leads: '+ leadRate + '\n' +
-          '- Visits → Purchases: '+ buyRate + '\n\n' +
-          'Meaning:\n' +
-          '• Low leads = landing page/offer/CTA clarity issue.\n' +
-          '• Good leads but low purchases = follow-up + pricing + checkout friction.\n\n' +
-          'Top pages:\n' + topPagesLines(),
-        next:
-          'Next steps:\n' +
-          '1) Improve CTA on your top landing page.\n' +
-          '2) Reduce form friction (fewer fields).\n' +
-          '3) Add trust proof above the fold (logos/testimonials).'
-      };
-    }
 
-    if(kind === 'experiments'){
-      return {
-        title:'Experiments to run this week',
-        sub:'Low-effort tests that usually move leads/sales.',
-        kpis:k,
-        body:
-          'Experiment 1 (CTA): Make the primary CTA outcome-based.\n' +
-          'Experiment 2 (Trust): Add social proof above the fold.\n' +
-          'Experiment 3 (Friction): Reduce form fields and simplify checkout.',
-        next:
-          'Pick ONE experiment and run it for 7 days.\n' +
-          'If lead rate moves, keep it; if not, iterate the offer.'
-      };
-    }
 
-    if(kind === 'pages'){
-      return {
-        title:'Top pages summary',
-        sub:'Where to focus attention first.',
-        kpis:k,
-        body:
-          'Pages getting most views:\n' + topPagesLines() + '\n\n' +
-          'Optimize these before anything else.',
-        next:
-          'Quick checklist:\n' +
-          '• Clear headline\n' +
-          '• Single CTA\n' +
-          '• Proof above the fold\n' +
-          '• Remove distractions'
-      };
-    }
 
-    if(kind === 'trend'){
-      return {
-        title:'Visits trend explained',
-        sub:'How to interpret the line.',
-        kpis:k,
-        body:
-          'Look for:\n' +
-          '• Spikes (campaigns / posts)\n' +
-          '• Drops (broken pages / tracking / traffic loss)\n' +
-          '• Flat lines (you need more distribution)',
-        next:
-          'If you see spikes: replicate the channel that created them.\nIf flat: add one new acquisition channel this week.'
-      };
-    }
 
-    if(kind === 'devices'){
-      var dm = j.device_mix || {mobile:0, desktop:0};
-      return {
-        title:'Device mix',
-        sub:'What to do based on where users are.',
-        kpis:[
-          {k:'Mobile', v: fmt(dm.mobile||0)},
-          {k:'Desktop', v: fmt(dm.desktop||0)},
-          {k:'Mobile share', v: pct(dm.mobile||0, (dm.mobile||0)+(dm.desktop||0))}
-        ],
-        body:
-          'If mobile dominates:\n' +
-          '• Make CTA visible without scrolling.\n' +
-          '• Speed matters (optimize images).\n\n' +
-          'If desktop dominates:\n' +
-          '• More space for proof, case studies, comparisons.',
-        next:
-          'Next step: review your top landing page on mobile and ensure the CTA is obvious in the first screen.'
-      };
-    }
 
-    // default
-    return {
-      title:'Performance summary',
-      sub:'What the numbers mean for the business.',
-      kpis:k,
-      body:
-        'Summary:\n' +
-        '- Visits: '+ fmt(sum.visits) + '\n' +
-        '- Leads: '+ fmt(sum.leads) + ' ('+leadRate+')\n' +
-        '- Purchases: '+ fmt(sum.purchases) + ' ('+buyRate+')\n\n' +
-        'Meaning:\n' +
-        '• Lead rate tells you how convincing your offer/CTA is.\n' +
-        '• Purchase rate tells you how strong your follow-up + checkout are.',
-      next:
-        'Next steps:\n' +
-        '1) Improve your top landing page CTA.\n' +
-        '2) Add trust proof.\n' +
-        '3) Reduce friction in forms/checkout.'
-    };
-  }
 
-  function openInsight(kind){
-    var it = insightFrom(kind);
-    openModal(it.title, it.sub, it.kpis, it.body, it.next);
-  }
 
-  function fetchJSON(url, opts){
-    return fetch(url, opts||{}).then(function(r){ return r.json(); });
-  }
 
-  function loadMetrics(){
-    var u = '/metrics?token=' + encodeURIComponent(TOKEN) + '&days=' + encodeURIComponent(state.days);
-    byId('lastUpdated').textContent = 'Loading metrics…';
-    return fetchJSON(u).then(function(j){
-      if(!j || !j.ok) throw new Error((j && j.error) ? j.error : 'Metrics failed');
-      state.metrics = j;
-      window.__lastAnalytics = j;
-      renderHome(j);
-      byId('lastUpdated').textContent = 'Updated ' + (new Date()).toLocaleString();
-    }).catch(function(err){
-      byId('lastUpdated').textContent = 'Error: ' + (err && err.message ? err.message : String(err));
-    });
-  }
 
-  function renderHome(j){
-    byId('k_visits').textContent = fmt(j.visits_range||0);
-    byId('k_leads').textContent = fmt(j.leads||0);
-    byId('k_purchases').textContent = fmt(j.purchases||0);
-    byId('k_lead_rate').textContent = pct(j.leads||0, j.visits_range||0);
 
-    drawTrend('trendCanvas', j.trend || [], 'visits', state.prefs.chartStyle);
-    drawDevice('deviceCanvas', j.device_mix || {mobile:0, desktop:0});
 
-    var tb = byId('pagesTable').querySelector('tbody');
-    tb.innerHTML = '';
-    (j.top_pages_range || []).slice(0, 10).forEach(function(r){
-      var tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td>'+ escapeHtml(r.page_type || '') +'</td>' +
-        '<td>'+ fmt(r.views||0) +'</td>' +
-        '<td>'+ String(r.share||0) +'%</td>';
-      tb.appendChild(tr);
-    });
-  }
 
-  function escapeHtml(s){
-    return String(s||'').replace(/[&<>"']/g, function(c){
-      return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]);
-    });
-  }
 
-  function clearCanvas(c){
-    var ctx = c.getContext('2d');
-    ctx.clearRect(0,0,c.width,c.height);
-  }
 
-  function drawTrend(id, arr, key, style){
-    var c = byId(id);
-    if(!c) return;
-    var ctx = c.getContext('2d');
-    ctx.clearRect(0,0,c.width,c.height);
 
-    var padL = 44, padR = 16, padT = 18, padB = 28;
-    var W = c.width, H = c.height;
-    var w = W - padL - padR, h = H - padT - padB;
 
-    var values = arr.map(function(x){ return Number(x[key]||0); });
-    var max = 1;
-    for(var i=0;i<values.length;i++) if(values[i] > max) max = values[i];
 
-    // grid
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = 'rgba(255,255,255,.10)';
-    ctx.lineWidth = 1;
-    for(var g=0; g<=4; g++){
-      var y = padT + (h*(g/4));
-      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
-    }
 
-    // bars mode
-    if(style === 'bars'){
-      var bw = w / Math.max(1, values.length);
-      for(var b=0;b<values.length;b++){
-        var v = values[b];
-        var x0 = padL + b*bw + 2;
-        var barW = Math.max(2, bw - 4);
-        var y0 = padT + h - (v/max)*h;
-        ctx.fillStyle = 'rgba(139,92,246,.42)';
-        ctx.fillRect(x0, y0, barW, padT + h - y0);
-      }
-      return;
-    }
 
-    // line
-    ctx.strokeStyle = 'rgba(167,139,250,.95)';
-    ctx.lineWidth = 2;
 
-    function pt(i){
-      var x = padL + (values.length<=1 ? 0 : (w * (i/(values.length-1))));
-      var y = padT + h - (values[i]/max)*h;
-      return {x:x, y:y};
-    }
 
-    ctx.beginPath();
-    for(var i2=0;i2<values.length;i2++){
-      var p = pt(i2);
-      if(i2===0) ctx.moveTo(p.x,p.y);
-      else{
-        if(style === 'smooth'){
-          var p0 = pt(i2-1);
-          var cx = (p0.x + p.x) / 2;
-          ctx.bezierCurveTo(cx, p0.y, cx, p.y, p.x, p.y);
-        }else{
-          ctx.lineTo(p.x,p.y);
-        }
-      }
-    }
-    ctx.stroke();
 
-    // points
-    ctx.fillStyle = 'rgba(255,255,255,.92)';
-    for(var i3=0;i3<values.length;i3++){
-      var p2 = pt(i3);
-      ctx.beginPath(); ctx.arc(p2.x,p2.y,3,0,Math.PI*2); ctx.fill();
-    }
-  }
 
-  function drawDevice(id, mix){
-    var c = byId(id);
-    if(!c) return;
-    var ctx = c.getContext('2d');
-    ctx.clearRect(0,0,c.width,c.height);
 
-    var mobile = Number(mix.mobile||0);
-    var desktop = Number(mix.desktop||0);
-    var total = Math.max(1, mobile+desktop);
 
-    var cx = c.width/2, cy = c.height/2, r = Math.min(c.width,c.height)*0.32;
 
-    var start = -Math.PI/2;
-    var mobileAng = (mobile/total) * Math.PI*2;
 
-    // mobile slice
-    ctx.beginPath();
-    ctx.moveTo(cx,cy);
-    ctx.fillStyle = 'rgba(139,92,246,.70)';
-    ctx.arc(cx,cy,r,start,start+mobileAng);
-    ctx.closePath(); ctx.fill();
 
-    // desktop slice
-    ctx.beginPath();
-    ctx.moveTo(cx,cy);
-    ctx.fillStyle = 'rgba(167,139,250,.35)';
-    ctx.arc(cx,cy,r,start+mobileAng,start+Math.PI*2);
-    ctx.closePath(); ctx.fill();
 
-    // center
-    ctx.beginPath();
-    ctx.fillStyle = 'rgba(11,7,16,.90)';
-    ctx.arc(cx,cy,r*0.62,0,Math.PI*2);
-    ctx.fill();
 
-    ctx.fillStyle = 'rgba(245,242,255,.90)';
-    ctx.font = '700 14px ui-sans-serif, system-ui';
-    ctx.textAlign = 'center';
-    ctx.fillText('Mobile ' + pct(mobile,total), cx, cy-6);
-    ctx.fillStyle = 'rgba(245,242,255,.72)';
-    ctx.font = '600 12px ui-sans-serif, system-ui';
-    ctx.fillText('Desktop ' + pct(desktop,total), cx, cy+14);
-  }
 
-  function fireDemo(name){
-    var body = { token: TOKEN, event_name: name, page_type: '/demo', device: 'desktop' };
-    if(name === 'lead'){
-      body.lead_email = 'lead' + Math.floor(Math.random()*900+100) + '@example.com';
-      body.lead_name = '';
-      body.lead_phone = '';
-      body.lead_notes = 'Interested in pricing; asked about setup time.';
-    }
-    return fetchJSON('/demo/fire-event', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(body)
-    }).then(function(j){
-      if(!j || !j.ok) throw new Error((j && j.error) ? j.error : 'Demo event failed');
-      return loadMetrics();
-    }).catch(function(err){
-      openModal('Demo event failed', 'Could not simulate event.', [], String(err && err.message ? err.message : err), 'Try Refresh and ensure token is valid.');
-    });
-  }
 
-  // Explore chart
-  byId('exploreRender').addEventListener('click', function(){
-    var met = byId('exploreMetric').value;
-    var j = state.metrics || {};
-    var series = (j.trend || []).map(function(d){
-      return { day: d.day, value: (met==='visits') ? d.visits : 0 };
-    });
-    // derive for non-visits from totals (simple demo)
-    if(met !== 'visits'){
-      var total = (met==='leads') ? (j.leads||0) : (met==='purchases') ? (j.purchases||0) : (j.cta_clicks||0);
-      var base = (j.trend||[]).map(function(d){ return d.visits||0; });
-      var sumv = base.reduce(function(a,b){ return a+b; }, 0) || 1;
-      series = (j.trend||[]).map(function(d, idx){
-        var share = (base[idx]||0)/sumv;
-        return { day: d.day, value: Math.round(total * share) };
-      });
-    }
-    drawExplore(series, state.prefs.chartStyle);
-  });
 
-  function drawExplore(series, style){
-    var c = byId('exploreCanvas');
-    if(!c) return;
-    var ctx = c.getContext('2d');
-    ctx.clearRect(0,0,c.width,c.height);
-    var arr = series.map(function(x){ return Number(x.value||0); });
-    var max = 1; for(var i=0;i<arr.length;i++) if(arr[i] > max) max = arr[i];
-    // reuse trend drawer by mapping
-    var mapped = series.map(function(x){ return { visits: x.value }; });
-    drawTrend('exploreCanvas', mapped, 'visits', style);
-  }
 
-  // Configure
-  byId('savePrefs').addEventListener('click', function(){
-    state.prefs.chartStyle = byId('chartStyle').value;
-    try{
-      localStorage.setItem('constrava_prefs_'+SITE_ID, JSON.stringify(state.prefs));
-    }catch(e){}
-    loadMetrics();
-    openModal('Saved', 'Preferences updated.', [], 'Chart style: ' + state.prefs.chartStyle, 'Go to Home/Explore to see the change.');
-  });
 
-  // Realtime
-  function rtTick(){
-    if(state.rtPaused) return;
-    var since = new Date(Date.now() - 60*1000).toISOString();
-    fetchJSON('/live?token=' + encodeURIComponent(TOKEN) + '&since=' + encodeURIComponent(since)).then(function(j){
-      if(!j || !j.ok) throw new Error((j && j.error) ? j.error : 'live failed');
-      var last = j.last_event ? (j.last_event.event_name + ' @ ' + j.last_event.page_type + ' (' + j.last_event.device + ')') : '—';
-      byId('rtBox').textContent =
-        'New page views in last 60s: ' + (j.new_page_views||0) + '\n' +
-        'Last event: ' + last + '\n' +
-        'Now: ' + (j.now || '');
-    }).catch(function(err){
-      byId('rtBox').textContent = 'Realtime error: ' + (err && err.message ? err.message : String(err));
-    });
-  }
-  byId('rtNow').addEventListener('click', rtTick);
-  byId('rtToggle').addEventListener('click', function(){
-    state.rtPaused = !state.rtPaused;
-    byId('rtToggle').textContent = state.rtPaused ? 'Resume' : 'Pause';
-    if(!state.rtPaused) rtTick();
-  });
-  state.rtTimer = setInterval(rtTick, 5000);
 
-  // init
-  loadMetrics().then(function(){
-    rtTick();
-  });
-})();
+
+
+
+
+
+
+
+
+
+
+
+<div id="sectionCRM" style="display:none">
+  <div class="grid">
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <!-- CRM Tools (always visible above lists) -->
+    <div class="card span12" id="crmToolsCard">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">CRM</div>
+          <div class="muted">Search leads + clients, then open a client to see history. Demo seed will populate both.</div>
+        </div>
+        <span class="pill" id="crmToolsStatus">CRM tools</span>
+      </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      <div class="divider"></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      <div class="grid" style="margin-top:0;gap:10px">
+        <!-- Lead tools -->
+        
+        <!-- CRM AI Search (single interface) -->
+        <div class="card span12" style="background: var(--panel2); box-shadow:none">
+          <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+            <div>
+              <div style="font-weight:950">CRM AI Search</div>
+              <div class="muted">
+                Ask things like: <span class="mono">find ava</span>, <span class="mono">recent leads</span>,
+                <span class="mono">status:new</span>, <span class="mono">clients idle 14</span>, <span class="mono">leads from /contact</span>.
+              </div>
+            </div>
+            <div class="row" style="gap:10px;flex-wrap:wrap">
+              <button class="btnGhost" id="crmRefresh" type="button">Refresh</button>
+              <button class="btnGhost" id="crmExport" type="button">Export CSV</button>
+            </div>
+          </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+          <div class="row" style="margin-top:10px;gap:10px;align-items:stretch;flex-wrap:wrap">
+            <input id="crmAiInput" placeholder='Try: "find noah" or "clients idle 30"' style="flex:1;min-width:260px" />
+            <button class="btn" id="crmAiSend" type="button">Search</button>
+            <button class="btnGhost" id="crmAiClear" type="button">Clear</button>
+          </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+          <pre id="crmAiOut" class="mono" style="margin-top:10px;white-space:pre-wrap;background:rgba(20,20,30,0.08);border:1px solid var(--line);border-radius:14px;padding:12px;max-height:220px;overflow:auto"></pre>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+          <div class="muted" style="margin-top:10px">Results populate the Leads + Clients lists below.</div>
+        </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="card span6" id="crmLeadsCard">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">CRM — Leads</div>
+          <div class="muted">Lead inbox saved from <span class="mono">lead</span> events (email optional).</div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="list" id="crmLeads">Loading…</div>
+      <div class="muted" style="margin-top:10px">
+        Tip: Use <span class="mono">/demo/fire-event</span> with <span class="mono">event_name: "lead"</span> and include <span class="mono">lead_email</span>, <span class="mono">lead_name</span>, <span class="mono">lead_phone</span>.
+      </div>
+    </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div class="card span6" id="crmClientsCard">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Clients</div>
+          <div class="muted">Collapsible list. Filter locally or run a server search above.</div>
+        </div>
+        <span class="pill">AI + Matching</span>
+      </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      <div class="divider"></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      <details id="crmClientsPanel" open>
+        <summary class="muted" style="cursor:pointer;user-select:none;padding:6px 2px">
+          Client list (click to collapse)
+        </summary>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        <div class="row" style="margin-top:8px">
+          <input id="crmClientFilter" placeholder="Filter loaded clients…" style="flex:1;min-width:220px" />
+          <button class="btnGhost" id="crmClientFilterClear" type="button">Clear</button>
+        </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        <div class="list" id="crmClients" style="margin-top:10px">Loading…</div>
+      </details>
+    </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div class="card span6" id="crmDetailCard">
+      <div style="font-weight:950">Client status (auto-inferred)</div>
+      <div class="muted">Select a client to see latest touch + activity.</div>
+      <div class="divider"></div>
+      <pre id="crmClientDetail">Pick a client from the list.</pre>
+    </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    <div class="card span6" id="crmReviewCard">
+      <div style="font-weight:950">Review queue</div>
+      <div class="muted">Unmatched or low-confidence activities. Confirm or reject.</div>
+      <div class="divider"></div>
+      <div class="list" id="crmReview">Loading…</div>
+    </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+</div>
+window.CONSTRAVA_TOKEN = ${JSON.stringify(String(token || ""))};
 </script>
+<script src="/dashboard.js"></script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 </body>
 </html>`);
 }));
@@ -69692,6 +74165,61 @@ window.addEventListener("DOMContentLoaded", () => {
     bindTabs();
     mountAnalyticsVNext();
     setActiveTab("analytics");
+    // --- Robust event delegation (prevents "buttons not working" when UI re-renders) ---
+    document.addEventListener("click", (ev) => {
+      const t = ev.target;
+
+      // GA sidebar nav
+      const gaBtn = t && t.closest ? t.closest(".gaBtn") : null;
+      if (gaBtn) {
+        ev.preventDefault();
+        const panel = String(gaBtn.getAttribute("data-ga") || "gaHome");
+        try { setGaPanel(panel); } catch (e) {}
+        return;
+      }
+
+      // AI insight / helper buttons (popups)
+      const aiBtn = t && t.closest ? t.closest("[data-ai]") : null;
+      if (aiBtn) {
+        ev.preventDefault();
+        const kind = String(aiBtn.getAttribute("data-ai") || "");
+        try {
+          const r = insight(kind);
+          setModal(r.title, r.sub, r.kpis, r.body);
+          openModal();
+        } catch (e) {}
+        return;
+      }
+
+      // Primary controls
+      const id = t && t.id ? String(t.id) : "";
+      if (id === "refresh") { ev.preventDefault(); try { refresh(); } catch(e) {} return; }
+      if (id === "chatSend") { ev.preventDefault(); try { sendChat(); } catch(e) {} return; }
+      if (id === "chatClear") { ev.preventDefault(); try { clearChat(); } catch(e) {} return; }
+      if (id === "liveNow") { ev.preventDefault(); try { liveCheck(); } catch(e) {} return; }
+      if (id === "liveToggle") {
+        ev.preventDefault();
+        try {
+          liveOn = !liveOn;
+          const btn = $("liveToggle");
+          if (btn) btn.textContent = liveOn ? "Pause" : "Resume";
+          setStatus(liveOn ? "live on" : "live paused");
+        } catch(e) {}
+        return;
+      }
+      if (id === "gaCustomize" || id === "gaCustomize2") { ev.preventDefault(); try { openCustomize(); } catch(e) {} return; }
+
+      // Insight modal quick actions
+      if (id === "insightClose") { ev.preventDefault(); try { hideInsight(); } catch(e) {} return; }
+      if (id === "insightGoExplore") { ev.preventDefault(); try { hideInsight(); setGaPanel("gaExplore"); } catch(e) {} return; }
+      if (id === "insightGoAI") { ev.preventDefault(); try { hideInsight(); setGaPanel("gaAI"); } catch(e) {} return; }
+    }, { capture: true });
+
+    document.addEventListener("change", (ev) => {
+      const t = ev.target;
+      if (t && t.id === "days") { try { refresh(); } catch(e) {} }
+    });
+
 
 
 
