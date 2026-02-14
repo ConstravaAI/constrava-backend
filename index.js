@@ -38786,7 +38786,7 @@ window.addEventListener("DOMContentLoaded", () => {
       (kpis||[]).slice(0,3).forEach(it => {
         const div = document.createElement("div");
         div.className = "modalKpi";
-        div.innerHTML = `<div class="k">${it.k}</div><div class="v">${it.v}</div>`;
+        div.innerHTML = '<div class="k">' + it.k + '</div><div class="v">' + it.v + '</div>';
         k.appendChild(div);
       });
     }
@@ -38811,24 +38811,27 @@ window.addEventListener("DOMContentLoaded", () => {
 
     const topPages = (j.top_pages || []).slice(0, 5).map(p => (p.path || p.page || "page") + " (" + (p.views||p.count||0) + ")");
 
+    function bullets(arr, fallback){
+      if (!arr || !arr.length) return fallback;
+      return arr.map(x => "• " + x).join("\n");
+    }
+
     if (kind === "bottleneck"){
       return {
         title: "Bottleneck analysis",
         subtitle: "What to fix first to increase revenue/leads.",
-        kpis,
+        kpis: kpis,
         body:
-`Your funnel right now looks like:
-- Visits → Leads: ${leadRate}
-- Visits → Purchases: ${buyRate}
-
-What this means:
-1) If leads are low, your landing pages aren’t turning interest into action (CTA, trust, offer clarity).
-2) If purchases are low but leads are decent, follow-up or pricing/checkout friction is the issue.
-
-Next best move (fastest impact):
-- Pick the top landing page and tighten the CTA + reduce friction.
-Top pages to start with:
-${topPages.length ? topPages.map(x=>"• "+x).join("\n") : "• (No page data yet — seed some events)"}`
+          "Your funnel right now looks like:\n" +
+          "- Visits \u2192 Leads: " + leadRate + "\n" +
+          "- Visits \u2192 Purchases: " + buyRate + "\n\n" +
+          "What this means:\n" +
+          "1) If leads are low, your landing pages aren’t turning interest into action (CTA, trust, offer clarity).\n" +
+          "2) If purchases are low but leads are decent, follow-up or pricing/checkout friction is the issue.\n\n" +
+          "Next best move (fastest impact):\n" +
+          "- Pick the top landing page and tighten the CTA + reduce friction.\n" +
+          "Top pages to start with:\n" +
+          bullets(topPages, "• (No page data yet — seed some events)")
       };
     }
 
@@ -38836,41 +38839,35 @@ ${topPages.length ? topPages.map(x=>"• "+x).join("\n") : "• (No page data ye
       return {
         title: "3 experiments to run this week",
         subtitle: "Low-effort tests that usually move leads and sales.",
-        kpis,
+        kpis: kpis,
         body:
-`Experiment 1 — CTA clarity:
-- Change the primary CTA copy to a concrete outcome (e.g. “Get a quote in 60 seconds”).
-- Success metric: lead rate increases above ${leadRate}.
-
-Experiment 2 — Trust + proof:
-- Add 2–3 proof elements above the fold (testimonial, logos, guarantee).
-- Success metric: more leads from top pages.
-
-Experiment 3 — Offer friction:
-- Reduce form fields (email + 1 question), add optional phone.
-- Success metric: more form completions without hurting purchase rate.
-
-If you want, I can turn these into a “plan” checklist inside the UI next.`
+          "Experiment 1 — CTA clarity:\n" +
+          "- Change the primary CTA copy to a concrete outcome (e.g. “Get a quote in 60 seconds”).\n" +
+          "- Success metric: lead rate increases above " + leadRate + ".\n\n" +
+          "Experiment 2 — Trust + proof:\n" +
+          "- Add 2–3 proof elements above the fold (testimonial, logos, guarantee).\n" +
+          "- Success metric: more leads from top pages.\n\n" +
+          "Experiment 3 — Offer friction:\n" +
+          "- Reduce form fields (email + 1 question), add optional phone.\n" +
+          "- Success metric: more form completions without hurting purchase rate.\n\n" +
+          "If you want, I can turn these into a “plan” checklist inside the UI next."
       };
     }
 
     if (kind === "pages"){
-      const pageLine = topPages.length ? topPages.map(x=>"• "+x).join("\n") : "• (No page data yet)";
+      const pageLine = bullets(topPages, "• (No page data yet)");
       return {
         title: "Which pages to prioritize",
         subtitle: "Highest leverage pages based on traffic + funnel.",
-        kpis,
+        kpis: kpis,
         body:
-`Prioritize pages that get traffic AND are closest to conversion.
-
-Start here:
-${pageLine}
-
-What to change on each:
-- Strong headline (what you do + for who + result)
-- Single primary CTA
-- Social proof above the fold
-- Remove distractions (extra links) on conversion pages`
+          "Prioritize pages that get traffic AND are closest to conversion.\n\n" +
+          "Start here:\n" + pageLine + "\n\n" +
+          "What to change on each:\n" +
+          "- Strong headline (what you do + for who + result)\n" +
+          "- Single primary CTA\n" +
+          "- Social proof above the fold\n" +
+          "- Remove distractions (extra links) on conversion pages"
       };
     }
 
@@ -38878,19 +38875,17 @@ What to change on each:
     return {
       title: "Weekly business summary",
       subtitle: "What the data means for performance.",
-      kpis,
+      kpis: kpis,
       body:
-`Summary:
-- You had about ${fmt(visits)} visits in the selected window.
-- You generated ${fmt(leads)} leads (${leadRate} of visits).
-- You got ${fmt(purchases)} purchases (${buyRate} of visits).
-
-What this means:
-- If lead rate is under ~1–3%, your CTA/offer clarity is likely the biggest lever.
-- If lead rate is solid but purchases are low, focus on follow-up, pricing page clarity, and friction in checkout.
-
-Quick next step:
-- Improve the top landing page and make your CTA unavoidable.`
+        "Summary:\n" +
+        "- You had about " + fmt(visits) + " visits in the selected window.\n" +
+        "- You generated " + fmt(leads) + " leads (" + leadRate + " of visits).\n" +
+        "- You got " + fmt(purchases) + " purchases (" + buyRate + " of visits).\n\n" +
+        "What this means:\n" +
+        "- If lead rate is under ~1–3%, your CTA/offer clarity is likely the biggest lever.\n" +
+        "- If lead rate is solid but purchases are low, focus on follow-up, pricing page clarity, and friction in checkout.\n\n" +
+        "Quick next step:\n" +
+        "- Improve the top landing page and make your CTA unavoidable."
     };
   }
 
