@@ -79,10 +79,138 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import express from "express";
 import cors from "cors";
 import pkg from "pg";
 import crypto from "crypto";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -213,8 +341,136 @@ const app = express();
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // IMPORTANT for Render / reverse proxies (req.protocol + secure cookies)
 app.set("trust proxy", 1);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -352,6 +608,70 @@ app.use(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -418,8 +738,136 @@ app.use(express.urlencoded({ extended: true }));
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const PORT = process.env.PORT || 10000;
 const DATABASE_URL = process.env.DATABASE_URL;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -552,10 +1000,138 @@ if (!DATABASE_URL) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: process.env.PGSSL === "true" ? { rejectUnauthorized: false } : undefined
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -690,6 +1266,70 @@ function asyncHandler(fn) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function setNoStore(res) {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
   res.setHeader("Pragma", "no-cache");
@@ -759,8 +1399,136 @@ function setNoStore(res) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function publicBaseUrl(req) {
   if (process.env.PUBLIC_BASE_URL) return process.env.PUBLIC_BASE_URL;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -892,9 +1660,137 @@ function publicBaseUrl(req) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   if (host) return `${proto}://${host}`;
   return "https://constrava-backend.onrender.com";
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -963,6 +1859,70 @@ function publicEventsUrl(req) {
   if (process.env.PUBLIC_EVENTS_URL) return process.env.PUBLIC_EVENTS_URL;
   return publicBaseUrl(req);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1096,11 +2056,139 @@ function requireEnv(name) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function normalizeDays(input) {
   const n = parseInt(String(input ?? "7"), 10);
   const allowed = new Set([1, 7, 30, 365, 730, 1825]);
   return allowed.has(n) ? n : 7;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1172,6 +2260,70 @@ function normalizeSiteId(raw) {
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9-]/g, "");
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1309,6 +2461,70 @@ function validateSiteId(site_id) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function validateCustomToken(token) {
   if (!token) return "access token is required";
   if (token.length < 20) return "access token must be at least 20 characters";
@@ -1318,6 +2534,70 @@ function validateCustomToken(token) {
   if (!/[^A-Za-z0-9]/.test(token)) return "access token must include a symbol";
   return null;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1449,11 +2729,139 @@ function safeEmail(x) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function clamp01(n) {
   const x = Number(n);
   if (!Number.isFinite(x)) return 0;
   return Math.max(0, Math.min(1, x));
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1591,6 +2999,70 @@ function planGate(site, allowedPlans) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    Password hashing (no bcrypt)
 ----------------------------*/
@@ -1663,12 +3135,140 @@ function hashPassword(password) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function verifyPassword(password, saltHex, hashHex) {
   const salt = Buffer.from(saltHex, "hex");
   const hash = Buffer.from(hashHex, "hex");
   const test = crypto.scryptSync(String(password), salt, 64);
   return crypto.timingSafeEqual(hash, test);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1813,6 +3413,70 @@ function getCookie(req, name) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function setCookie(res, name, value, opts = {}) {
   const {
     httpOnly = true,
@@ -1821,6 +3485,70 @@ function setCookie(res, name, value, opts = {}) {
     path = "/",
     maxAgeSeconds = 60 * 60 * 24 * 14
   } = opts;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1959,9 +3687,137 @@ function setCookie(res, name, value, opts = {}) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function clearCookie(res, name) {
   res.setHeader("Set-Cookie", `${name}=; Path=/; Max-Age=0; SameSite=Lax`);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2040,6 +3896,70 @@ async function getSiteByToken(token) {
   );
   return r.rows[0] || null;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2242,12 +4162,204 @@ async function getSiteById(site_id) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    CRM helpers (matching + inference)
 ----------------------------*/
 function normEmail(v){ return String(v||"").trim().toLowerCase(); }
 function normPhone(v){ return String(v||"").replace(/[^0-9+]/g,"").trim(); }
 function normName(v){ return String(v||"").trim().toLowerCase(); }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2322,6 +4434,70 @@ function diceCoeff(a,b){
   for (const x of A) if (B.has(x)) inter++;
   return (2*inter) / (A.size + B.size);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2461,9 +4637,137 @@ async function findClientByIdentity(site_id, kind, value){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async function upsertClient(site_id, { full_name, email, phone, stage }){
   const e = email ? normEmail(email) : null;
   const p = phone ? normPhone(phone) : null;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2597,11 +4901,139 @@ async function upsertClient(site_id, { full_name, email, phone, stage }){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // try phone identity
   if (p){
     const existing = await findClientByIdentity(site_id, "phone", p);
     if (existing) return existing;
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2674,6 +5106,70 @@ async function upsertClient(site_id, { full_name, email, phone, stage }){
     [site_id, full_name ? String(full_name).trim() : null, e, p, stage || "lead"]
   );
   const c = r.rows[0];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2840,8 +5336,136 @@ async function upsertClient(site_id, { full_name, email, phone, stage }){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   return c;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2980,8 +5604,136 @@ async function addIdentity(site_id, client_id, kind, value){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
   const candidates = [];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3082,8 +5834,104 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const dom1 = e1 && e1.includes("@") ? e1.split("@").pop() : "";
   const dom2 = e2 && e2.includes("@") ? e2.split("@").pop() : "";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3188,6 +6036,38 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // domain match (useful when aliases change but domain stays)
   if (dom1){
     const c = await findClientByIdentity(site_id, "domain", dom1);
@@ -3201,6 +6081,70 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
     const c = await findClientByIdentity(site_id, "phone", ph);
     if (c) candidates.push({ client:c, confidence:0.90, reason:"Matched phone: " + ph });
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3350,9 +6294,137 @@ async function bestMatchClient(site_id, { emailA, emailB, phone, name }){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   candidates.sort((a,b)=> (b.confidence||0)-(a.confidence||0));
   return candidates[0] || null;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3501,7 +6573,135 @@ async function createActivityWithMatch(site_id, activity, matchHint){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const act = r.rows[0];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3638,12 +6838,204 @@ async function createActivityWithMatch(site_id, activity, matchHint){
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     await pool.query(
       `UPDATE crm_clients
        SET last_touch_at = GREATEST(COALESCE(last_touch_at, '1970-01-01'::timestamptz), $2::timestamptz)
        WHERE id=$1`,
       [best.client.id, act.occurred_at]
     );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3854,8 +7246,136 @@ try {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 return { activity: act, match: { ...best, status } };
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -3989,8 +7509,136 @@ return { activity: act, match: { ...best, status } };
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   return { activity: act, match: null };
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4058,6 +7706,70 @@ return { activity: act, match: { ...best, status } };
 async function getSession(req) {
   const sid = getCookie(req, "constrava_session");
   if (!sid) return null;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4194,8 +7906,136 @@ async function getSession(req) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const row = r.rows[0];
   if (!row) return null;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4326,8 +8166,136 @@ async function getSession(req) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   return row;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4470,6 +8438,70 @@ async function ensureTables() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id BIGSERIAL PRIMARY KEY,
@@ -4544,6 +8576,70 @@ async function ensureTables() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS sessions (
       session_id TEXT PRIMARY KEY,
@@ -4552,6 +8648,70 @@ async function ensureTables() {
       expires_at TIMESTAMPTZ NOT NULL
     );
   `);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4690,6 +8850,70 @@ async function ensureTables() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 await pool.query(`
     
 CREATE TABLE IF NOT EXISTS crm_leads (
@@ -4704,6 +8928,70 @@ CREATE TABLE IF NOT EXISTS crm_leads (
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4854,6 +9142,70 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS crm_identities (
       id BIGSERIAL PRIMARY KEY,
@@ -4865,6 +9217,70 @@ CREATE TABLE IF NOT EXISTS crm_leads (
       UNIQUE(site_id, kind, value)
     );
   `);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5010,6 +9426,70 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS crm_activity_matches (
       id BIGSERIAL PRIMARY KEY,
@@ -5022,6 +9502,70 @@ CREATE TABLE IF NOT EXISTS crm_leads (
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5154,10 +9698,138 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`
     CREATE INDEX IF NOT EXISTS crm_matches_site_status_idx
       ON crm_activity_matches (site_id, status, created_at DESC);
   `);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5301,6 +9973,70 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS subject TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS body_text TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS meta JSONB;`);
@@ -5379,6 +10115,70 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS demo_links (
       code TEXT PRIMARY KEY,
@@ -5386,6 +10186,134 @@ CREATE TABLE IF NOT EXISTS crm_leads (
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5589,9 +10517,137 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS subject TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS body TEXT;`);
   await pool.query(`ALTER TABLE crm_activities ADD COLUMN IF NOT EXISTS meta JSONB;`);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5721,8 +10777,136 @@ CREATE TABLE IF NOT EXISTS crm_leads (
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   console.log("✅ Tables ready");
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5855,10 +11039,138 @@ app.get("/", (req, res) => res.send("Backend is running ✅"));
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.get("/health", asyncHandler(async (req, res) => {
   const r = await pool.query("SELECT 1 as ok");
   res.json({ ok: true, db: r.rows[0]?.ok === 1 });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5991,11 +11303,139 @@ app.get("/db-test", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.get("/debug/site", asyncHandler(async (req, res) => {
   const token = req.query.token;
   const site = await getSiteByToken(token);
   res.json({ ok: true, site });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6130,9 +11570,137 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   if (!site_id || !email || !password || !token) {
     return res.status(400).json({ ok: false, error: "site_id, email, password, and token are required" });
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6264,6 +11832,70 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const e = safeEmail(email);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return res.status(400).json({ ok: false, error: "Invalid email" });
   if (String(password).length < 8) return res.status(400).json({ ok: false, error: "Password must be at least 8 characters" });
@@ -6331,7 +11963,135 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const { salt, hash } = hashPassword(password);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6476,6 +12236,70 @@ app.post("/auth/register", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.post("/auth/login", asyncHandler(async (req, res) => {
   const { email, password } = req.body || {};
   const e = safeEmail(email);
@@ -6543,7 +12367,135 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   if (!e || !password) return res.status(400).json({ ok: false, error: "email and password required" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6680,6 +12632,70 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const u = r.rows[0];
   if (!verifyPassword(password, u.password_salt, u.password_hash)) {
     return res.status(401).json({ ok: false, error: "Invalid login" });
@@ -6748,8 +12764,136 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const session_id = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6883,6 +13027,70 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   setCookie(res, "constrava_session", session_id, {
     httpOnly: true,
     sameSite: "Lax",
@@ -6952,7 +13160,135 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteById(u.site_id);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7088,12 +13424,140 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.post("/auth/logout", asyncHandler(async (req, res) => {
   const sid = getCookie(req, "constrava_session");
   if (sid) await pool.query(`DELETE FROM sessions WHERE session_id=$1`, [sid]);
   clearCookie(res, "constrava_session");
   res.json({ ok: true });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7232,12 +13696,140 @@ app.get("/me", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    Onboarding: create a site
    POST /sites { site_id, site_name, owner_email, custom_token? }
 ----------------------------*/
 app.post("/sites", asyncHandler(async (req, res) => {
   const { site_id: rawSiteId, site_name, owner_email, custom_token } = req.body || {};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7369,9 +13961,137 @@ app.post("/sites", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site_id = normalizeSiteId(rawSiteId);
   const siteIdErr = validateSiteId(site_id);
   if (siteIdErr) return res.status(400).json({ ok: false, error: siteIdErr });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7442,6 +14162,70 @@ app.post("/sites", asyncHandler(async (req, res) => {
     if (tokErr) return res.status(400).json({ ok: false, error: tokErr });
     token = custom_token;
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7583,7 +14367,135 @@ app.post("/sites", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const base = publicBaseUrl(req);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7720,6 +14632,70 @@ app.post("/sites", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    Tracker script
    GET /tracker.js
@@ -7727,6 +14703,70 @@ app.post("/sites", asyncHandler(async (req, res) => {
 app.get("/tracker.js", (req, res) => {
   res.setHeader("Content-Type", "application/javascript; charset=utf-8");
   const endpoint = publicEventsUrl(req) + "/events";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -7860,8 +14900,136 @@ app.get("/tracker.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     var siteId = script.getAttribute("data-site-id");
     if (!siteId) return;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8067,6 +15235,134 @@ app.get("/tracker.js", (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    Receive events
    POST /events
@@ -8074,6 +15370,70 @@ app.get("/tracker.js", (req, res) => {
 app.post("/events", asyncHandler(async (req, res) => {
   const { site_id, event_name, page_type, device, lead_email, lead_name, lead_phone, lead_notes } = req.body || {};
   if (!site_id || !event_name) return res.status(400).json({ ok: false, error: "site_id and event_name required" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8204,11 +15564,139 @@ app.post("/events", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(
     `INSERT INTO events_raw (site_id, event_name, page_type, device)
      VALUES ($1,$2,$3,$4)`,
     [site_id, String(event_name), page_type || null, device || null]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8343,11 +15831,267 @@ app.post("/events", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     await pool.query(
       `INSERT INTO crm_leads (site_id, email, name, phone, source_page, status, notes)
        VALUES ($1,$2,$3,$4,$5,'new',$6)`,
       [site_id, email, name, phone, page_type || null, notes]
     );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8613,10 +16357,138 @@ try {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     // keep identities fresh
     if (email) await addIdentity(site_id, client.id, "email", normEmail(email));
     if (phone) await addIdentity(site_id, client.id, "phone", normPhone(phone));
     if (name) await addIdentity(site_id, client.id, "name", normName(name));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8765,6 +16637,70 @@ try {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true });
 }));
 /* ---------------------------
@@ -8839,8 +16775,136 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -8973,11 +17037,139 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(
     `INSERT INTO events_raw (site_id, event_name, page_type, device)
      VALUES ($1,$2,$3,$4)`,
     [site.site_id, event_name, page_type || "/", device || "desktop"]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9112,11 +17304,107 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     await pool.query(
       `INSERT INTO crm_leads (site_id, email, name, phone, source_page, status, notes)
        VALUES ($1,$2,$3,$4,$5,'new',$6)`,
       [site.site_id, email, name, phone, page_type || "/", notes]
     );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9189,9 +17477,73 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       if (email) await addIdentity(site.site_id, client.id, "email", normEmail(email));
       if (phone) await addIdentity(site.site_id, client.id, "phone", normPhone(phone));
       if (name) await addIdentity(site.site_id, client.id, "name", normName(name));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9242,6 +17594,38 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
     } catch (e) {
       // do not block demo event ingestion if CRM v2 fails
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9339,8 +17723,136 @@ app.post("/demo/fire-event", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9475,6 +17987,70 @@ app.get("/live", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const token = req.query.token;
   const since = req.query.since;
   if (!token) return res.status(400).json({ ok: false, error: "token required" });
@@ -9542,8 +18118,136 @@ app.get("/live", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9676,12 +18380,140 @@ app.get("/live", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const params = [site.site_id];
   let whereSince = "";
   if (sinceDate) {
     params.push(sinceDate.toISOString());
     whereSince = " AND created_at > $2";
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9820,6 +18652,70 @@ app.get("/live", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const lastEventRes = await pool.query(
     `
     SELECT event_name, page_type, device, created_at
@@ -9830,6 +18726,70 @@ app.get("/live", asyncHandler(async (req, res) => {
     `,
     [site.site_id]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -9967,6 +18927,70 @@ app.get("/live", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    DEMO: shareable link
    POST /demo/link { token } -> { url }
@@ -9975,6 +18999,70 @@ app.get("/live", asyncHandler(async (req, res) => {
 app.post("/demo/link", asyncHandler(async (req, res) => {
   const { token } = req.body || {};
   if (!token) return res.status(400).json({ ok: false, error: "token required" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10105,8 +19193,136 @@ app.post("/demo/link", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const code = crypto.randomBytes(4).toString("hex");
   await pool.query(`INSERT INTO demo_links (code, token) VALUES ($1,$2)`, [code, token]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10174,6 +19390,70 @@ app.post("/demo/link", asyncHandler(async (req, res) => {
   const base = process.env.PUBLIC_BASE_URL || "https://constrava-backend.onrender.com";
   res.json({ ok: true, code, url: `${base}/d/${code}` });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10309,12 +19589,140 @@ app.get("/d/:code", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    Metrics
    GET /metrics?token=...&days=7
 ----------------------------*/
 app.get("/metrics", asyncHandler(async (req, res) => {
   setNoStore(res);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10446,9 +19854,137 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site_id = site.site_id;
   const bizEmail = (site.owner_email || "owner@example.com").toLowerCase();
   const days = normalizeDays(req.query.days);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10587,7 +20123,135 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const startDateInterval = `${days - 1} days`;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10729,7 +20393,135 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const visits_range = trendRes.rows.reduce((sum, r) => sum + (r.visits || 0), 0);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -10872,6 +20664,70 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const deviceRes = await pool.query(
     `
     SELECT
@@ -10884,6 +20740,70 @@ app.get("/metrics", asyncHandler(async (req, res) => {
     `,
     [site_id, days]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11024,6 +20944,70 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const lastEventRes = await pool.query(
     `
     SELECT event_name, page_type, device, created_at
@@ -11034,6 +21018,70 @@ app.get("/metrics", asyncHandler(async (req, res) => {
     `,
     [site_id]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11165,8 +21213,136 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const conversion_rate = visits_range ? Number((leads / visits_range).toFixed(4)) : 0;
   const purchase_rate = visits_range ? Number((purchases / visits_range).toFixed(4)) : 0;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11237,6 +21413,70 @@ app.get("/metrics", asyncHandler(async (req, res) => {
     views: r.views,
     share: totalRangeViews ? Math.round((r.views / totalRangeViews) * 100) : 0
   }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11447,6 +21687,134 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    CRM (Leads)
    GET /crm?token=...&limit=100
@@ -11454,6 +21822,70 @@ app.get("/metrics", asyncHandler(async (req, res) => {
 ----------------------------*/
 app.get("/crm", asyncHandler(async (req, res) => {
   setNoStore(res);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11585,7 +22017,135 @@ app.get("/crm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const limit = Math.min(parseInt(req.query.limit || "100", 10), 300);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11722,8 +22282,136 @@ app.get("/crm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, leads: r.rows });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11856,8 +22544,136 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -11988,6 +22804,70 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const r = await pool.query(
     `UPDATE crm_leads
      SET status = COALESCE($3, status),
@@ -11996,6 +22876,70 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
      RETURNING id, email, name, phone, source_page, status, notes, created_at`,
     [site.site_id, lead_id, s, n]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12191,9 +23135,201 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    CRM v2 (clients + activities + matching)
 ----------------------------*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12275,12 +23411,36 @@ app.post("/crm/update", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // CRM AI Search (deterministic; works without OPENAI_API_KEY).
 // Interprets simple phrases/filters and returns matching leads + clients.
 app.post("/crm/ai_search", asyncHandler(async (req, res) => {
   const token = req.body.token || req.query.token;
   const query = String(req.body.query || "").trim();
   const days = Number(req.body.days || 30) || 30;
+
+
+
+
+
+
+
+
 
 
 
@@ -12299,8 +23459,24 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
   const q = query.toLowerCase();
   const limit = 180;
+
+
+
+
+
+
+
+
 
 
 
@@ -12323,8 +23499,24 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
   // ---- Leads ----
   const leadDays = has("recent") ? pickInt(/recent\s+(\d+)/i, 7) : days;
+
+
+
+
+
+
+
+
 
 
 
@@ -12343,8 +23535,24 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
   let leadWhere = "site_id=$1 AND created_at >= NOW() - ($2::int || ' days')::interval";
   const leadVals = [site.site_id, leadDays];
+
+
+
+
+
+
+
+
 
 
 
@@ -12372,10 +23580,26 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
   if (query){
     leadVals.push(query);
     leadWhere += ` AND (email ILIKE '%' || $${leadVals.length} || '%' OR name ILIKE '%' || $${leadVals.length} || '%' OR phone ILIKE '%' || $${leadVals.length} || '%' OR notes ILIKE '%' || $${leadVals.length} || '%')`;
   }
+
+
+
+
+
+
+
+
 
 
 
@@ -12396,6 +23620,14 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
   // ---- Clients ----
   const stageMatch = q.match(/stage\s*:\s*([a-z_\-]+)/i);
   const healthMatch = q.match(/health\s*:\s*([a-z_\-]+)/i);
@@ -12408,8 +23640,24 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
   let clientWhere = "site_id=$1";
   const clientVals = [site.site_id];
+
+
+
+
+
+
+
+
 
 
 
@@ -12438,10 +23686,26 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
   if (query){
     clientVals.push(query);
     clientWhere += ` AND (full_name ILIKE '%' || $${clientVals.length} || '%' OR primary_email ILIKE '%' || $${clientVals.length} || '%' OR primary_phone ILIKE '%' || $${clientVals.length} || '%' OR notes ILIKE '%' || $${clientVals.length} || '%')`;
   }
+
+
+
+
+
+
+
+
 
 
 
@@ -12462,8 +23726,24 @@ app.post("/crm/ai_search", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
   res.json({ ok: true, leads, clients });
 }));
+
+
+
+
+
+
+
+
 
 
 
@@ -12540,8 +23820,136 @@ app.get("/crm/clients", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12612,6 +24020,70 @@ app.get("/crm/clients", asyncHandler(async (req, res) => {
     params.push("%" + q + "%");
     where = " AND (LOWER(COALESCE(full_name,'')) LIKE $2 OR LOWER(COALESCE(primary_email,'')) LIKE $2 OR LOWER(COALESCE(primary_phone,'')) LIKE $2)";
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12748,8 +24220,136 @@ app.get("/crm/clients", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, clients: r.rows });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -12883,6 +24483,70 @@ app.post("/crm/clients", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const full_name = String(req.body?.full_name || "").trim();
   const email = String(req.body?.email || "").trim();
   const phone = String(req.body?.phone || "").trim();
@@ -12951,9 +24615,137 @@ app.post("/crm/clients", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   if (!full_name && !email && !phone) {
     return res.status(400).json({ ok: false, error: "Provide at least one of: full_name, email, phone" });
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -13087,8 +24879,136 @@ app.post("/crm/clients", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, client: c });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -13222,9 +25142,137 @@ app.get("/crm/client", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
   if (!client_id) return res.status(400).json({ ok: false, error: "client_id required" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -13358,10 +25406,138 @@ app.get("/crm/client", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const ids = await pool.query(
     `SELECT kind, value FROM crm_identities WHERE site_id=$1 AND client_id=$2 ORDER BY kind, created_at DESC`,
     [site.site_id, client_id]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -13499,8 +25675,136 @@ app.get("/crm/client", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, client: c.rows[0], identities: ids.rows, activities: acts.rows });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -13571,6 +25875,70 @@ app.get("/crm/review", asyncHandler(async (req, res) => {
   const token = req.query.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -13710,8 +26078,136 @@ app.get("/crm/review", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, queue: r.rows });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -13845,6 +26341,70 @@ app.post("/crm/review/confirm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const mid = parseInt(match_id || "0", 10);
   const cid = parseInt(client_id || "0", 10);
   if (!mid || !cid) return res.status(400).json({ ok: false, error: "match_id and client_id required" });
@@ -13912,9 +26472,137 @@ app.post("/crm/review/confirm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // validate client belongs to site
   const c = await pool.query(`SELECT id FROM crm_clients WHERE site_id=$1 AND id=$2 LIMIT 1`, [site.site_id, cid]);
   if (!c.rows.length) return res.status(404).json({ ok:false, error:"Client not found" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -14050,8 +26738,136 @@ app.post("/crm/review/confirm", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, match: r.rows[0] });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -14185,8 +27001,136 @@ app.post("/crm/review/reject", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const mid = parseInt(match_id || "0", 10);
   if (!mid) return res.status(400).json({ ok: false, error: "match_id required" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -14319,8 +27263,136 @@ app.post("/crm/review/reject", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, match: r.rows[0] });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -14455,9 +27527,137 @@ app.post("/crm/ingest/email", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const from_email = normEmail(req.body?.from_email);
   const to_email = normEmail(req.body?.to_email);
   if (!from_email && !to_email) return res.status(400).json({ ok:false, error:"from_email or to_email required" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -14600,8 +27800,136 @@ app.post("/crm/ingest/email", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok:true, ...out });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -14736,8 +28064,136 @@ app.post("/crm/ingest/call", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const phone = normPhone(req.body?.phone);
   if (!phone) return res.status(400).json({ ok:false, error:"phone required" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -14878,8 +28334,200 @@ app.post("/crm/ingest/call", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok:true, ...out });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -15077,8 +28725,136 @@ app.get("/reports", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(req.query.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -15218,6 +28994,70 @@ app.get("/reports", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.get("/reports/latest", asyncHandler(async (req, res) => {
   setNoStore(res);
 
@@ -15284,8 +29124,136 @@ app.get("/reports/latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(req.query.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -15422,9 +29390,137 @@ app.get("/reports/latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   if (r.rows.length === 0) return res.status(404).json({ ok: false, error: "No report found" });
   res.json({ ok: true, report: r.rows[0] });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -15555,8 +29651,136 @@ app.get("/reports/by-date", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(req.query.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Add ?token=..." });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -15625,6 +29849,70 @@ app.get("/reports/by-date", asyncHandler(async (req, res) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return res.status(400).json({ ok: false, error: "date must be YYYY-MM-DD" });
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -15761,9 +30049,137 @@ app.get("/reports/by-date", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   if (!r.rows.length) return res.status(404).json({ ok: false, error: "Report not found for that date" });
   res.json({ ok: true, report: r.rows[0] });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -15900,8 +30316,136 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(req.query.token || req.body?.token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Provide ?token=..." });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -16034,6 +30578,70 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const leadRate = clamp01(req.body?.lead_rate ?? 0.02);
   const purchaseRate = clamp01(req.body?.purchase_rate ?? 0.004);
   const ctaRate = clamp01(req.body?.cta_rate ?? 0.06);
@@ -16101,8 +30709,136 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const pages = ["/", "/pricing", "/services", "/about", "/contact", "/blog", "/faq", "/checkout"];
   let inserted = 0;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -16235,9 +30971,137 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     for (let i = 0; i < eventsPerDay; i++) {
       const seconds = Math.floor(Math.random() * 86400);
       const ts = new Date(dayStart.getTime() + seconds * 1000);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -16373,7 +31237,135 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       const device = Math.random() < 0.62 ? "mobile" : "desktop";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -16508,6 +31500,70 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       const roll = Math.random();
       if (roll < purchaseRate) {
         await pool.query(
@@ -16525,6 +31581,38 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
         inserted++;
       
         inserted++;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -16598,11 +31686,75 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
           await pool.query(
             `INSERT INTO crm_leads (site_id, email, name, phone, source_page, status, notes, created_at)
              VALUES ($1,$2,$3,$4,$5,'new',$6,$7)`,
             [site_id, safeEmail(email), nm, phone, "/contact", notes, ts.toISOString()]
           );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -16653,6 +31805,38 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
             { emailA: email, emailB: bizEmail, phone, name: nm }
           );
         } catch (e) {}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -16823,12 +32007,172 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // ---------------------------
   // CRM demo seed (clients + activities)
   // ---------------------------
   // This makes the CRM tab feel "alive" for demos.
   try {
     const bizEmail = (site.owner_email || "owner@example.com").toLowerCase();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -16899,8 +32243,72 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const baseNow = new Date();
     const daysAgo = (n) => new Date(baseNow.getTime() - n * 24 * 60 * 60 * 1000);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -16941,6 +32349,38 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
         phone: c.phone,
         stage: c.stage
       });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -17024,9 +32464,73 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       // ensure name identity too (helps fuzzy matching)
       if (c.name) await addIdentity(site_id, client.id, "name", normName(c.name));
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -17107,6 +32611,38 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     await createActivityWithMatch(
       site_id,
       {
@@ -17154,6 +32690,38 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     await createActivityWithMatch(
       site_id,
       {
@@ -17168,6 +32736,38 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       },
       { phone: "+1 (555) 201-1002", name: "Brightside Dental" }
     );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -17247,6 +32847,38 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     await createActivityWithMatch(
       site_id,
       {
@@ -17262,6 +32894,38 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       },
       { emailA: "manager@northstarfitness.com", emailB: bizEmail, name: "Northstar Fitness" }
     );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -17341,6 +33005,38 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     // unmatched example (shows up in review queue)
     await createActivityWithMatch(
       site_id,
@@ -17356,6 +33052,38 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
       },
       { emailA: "someone@unknown-example.com", emailB: bizEmail, name: "Unknown" }
     );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -17407,6 +33135,38 @@ app.post("/demo/seed", asyncHandler(async (req, res) => {
   } catch (e) {
     console.warn("CRM demo seed skipped:", e?.message || e);
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -17508,11 +33268,139 @@ const sample1 =
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const sample2 =
     "Summary:\nYou’re getting steady visits and people are checking Pricing.\n\n" +
     "Trend:\nInterest is consistent — conversion work likely helps.\n\n" +
     "Next steps:\n1) Strongest offer at top of Pricing\n2) Add a 3-step “what happens next”\n3) Shorten forms + speed up pages\n\n" +
     "Metric to watch:\nCTA clicks";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -17647,12 +33535,140 @@ const sample1 =
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   await pool.query(
     `INSERT INTO daily_reports (site_id, report_date, report_text)
      VALUES ($1, CURRENT_DATE, $2)
      ON CONFLICT (site_id, report_date) DO NOTHING`,
     [site_id, sample2]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -17792,11 +33808,139 @@ const sample1 =
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    AI endpoints (FULL AI only)
 ----------------------------*/
 app.post("/api/ai/chat", asyncHandler(async (req, res) => {
   setNoStore(res);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -17928,8 +34072,136 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const gate = planGate(site, ["full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -18062,7 +34334,135 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const days = 30;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -18204,6 +34604,70 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const topPagesRes = await pool.query(
     `
     SELECT page_type, COUNT(*)::int AS views
@@ -18217,6 +34681,70 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
     `,
     [site.site_id, days]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -18355,6 +34883,70 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const context = {
     site_id: site.site_id,
     plan: site.plan,
@@ -18363,6 +34955,70 @@ app.post("/api/ai/chat", asyncHandler(async (req, res) => {
     top_pages_30d: topPagesRes.rows,
     latest_report: lastReportRes.rows[0] || null
   };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -18493,7 +35149,135 @@ You are Constrava's analytics coach.
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Return plain text formatted like this (keep the line breaks):
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -18625,9 +35409,137 @@ WHAT'S HAPPENING
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 WHY IT MATTERS
 - bullet
 - bullet
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -18760,8 +35672,136 @@ NEXT BEST ACTIONS
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 KPI TO WATCH
 - KPI: <name> — <why>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -18831,6 +35871,198 @@ Rules:
 - Keep bullets short (one line each)
 - No long paragraphs
 `.trim();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -19093,6 +36325,70 @@ Rules:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -19105,6 +36401,70 @@ Rules:
       temperature: 0.4
     })
   });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -19236,8 +36596,200 @@ Rules:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, reply });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -19436,6 +36988,70 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const token = req.query.token || req.body?.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok:false, error:"Unauthorized" });
@@ -19503,8 +37119,136 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const gate = planGate(site, ["full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok:false, error: gate.error });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -19636,6 +37380,70 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   // lightweight context: clients + latest touch + recent activities + review queue counts
   const clientsRes = await pool.query(
     `SELECT id, full_name, primary_email, primary_phone, stage, health, confidence, last_touch_at
@@ -19645,6 +37453,70 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
      LIMIT 120`,
     [site.site_id]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -19785,12 +37657,140 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const reviewCountRes = await pool.query(
     `SELECT COUNT(*)::int as needs_review
      FROM crm_activity_matches
      WHERE site_id=$1 AND status='needs_review'`,
     [site.site_id]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -19926,8 +37926,136 @@ app.post("/api/ai/crm/answer", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const system = `
 You are Constrava's CRM autopilot.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -20062,6 +38190,70 @@ The user will ask questions like:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 You MUST:
 - Answer with structured, scannable text (no wall of text).
 - If client matching is uncertain, say so and show your best guess + confidence.
@@ -20130,7 +38322,135 @@ You MUST:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Return EXACTLY this format:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -20261,9 +38581,137 @@ ANSWER
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 EVIDENCE
 - <2–6 bullets referencing concrete data points (dates/emails/calls/subjects)>
 - If uncertain, include: "Uncertainty: <why>"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -20396,8 +38844,136 @@ NEXT ACTIONS
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 CONFIDENCE
 - <0–100% and one-sentence reason>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -20531,11 +39107,139 @@ Rules:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const messages = [
     { role:"system", content: system },
     { role:"user", content: "CRM context JSON:\n" + JSON.stringify(context) },
     { role:"user", content: question }
   ];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -20673,6 +39377,70 @@ Rules:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const aiData = await aiRes.json().catch(()=>({}));
   const reply = aiData?.choices?.[0]?.message?.content;
   if (!reply) return res.status(500).json({ ok:false, error:"AI response missing" });
@@ -20740,8 +39508,136 @@ Rules:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok:true, reply });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -20873,6 +39769,70 @@ app.post("/generate-report", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const gate = planGate(site, ["full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
 
@@ -20939,7 +39899,135 @@ app.post("/generate-report", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const OPENAI_API_KEY = requireEnv("OPENAI_API_KEY");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -21081,7 +40169,135 @@ app.post("/generate-report", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const metrics = metricsRes.rows[0];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -21224,6 +40440,70 @@ You are Constrava's analytics assistant.
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Write for a busy small-business owner.
 Make it friendly, simple, and easy to scan.
 Avoid jargon unless explained simply.
@@ -21299,7 +40579,135 @@ ${JSON.stringify(metrics)}
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 Return EXACTLY this format:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -21430,8 +40838,136 @@ SUMMARY:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 HIGHLIGHTS:
 - (max 3 bullets, short)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -21562,8 +41098,136 @@ WHAT HAPPENED:
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 WHY IT MATTERS:
 - (max 3 bullets)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -21632,6 +41296,70 @@ NEXT STEPS:
 1) (step)
 2) (step)
 3) (step)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -21766,8 +41494,136 @@ KPI: <name> — <value> (target: <target>)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const aiData = await aiRes.json().catch(() => ({}));
   const reportText = aiData?.choices?.[0]?.message?.content;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -21839,6 +41695,134 @@ KPI: <name> — <value> (target: <target>)
       ai_preview: JSON.stringify(aiData).slice(0, 800)
     });
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -22039,6 +42023,70 @@ KPI: <name> — <value> (target: <target>)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, report: saved.rows[0] });
 }));
 
@@ -22105,8 +42153,136 @@ KPI: <name> — <value> (target: <target>)
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.post("/generate-action-plan", asyncHandler(async (req, res) => {
   setNoStore(res);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -22238,8 +42414,136 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const gate = planGate(site, ["full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -22370,6 +42674,70 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const trendRes = await pool.query(
     `
     SELECT created_at::date AS day, COUNT(*)::int AS visits
@@ -22382,6 +42750,70 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
     `,
     [site.site_id, days]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -22524,6 +42956,70 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const goalsRes = await pool.query(
     `
     SELECT
@@ -22600,6 +43096,70 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const payload = {
     site_id: site.site_id,
     window_days: days,
@@ -22607,6 +43167,70 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
     top_pages: topPagesRes.rows,
     goals: goalsRes.rows[0] || { leads: 0, purchases: 0, cta_clicks: 0 }
   };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -22756,9 +43380,137 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const aiData = await aiRes.json();
   const text = aiData?.choices?.[0]?.message?.content;
   if (!text) return res.status(500).json({ ok: false, error: "AI response missing" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -22895,8 +43647,136 @@ app.post("/generate-action-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, report: saved.rows[0] });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -23032,6 +43912,70 @@ app.post("/email-latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized. Invalid token" });
 
@@ -23098,8 +44042,136 @@ app.post("/email-latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const gate = planGate(site, ["pro", "full_ai"]);
   if (!gate.ok) return res.status(gate.status).json({ ok: false, error: gate.error });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -23237,8 +44309,136 @@ app.post("/email-latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const RESEND_API_KEY = requireEnv("RESEND_API_KEY");
   const from = requireEnv("FROM_EMAIL");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -23380,9 +44580,137 @@ app.post("/email-latest", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const emailData = await emailRes.json();
   res.json({ ok: true, resend: emailData });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -23519,8 +44847,136 @@ app.post("/demo/activate-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const { token, plan } = req.body || {};
   const allowed = new Set(["starter", "pro", "full_ai"]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -23651,8 +45107,136 @@ app.post("/demo/activate-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -23785,8 +45369,136 @@ app.post("/demo/activate-plan", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.json({ ok: true, updated: r.rows[0] });
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -23923,9 +45635,137 @@ app.get("/storefront", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const token = req.query.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -24057,574 +45897,571 @@ app.get("/storefront", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(`<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Constrava — Plans</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Constrava Dashboard</title>
 <style>
-
-
-
-/* --- Fix: analytics chat sizing --- */
-#chatCard .chatBox, #chatBox { min-height:220px; height:220px; }
-#chatCard .row { align-items:stretch; }
-
-/* --- Fix: hide broken floating chat pill --- */
-#chatToggle, #chatPill { display:none !important; }
-
-/* ---- GA-like Analytics Layout ---- */
-.gaWrap{display:flex;gap:14px;align-items:stretch}
-.gaSide{width:220px;flex:0 0 220px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:12px;position:sticky;top:10px;height:fit-content}
-.gaBrand{display:flex;gap:10px;align-items:center;margin-bottom:10px}
-.gaDot{width:12px;height:12px;border-radius:99px;background:var(--accent)}
-.gaTitle{font-weight:950}
-.gaNav{display:flex;flex-direction:column;gap:6px;margin-top:8px}
-.gaBtn{width:100%;text-align:left;border:1px solid var(--line);background:rgba(255,255,255,0.02);color:var(--ink);border-radius:14px;padding:10px 10px;font-weight:800;cursor:pointer}
-.gaBtn:hover{transform:translateY(-1px)}
-.gaBtn.active{border-color:rgba(124,58,237,0.45);background:rgba(124,58,237,0.12)}
-.gaMain{flex:1;min-width:0}
-.gaTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px}
-.gaTop h2{margin:0;font-size:20px}
-.gaSub{color:var(--muted);font-size:13px;margin-top:2px}
-.gaPanel{display:none}
-.gaPanel.active{display:block}
-.aiChips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-.aiChip{border:1px solid var(--line);background:rgba(124,58,237,0.10);color:var(--ink);border-radius:999px;padding:7px 10px;font-weight:800;cursor:pointer}
-.aiChip:hover{transform:translateY(-1px)}
-
 :root{
-  --bg:#0b0f19; --text:#e5e7eb; --muted:#9ca3af;
-  --border:rgba(255,255,255,.10); --shadow:0 10px 30px rgba(0,0,0,.35);
-  --radius:16px; --accent:#60a5fa; --accent2:#34d399;
+  --bg:#ffffff;
+  --panel:#ffffff;
+  --panel2:#f6f3ff;
+  --text:#111827;
+  --muted:#6b7280;
+  --line: rgba(124,58,237,.18);
+  --accent:#7c3aed;
+  --accent2:#a78bfa;
+  --danger:#ef4444;
+  --shadow: 0 18px 50px rgba(17,24,39,.12);
+  --radius: 18px;
 }
 *{box-sizing:border-box}
 body{
-  margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-  background: radial-gradient(1200px 800px at 20% -10%, rgba(96,165,250,.22), transparent 60%),
-              radial-gradient(900px 600px at 90% 0%, rgba(52,211,153,.16), transparent 55%),
-              var(--bg);
+  margin:0;
+  font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  background:
+    radial-gradient(1100px 720px at 20% -10%, rgba(167,139,250,.35), transparent 60%),
+    radial-gradient(900px 620px at 90% 0%, rgba(124,58,237,.18), transparent 55%),
+    var(--bg);
   color:var(--text);
 }
-.wrap{max-width:1100px;margin:0 auto;padding:26px 18px 70px;}
-.topbar{
-  display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px;
-  border:1px solid var(--border); border-radius: var(--radius);
-  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-  box-shadow: var(--shadow);
-}
-.brand{display:flex;align-items:center;gap:12px;}
-.logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg, rgba(96,165,250,.9), rgba(52,211,153,.85));}
-h1{font-size:18px;margin:0;}
-.sub{font-size:12px;color:var(--muted);margin-top:2px;}
-.pill{font-size:12px;color:var(--muted);border:1px solid var(--border);padding:6px 10px;border-radius:999px;background: rgba(15,23,42,.6);}
-.grid{margin-top:18px;display:grid;grid-template-columns:repeat(12,1fr);gap:16px;}
+a{color:inherit}
+.wrap{max-width:1200px;margin:0 auto;padding:22px 18px 60px;}
 .card{
-  grid-column: span 6; padding:16px; border-radius: var(--radius);
-  border:1px solid var(--border); background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
-  box-shadow: var(--shadow);
-  min-width:0;
+  background:rgba(255,255,255,.92);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
 }
-@media (max-width: 980px){ .card{grid-column: 1 / -1;} .topbar{flex-direction:column; align-items:flex-start;} }
-.name{font-weight:950;margin:0}
-.price{margin-top:10px;font-size:28px;font-weight:1000;}
-.muted{color:var(--muted);font-size:12px;line-height:1.5}
-ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
+.topbar{padding:16px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px;}
+.brand{display:flex; align-items:center; gap:12px;}
+.logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,var(--accent2),#34d399); box-shadow:0 10px 30px rgba(124,58,237,.22);}
+.brand h1{margin:0;font-size:20px;font-weight:950;letter-spacing:.2px}
+.sub{color:var(--muted);font-size:13px;margin-top:2px}
+.controls{display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:flex-end;}
+select, input{
+  border:1px solid var(--line);
+  background:#fff;
+  border-radius:14px;
+  padding:10px 12px;
+  font-weight:700;
+  color:var(--text);
+  outline:none;
+}
 .btn{
-  width:100%; margin-top:14px; padding:12px 14px;
-  border-radius:12px; border:1px solid var(--border);
-  background: rgba(96,165,250,.14); color:var(--text);
-  cursor:pointer; font-weight:950;
+  border:1px solid var(--line);
+  background:#fff;
+  color:var(--text);
+  border-radius:14px;
+  padding:10px 12px;
+  font-weight:900;
+  cursor:pointer;
+  transition:.12s transform ease;
 }
-.btn:hover{border-color: rgba(96,165,250,.5)}
-.btnGreen{background: rgba(52,211,153,.14)}
-.btnGreen:hover{border-color: rgba(52,211,153,.5)}
-.note{
-  margin-top:16px; padding:12px; border-radius: 14px; border:1px dashed rgba(255,255,255,.16);
-  background: rgba(15,23,42,.35); color: var(--muted); font-size:13px; line-height: 1.55;
+.btn:hover{transform:translateY(-1px)}
+.btn.primary{background:var(--accent);border-color:rgba(124,58,237,.35);color:#fff}
+.pill{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:8px 10px; border-radius:999px;
+  border:1px solid var(--line); background:rgba(124,58,237,.08);
+  font-weight:800; color:var(--text);
 }
-
-/* --- Analytics VNext --- */
-.gaVNext{display:flex;gap:14px;align-items:stretch}
-.gaSideV2{width:220px;min-width:220px;background:rgba(124,58,237,.06);border:1px solid var(--line);border-radius:22px;padding:14px;position:sticky;top:14px;height:calc(100vh - 28px);overflow:auto}
-.gaBrandV2{display:flex;gap:10px;align-items:center;margin-bottom:12px}
-.gaSideBtns{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-.gaSideFooter{margin-top:14px;line-height:1.35}
-.gaMainV2{flex:1;min-width:0}
-.gaTopbarV2{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}
-.gaTopRight{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
-.gaKpisRow{display:flex;gap:10px;flex-wrap:wrap}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.grid2small{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media (max-width: 980px){.gaVNext{flex-direction:column}.gaSideV2{position:relative;top:auto;height:auto;width:auto;min-width:0}.grid2,.grid2small{grid-template-columns:1fr}}
-.card{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:22px;padding:14px}
-.cardHead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}
-.cardActions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.h{font-weight:950;font-size:16px}
-.chartBox{height:220px;border-radius:18px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);overflow:hidden}
-.listBox{min-height:220px}
-.big{font-size:22px;font-weight:950}
-.split2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.chatBox{height:220px;overflow:auto;border-radius:18px;border:1px solid var(--line);padding:12px;background:rgba(0,0,0,.22)}
-.chatRow{display:flex;gap:10px;margin-top:10px}
-.input{flex:1;min-width:0}
-.chip{padding:10px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(124,58,237,.10);color:#e9ddff;font-weight:900;cursor:pointer}
+.dot{width:9px;height:9px;border-radius:99px;background:var(--accent);}
+.layout{display:grid; grid-template-columns: 240px 1fr; gap:14px; margin-top:14px; align-items:start;}
+.side{position:sticky; top:12px; padding:12px;}
+.side h3{margin:6px 8px 10px; font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.12em;}
+.nav{display:flex;flex-direction:column;gap:8px;}
+.nav button{
+  width:100%;
+  text-align:left;
+  padding:10px 12px;
+  border-radius:14px;
+  border:1px solid var(--line);
+  background:#fff;
+  font-weight:900;
+  cursor:pointer;
+}
+.nav button.active{
+  border-color:rgba(124,58,237,.35);
+  background:rgba(124,58,237,.10);
+}
+.main{padding:12px;}
+.panel{display:none;}
+.panel.active{display:block;}
+.grid{display:grid; grid-template-columns: 1.2fr .8fr; gap:12px;}
+@media (max-width: 980px){ .layout{grid-template-columns:1fr} .side{position:relative} .grid{grid-template-columns:1fr} }
+.sectionTitle{display:flex; align-items:flex-end; justify-content:space-between; gap:10px; flex-wrap:wrap; margin:6px 4px 10px;}
+.sectionTitle h2{margin:0;font-size:18px}
+.sectionTitle p{margin:4px 0 0; color:var(--muted); font-size:13px;}
+.kpis{display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-top:10px;}
+@media (max-width: 980px){ .kpis{grid-template-columns: repeat(2,1fr);} }
+.kpi{padding:12px;border-radius:16px;border:1px solid var(--line); background:rgba(255,255,255,.85);}
+.kpi .k{color:var(--muted);font-size:12px;font-weight:800}
+.kpi .v{font-size:20px;font-weight:950;margin-top:6px}
+.canvasCard{padding:12px;}
+.canvasCard header{display:flex;align-items:center;justify-content:space-between;gap:10px; margin-bottom:10px;}
+.canvasCard header b{font-size:14px}
+.canvasCard header small{color:var(--muted)}
+canvas{width:100%;height:220px;border-radius:16px;border:1px solid var(--line); background:linear-gradient(180deg, rgba(124,58,237,.08), rgba(124,58,237,.02));}
+.smallCanvas{height:160px}
+.row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+.badgeBtn{border:1px solid var(--line); background:rgba(124,58,237,.08); border-radius:999px; padding:8px 10px; font-weight:900; cursor:pointer;}
+/* Modal */
+.modalBack{position:fixed; inset:0; background:rgba(17,24,39,.45); display:none; align-items:center; justify-content:center; padding:18px; z-index:50;}
+.modalBack.show{display:flex;}
+.modal{max-width:720px; width:100%; background:#fff; border-radius:22px; border:1px solid var(--line); box-shadow:0 24px 70px rgba(17,24,39,.25);}
+.modal header{padding:14px 16px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:10px;}
+.modal header b{font-size:14px}
+.modal .body{padding:14px 16px; color:#111827;}
+.modal .body p{margin:0 0 10px; color:#111827; line-height:1.35}
+.modal .footer{padding:12px 16px; border-top:1px solid var(--line); display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;}
+.mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="topbar">
+  <div class="card topbar">
     <div class="brand">
-      <div class="logo"></div>
+      <div class="logo" aria-hidden="true"></div>
       <div>
-        <h1>Constrava Plans</h1>
-        <div class="sub">Activate your dashboard. Stripe later — demo activation for now.</div>
+        <h1>Constrava Dashboard</h1>
+        <div class="sub">GA-style analytics + AI explain popups (demo)</div>
       </div>
     </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <span class="pill">Site: <b>${site_id}</b></span>
-      <span class="pill">Current plan: <b>${plan}</b></span>
+    <div class="controls">
+      <select id="daysSelect" title="Window">
+        <option value="1">1 day</option>
+        <option value="7" selected>7 days</option>
+        <option value="30">30 days</option>
+      </select>
+      <button class="btn" id="btnSeed">Seed demo data</button>
+      <button class="btn primary" id="btnLoad">Load reports</button>
+      <button class="btn" id="btnRefresh">Refresh</button>
+      <span class="pill" id="statusPill"><span class="dot"></span><span id="statusText">Status: ready</span></span>
+      <button class="btn" id="btnCRM">CRM</button>
     </div>
   </div>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    <div class="card">
-      <h3 class="name">Pro</h3>
-      <div class="price">$19 <span class="muted">/mo</span></div>
-      <div class="muted">Reports + email.</div>
-      <ul>
-        <li>Daily reports (non‑AI)</li>
-        <li>Email latest report</li>
-      </ul>
-      <button class="btn" onclick="activate('pro')">Activate Pro</button>
+  <div class="layout">
+    <div class="card side">
+      <h3>Reports</h3>
+      <div class="nav" id="sideNav">
+        <button data-panel="home" class="active">Home</button>
+        <button data-panel="realtime">Realtime</button>
+        <button data-panel="acquisition">Acquisition</button>
+        <button data-panel="engagement">Engagement</button>
+        <button data-panel="monetization">Monetization</button>
+        <button data-panel="explore">Explore</button>
+        <button data-panel="ai">AI Studio</button>
+        <button data-panel="configure">Configure</button>
+      </div>
     </div>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    <div class="card" style="grid-column: 1 / -1">
-      <h3 class="name">Full AI</h3>
-      <div class="price">$69 <span class="muted">/mo</span></div>
-      <div class="muted">AI summaries + action plans + on‑dashboard AI chat.</div>
-      <ul>
-        <li>AI report generator</li>
-        <li>AI action plan generator</li>
-        <li>Live AI Helper chat</li>
-      </ul>
-      <button class="btn btnGreen" onclick="activate('full_ai')">Activate Full AI</button>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      <div class="note">
-        <b>Note:</b> These buttons call a demo activation endpoint. Later, Stripe will call a real webhook after payment.
+    <div class="card main">
+      <div id="panel-home" class="panel active">
+        <div class="sectionTitle">
+          <div>
+            <h2>Overview</h2>
+            <p>High-level performance. Click any “AI explain” to get a business summary popup.</p>
+          </div>
+          <div class="row">
+            <button class="badgeBtn" data-explain="weekly_summary">AI explain: weekly summary</button>
+            <button class="badgeBtn" data-explain="bottleneck">AI explain: find bottleneck</button>
+            <button class="badgeBtn" data-explain="prioritize">AI explain: prioritize pages</button>
+          </div>
+        </div>
+
+        <div class="kpis" id="kpiGrid">
+          <div class="kpi"><div class="k">Visits</div><div class="v" id="kpiVisits">—</div></div>
+          <div class="kpi"><div class="k">Leads</div><div class="v" id="kpiLeads">—</div></div>
+          <div class="kpi"><div class="k">Purchases</div><div class="v" id="kpiPurchases">—</div></div>
+          <div class="kpi"><div class="k">CTA clicks</div><div class="v" id="kpiCta">—</div></div>
+        </div>
+
+        <div class="grid" style="margin-top:12px;">
+          <div class="canvasCard">
+            <header>
+              <div><b>Traffic trend</b> <small class="muted">visits over time</small></div>
+              <button class="badgeBtn" data-explain="traffic_trend">AI explain</button>
+            </header>
+            <canvas id="cTraffic" width="900" height="220"></canvas>
+          </div>
+          <div class="canvasCard">
+            <header>
+              <div><b>Funnel snapshot</b> <small class="muted">visits → leads → purchases</small></div>
+              <button class="badgeBtn" data-explain="funnel">AI explain</button>
+            </header>
+            <canvas id="cFunnel" class="smallCanvas" width="900" height="160"></canvas>
+            <div class="row" style="margin-top:10px;">
+              <button class="btn" id="btnSimView">Sim page_view</button>
+              <button class="btn" id="btnSimLead">Sim lead</button>
+              <button class="btn" id="btnSimPurchase">Sim purchase</button>
+              <button class="btn" id="btnSimCta">Sim cta_click</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid" style="margin-top:12px;">
+          <div class="canvasCard">
+            <header>
+              <div><b>Top pages</b> <small class="muted">most active pages</small></div>
+              <button class="badgeBtn" data-explain="top_pages">AI explain</button>
+            </header>
+            <div id="topPages" class="mono" style="min-height:180px;border:1px solid var(--line);border-radius:16px;padding:12px;background:rgba(255,255,255,.75);">
+              Loading…
+            </div>
+          </div>
+          <div class="canvasCard">
+            <header>
+              <div><b>Device mix</b> <small class="muted">mobile vs desktop</small></div>
+              <button class="badgeBtn" data-explain="device_mix">AI explain</button>
+            </header>
+            <canvas id="cDevice" class="smallCanvas" width="900" height="160"></canvas>
+          </div>
+        </div>
       </div>
 
+      <div id="panel-realtime" class="panel">
+        <div class="sectionTitle">
+          <div><h2>Realtime</h2><p>Live page views. (Demo polling)</p></div>
+          <button class="badgeBtn" data-explain="realtime">AI explain</button>
+        </div>
+        <div class="canvasCard">
+          <header><div><b>Live feed</b> <small class="muted">new events</small></div></header>
+          <div id="liveBox" class="mono" style="min-height:260px;border:1px solid var(--line);border-radius:16px;padding:12px;background:rgba(255,255,255,.75);">Press “Check now” to fetch.</div>
+          <div class="row" style="margin-top:10px;">
+            <button class="btn" id="btnLiveCheck">Check now</button>
+            <button class="btn" id="btnLiveToggle">Pause</button>
+          </div>
+        </div>
+      </div>
 
+      <div id="panel-acquisition" class="panel"><div class="sectionTitle"><div><h2>Acquisition</h2><p>Channels (demo approximation).</p></div><button class="badgeBtn" data-explain="acquisition">AI explain</button></div><canvas id="cAcq" width="900" height="220"></canvas></div>
+      <div id="panel-engagement" class="panel"><div class="sectionTitle"><div><h2>Engagement</h2><p>Retention + event frequency.</p></div><button class="badgeBtn" data-explain="engagement">AI explain</button></div><canvas id="cEng" width="900" height="220"></canvas></div>
+      <div id="panel-monetization" class="panel"><div class="sectionTitle"><div><h2>Monetization</h2><p>Revenue proxy from purchases.</p></div><button class="badgeBtn" data-explain="monetization">AI explain</button></div><canvas id="cMon" width="900" height="220"></canvas></div>
+      <div id="panel-explore" class="panel"><div class="sectionTitle"><div><h2>Explore</h2><p>Custom charts: pick metric + render.</p></div><button class="badgeBtn" data-explain="explore">AI explain</button></div>
+        <div class="row" style="margin:10px 0;">
+          <select id="exploreMetric">
+            <option value="visits">Visits</option>
+            <option value="leads">Leads</option>
+            <option value="purchases">Purchases</option>
+            <option value="cta">CTA clicks</option>
+          </select>
+          <button class="btn primary" id="btnExploreRender">Render</button>
+          <button class="btn" id="btnExploreRandom">Randomize</button>
+        </div>
+        <canvas id="cExplore" width="900" height="220"></canvas>
+      </div>
 
+      <div id="panel-ai" class="panel">
+        <div class="sectionTitle"><div><h2>AI Studio</h2><p>This demo version uses popups (no full chat UI here yet).</p></div></div>
+        <div class="canvasCard">
+          <header><div><b>Ask for an explanation</b> <small class="muted">Pick a prompt, get a popup</small></div></header>
+          <div class="row">
+            <button class="badgeBtn" data-explain="next_actions">Next actions</button>
+            <button class="badgeBtn" data-explain="what_changed">What changed</button>
+            <button class="badgeBtn" data-explain="experiments">3 experiments</button>
+          </div>
+        </div>
+      </div>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      <div class="note" id="status">Status: idle</div>
+      <div id="panel-configure" class="panel">
+        <div class="sectionTitle"><div><h2>Configure</h2><p>Appearance + demo knobs.</p></div><button class="badgeBtn" data-explain="configure">AI explain</button></div>
+        <div class="canvasCard">
+          <header><div><b>Chart options</b> <small class="muted">simple knobs</small></div></header>
+          <div class="row">
+            <label class="pill"><span class="dot"></span> Smooth lines <input type="checkbox" id="optSmooth" checked style="margin-left:8px"/></label>
+            <label class="pill"><span class="dot"></span> Show points <input type="checkbox" id="optPoints" checked style="margin-left:8px"/></label>
+            <label class="pill"><span class="dot"></span> Bigger canvas <input type="checkbox" id="optBig" style="margin-left:8px"/></label>
+          </div>
+          <div class="sub" style="margin-top:10px;">These options affect the demo charts (front-end render).</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+<!-- Modal -->
+<div class="modalBack" id="modalBack" role="dialog" aria-modal="true" aria-hidden="true">
+  <div class="modal">
+    <header>
+      <b id="modalTitle">AI summary</b>
+      <button class="btn" id="modalClose">Close</button>
+    </header>
+    <div class="body" id="modalBody"></div>
+    <div class="footer">
+      <button class="btn primary" id="modalOk">Got it</button>
+    </div>
+  </div>
+</div>
 
 <script>
-const token = new URLSearchParams(location.search).get("token");
-const statusEl = document.getElementById("status");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-async function activate(plan){
-  try{
-    statusEl.textContent = "Status: activating " + plan + "...";
-    const r = await fetch("/demo/activate-plan", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ token, plan })
-    });
-    const data = await r.json().catch(()=> ({}));
-    if(!data.ok){
-      statusEl.textContent = "Status: " + (data.error || "activation failed");
-      return;
-    }
-    statusEl.textContent = "Status: activated ✅ redirecting...";
-    setTimeout(() => location.href = "/dashboard?token=" + encodeURIComponent(token), 600);
-  }catch(e){
-    statusEl.textContent = "Status: error " + (e && e.message ? e.message : "unknown");
-  }
-}
+window.CONSTRAVA_TOKEN = ${JSON.stringify(token)};
 </script>
+<script src="/dashboard.js?token=${encodeURIComponent(token)}"></script>
 </body>
-</html>`);
+</html>
+`);
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -24887,9 +46724,137 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const token = req.query.token;
   const site = await getSiteByToken(token);
   if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -25020,7 +46985,135 @@ app.get("/dashboard", asyncHandler(async (req, res) => {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   res.setHeader("Content-Type", "text/html; charset=utf-8");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -25198,11 +47291,139 @@ body{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 .repWrap{
   display:grid;
   grid-template-columns:repeat(12,1fr);
   gap:12px;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -25334,7 +47555,135 @@ body{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 @media (max-width: 980px){ .repCard{ grid-column: 1 / -1; } }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -25499,6 +47848,70 @@ body{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 .brand{display:flex;align-items:center;gap:12px}
 .logo{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg, rgba(96,165,250,.95), rgba(52,211,153,.88));}
 h1{margin:0;font-size:18px;font-weight:950}
@@ -25546,6 +47959,22 @@ input,select{
 }
 select{appearance:none;-webkit-appearance:none;-moz-appearance:none}
 select option{color:var(--text)}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -25654,6 +48083,38 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 .tabBtn{
   border:1px solid var(--border);
   background: var(--panel2);
@@ -25700,6 +48161,7 @@ pre{
       </div>
     </aside>
 
+
     <main class="gaMain">
       <div class="gaTop">
         <div>
@@ -25717,6 +48179,7 @@ pre{
           <button class="btn" id="loadReports" type="button">Load reports</button>
         </div>
       </div>
+
 
       <section class="gaPanel active" id="gaOverview">
         <div class="grid">
@@ -25738,6 +48201,70 @@ pre{
         Note: Requires the <b>Full AI</b> plan (or the endpoint will return 403).
       </div>
     </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -25874,7 +48401,135 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -26008,11 +48663,139 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     <div class="card span3">
       <div class="muted">Visits in range</div>
       <div class="kpi" id="kpiRange">—</div>
       <div class="muted" id="kpiRangeSub"></div>
     </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -26146,11 +48929,139 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     <div class="card span3">
       <div class="muted">Purchase rate</div>
       <div class="kpi" id="kpiPurchaseRate">—</div>
       <div class="muted">Track “purchase” events</div>
     </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -26290,9 +49201,74 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       <div class="chartBox" style="margin-top:10px">
         <svg id="trendSvg" viewBox="0 0 900 260" role="img" aria-label="Traffic trend chart"></svg>
       </div>
+
 
       <div class="grid" style="margin-top:12px">
         <div class="card span6" style="background:var(--panel2)">
@@ -26309,6 +49285,7 @@ pre{
           <div class="muted" id="funnelNote" style="margin-top:8px"></div>
         </div>
 
+
         <div class="card span6" style="background:var(--panel2)">
           <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px">
             <div>
@@ -26323,6 +49300,7 @@ pre{
           <div class="muted" id="sourcesNote" style="margin-top:8px"></div>
         </div>
 
+
         <div class="card span8" style="background:var(--panel2)">
           <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px">
             <div>
@@ -26335,6 +49313,7 @@ pre{
             <svg id="eventsSvg" viewBox="0 0 900 260" role="img" aria-label="Events chart"></svg>
           </div>
         </div>
+
 
         <div class="card span4" style="background:var(--panel2)">
           <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px">
@@ -26414,7 +49393,136 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       <div class="divider"></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -26550,10 +49658,138 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       <div class="muted" style="margin-top:10px">
         Seeder requires <span class="mono">ENABLE_DEMO_SEED=true</span>. Sim buttons work any time.
       </div>
     </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -26703,6 +49939,70 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     <div class="card span6">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
@@ -26777,6 +50077,70 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     <div class="card span6">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
         <div>
@@ -26785,6 +50149,70 @@ pre{
         </div>
         <span class="pill">Visits → Leads → Purchases</span>
       </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -26924,6 +50352,70 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         <div class="card" style="grid-column: span 6; background: var(--panel2); box-shadow:none">
           <div class="muted">Goals in range</div>
           <div class="row" style="margin-top:6px">
@@ -26937,6 +50429,70 @@ pre{
         </div>
       </div>
     </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -27145,10 +50701,202 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <details style="margin-top:10px">
   <summary class="muted" style="cursor:pointer">Show raw report</summary>
   <pre id="report" class="mono" style="max-height:320px;overflow:auto">Loading…</pre>
 </details>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -27254,8 +51002,42 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         </div>
       </section>
+
 
       <section class="gaPanel" id="gaRealtime">
         <div class="grid">
@@ -27274,6 +51056,7 @@ pre{
         </div>
       </section>
 
+
       <section class="gaPanel" id="gaAcq">
         <div class="grid">
           <div class="card span12" style="background:var(--panel2)">
@@ -27286,6 +51069,7 @@ pre{
           </div>
         </div>
       </section>
+
 
       <section class="gaPanel" id="gaEng">
         <div class="grid">
@@ -27300,6 +51084,7 @@ pre{
         </div>
       </section>
 
+
       <section class="gaPanel" id="gaMon">
         <div class="grid">
           <div class="card span12" style="background:var(--panel2)">
@@ -27313,6 +51098,7 @@ pre{
         </div>
       </section>
 
+
       <section class="gaPanel" id="gaExplore">
         <div class="grid">
           <div class="card span12" style="background:var(--panel2)">
@@ -27325,6 +51111,7 @@ pre{
           </div>
         </div>
       </section>
+
 
       <section class="gaPanel" id="gaAI">
         <div class="grid">
@@ -27400,8 +51187,74 @@ pre{
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         </div>
       </section>
+
 
       <section class="gaPanel" id="gaConfig">
         <div class="grid">
@@ -27563,10 +51416,202 @@ span12">
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 <details style="margin-top:10px">
   <summary class="muted" style="cursor:pointer">Show raw report</summary>
   <pre id="report" class="mono" style="max-height:320px;overflow:auto">Loading…</pre>
 </details>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -27671,7 +51716,71 @@ span12">
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -27722,6 +51831,22 @@ span12">
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     <!-- CRM Tools (always visible above lists) -->
     <div class="card span12" id="crmToolsCard">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
@@ -27747,7 +51872,39 @@ span12">
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       <div class="divider"></div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -27768,11998 +51925,467 @@ span12">
         <!-- Lead tools -->
         
         <!-- CRM AI Search (single interface) -->
-        <div class="card span12" style="background: var(--panel2); box-shadow:none">
-          <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
-            <div>
-              <div style="font-weight:950">CRM AI Search</div>
-              <div class="muted">
-                Ask things like: <span class="mono">find ava</span>, <span class="mono">recent leads</span>,
-                <span class="mono">status:new</span>, <span class="mono">clients idle 14</span>, <span class="mono">leads from /contact</span>.
-              </div>
-            </div>
-            <div class="row" style="gap:10px;flex-wrap:wrap">
-              <button class="btnGhost" id="crmRefresh" type="button">Refresh</button>
-              <button class="btnGhost" id="crmExport" type="button">Export CSV</button>
-            </div>
-          </div>
-
-
-
-
-
-
-
-
-          <div class="row" style="margin-top:10px;gap:10px;align-items:stretch;flex-wrap:wrap">
-            <input id="crmAiInput" placeholder='Try: "find noah" or "clients idle 30"' style="flex:1;min-width:260px" />
-            <button class="btn" id="crmAiSend" type="button">Search</button>
-            <button class="btnGhost" id="crmAiClear" type="button">Clear</button>
-          </div>
-
-
-
-
-
-
-
-
-          <pre id="crmAiOut" class="mono" style="margin-top:10px;white-space:pre-wrap;background:rgba(20,20,30,0.08);border:1px solid var(--line);border-radius:14px;padding:12px;max-height:220px;overflow:auto"></pre>
-
-
-
-
-
-
-
-
-          <div class="muted" style="margin-top:10px">Results populate the Leads + Clients lists below.</div>
-        </div>
-
-
-
-
-
-
-
-
-<div class="card span6" id="crmLeadsCard">
-      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
-        <div>
-          <div style="font-weight:950">CRM — Leads</div>
-          <div class="muted">Lead inbox saved from <span class="mono">lead</span> events (email optional).</div>
-        </div>
-      </div>
-      <div class="divider"></div>
-      <div class="list" id="crmLeads">Loading…</div>
-      <div class="muted" style="margin-top:10px">
-        Tip: Use <span class="mono">/demo/fire-event</span> with <span class="mono">event_name: "lead"</span> and include <span class="mono">lead_email</span>, <span class="mono">lead_name</span>, <span class="mono">lead_phone</span>.
-      </div>
-    </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    <div class="card span6" id="crmClientsCard">
-      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
-        <div>
-          <div style="font-weight:950">Clients</div>
-          <div class="muted">Collapsible list. Filter locally or run a server search above.</div>
-        </div>
-        <span class="pill">AI + Matching</span>
-      </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      <div class="divider"></div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      <details id="crmClientsPanel" open>
-        <summary class="muted" style="cursor:pointer;user-select:none;padding:6px 2px">
-          Client list (click to collapse)
-        </summary>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        <div class="row" style="margin-top:8px">
-          <input id="crmClientFilter" placeholder="Filter loaded clients…" style="flex:1;min-width:220px" />
-          <button class="btnGhost" id="crmClientFilterClear" type="button">Clear</button>
-        </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        <div class="list" id="crmClients" style="margin-top:10px">Loading…</div>
-      </details>
-    </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    <div class="card span6" id="crmDetailCard">
-      <div style="font-weight:950">Client status (auto-inferred)</div>
-      <div class="muted">Select a client to see latest touch + activity.</div>
-      <div class="divider"></div>
-      <pre id="crmClientDetail">Pick a client from the list.</pre>
-    </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    <div class="card span6" id="crmReviewCard">
-      <div style="font-weight:950">Review queue</div>
-      <div class="muted">Unmatched or low-confidence activities. Confirm or reject.</div>
-      <div class="divider"></div>
-      <div class="list" id="crmReview">Loading…</div>
-    </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  </div>
-</div>
-window.CONSTRAVA_TOKEN = ${JSON.stringify(String(token || ""))};
-</script>
-<script src="/dashboard.js"></script>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-</body>
-</html>`);
-}));
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* ---------------------------
-   Dashboard client JS
-   GET /dashboard.js?token=...
-----------------------------*/
-app.get("/dashboard.js", (req, res) => {
-  setNoStore(res);
-  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  res.send(String.raw`
+        <div class="res.send(String.raw`
 (() => {
   "use strict";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
   const TOKEN =
     String(window.CONSTRAVA_TOKEN || "") ||
     new URLSearchParams(location.search).get("token") ||
     "";
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   const $ = (id) => document.getElementById(id);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function setActiveTab(which){
-    const secA = $("sectionAnalytics");
-    const secC = $("sectionCRM");
-    const btnA = $("tabAnalytics");
-    const btnC = $("tabCRMTop");
-    const topC = $("tabCRM");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    if (secA) secA.style.display = (which === "analytics") ? "" : "none";
-    if (secC) secC.style.display = (which === "crm") ? "" : "none";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    if (btnA) btnA.classList.toggle("active", which === "analytics");
-    if (btnC) btnC.classList.toggle("active", which === "crm");
+  const qs = (sel, root=document) => root.querySelector(sel);
+  const qsa = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+
+  const state = {
+    days: 7,
+    metrics: null,
+    smooth: true,
+    points: true,
+    big: false,
+    livePaused: true,
+    liveSince: null
+  };
+
+  function setStatus(text) {
+    const el = $("statusText");
+    if (el) el.textContent = text;
   }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function bindTabs(){
-    const btnA = $("tabAnalytics");
-    const btnC = $("tabCRMTop");
-    const topC = $("tabCRM");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    if (btnA) btnA.addEventListener("click", () => setActiveTab("analytics"));
-    if (btnC) btnC.addEventListener("click", () => setActiveTab("crm"));
-    if (topC) topC.addEventListener("click", () => setActiveTab("crm"));
+  async function fetchJSON(url, opts) {
+    const r = await fetch(url, opts);
+    const ct = r.headers.get("content-type") || "";
+    const data = ct.includes("application/json") ? await r.json() : { ok: false, error: await r.text() };
+    if (!r.ok || data.ok === false) {
+      const msg = data && data.error ? data.error : ("HTTP " + r.status);
+      throw new Error(msg);
+    }
+    return data;
   }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-  // --- Analytics VNext layout (big UI refresh) ---
-  function mountAnalyticsVNext(){
-    const root = $("sectionAnalytics");
-    if (!root) return;
-    // avoid remounting if already vnext
-    if (root.getAttribute("data-analytics-vnext") === "1") return;
-    root.setAttribute("data-analytics-vnext","1");
-
-    const parts = [];
-    parts.push('<div class="gaVNext">');
-    parts.push('  <aside class="gaSideV2">');
-    parts.push('    <div class="gaBrandV2"><div class="gaDot"></div><div><div class="gaTitle">Constrava Analytics</div><div class="muted" style="font-size:12px">GA-inspired + AI popups</div></div></div>');
-    parts.push('    <div class="gaSideBtns">');
-    parts.push('      <button class="gaBtn active" data-ga="gaHome" type="button">Home</button>');
-    parts.push('      <button class="gaBtn" data-ga="gaRealtime" type="button">Realtime</button>');
-    parts.push('      <button class="gaBtn" data-ga="gaAcq" type="button">Acquisition</button>');
-    parts.push('      <button class="gaBtn" data-ga="gaEng" type="button">Engagement</button>');
-    parts.push('      <button class="gaBtn" data-ga="gaMon" type="button">Monetization</button>');
-    parts.push('      <button class="gaBtn" data-ga="gaExplore" type="button">Explore</button>');
-    parts.push('      <button class="gaBtn" data-ga="gaAI" type="button">AI Studio</button>');
-    parts.push('      <button class="gaBtn" data-ga="gaConfig" type="button">Configure</button>');
-    parts.push('    </div>');
-    parts.push('    <div class="gaSideFooter muted">Tip: click any <span style="color:var(--accent);font-weight:900">AI explain</span> button for a business summary.</div>');
-    parts.push('  </aside>');
-
-    parts.push('  <main class="gaMainV2">');
-    parts.push('    <div class="gaTopbarV2">');
-    parts.push('      <div class="gaTopLeft">');
-    parts.push('        <div class="gaKpisRow">');
-    parts.push('          <div class="pill">Range: <span id="kpiRange">—</span></div>');
-    parts.push('          <div class="pill">Max/day: <span id="maxDay">—</span></div>');
-    parts.push('          <div class="pill">Avg/day: <span id="avgDay">—</span></div>');
-    parts.push('        </div>');
-    parts.push('      </div>');
-    parts.push('      <div class="gaTopRight">');
-    parts.push('        <button id="gaCustomize" class="btnGhost" type="button">Customize</button>');
-    parts.push('        <button class="btn" data-ai="weekly_summary" type="button">Weekly summary</button>');
-    parts.push('        <button class="btnGhost" data-ai="find_bottleneck" type="button">Find bottleneck</button>');
-    parts.push('        <button class="btnGhost" data-ai="3_experiments" type="button">3 experiments</button>');
-    parts.push('        <button class="btnGhost" data-ai="prioritize_pages" type="button">Prioritize pages</button>');
-    parts.push('      </div>');
-    parts.push('    </div>');
-
-    // Panels
-    parts.push('    <section class="gaPanel active" id="gaHome">');
-    parts.push('      <div class="grid2">');
-    parts.push('        <div class="card" id="cardTrafficTrend">');
-    parts.push('          <div class="cardHead"><div><div class="h">Traffic trend</div><div class="muted">Visits per day (selected window)</div></div><div class="cardActions"><button class="chip" data-ai="what_is_happening_with_traffic" type="button">AI explain</button></div></div>');
-    parts.push('          <div class="chartBox"><svg id="trendSvg" viewBox="0 0 800 200" preserveAspectRatio="none"></svg></div>');
-    parts.push('        </div>');
-    parts.push('        <div class="card" id="cardRealtime">');
-    parts.push('          <div class="cardHead"><div><div class="h">Realtime</div><div class="muted">Polling for new events</div></div><div class="cardActions"><button id="liveToggle" class="btnGhost" type="button">Pause</button><button id="liveNow" class="btn" type="button">Check now</button></div></div>');
-    parts.push('          <div class="split2">');
-    parts.push('            <div><div class="muted">New page_views</div><div class="big" id="liveNew">—</div></div>');
-    parts.push('            <div><div class="muted">Last event</div><div class="big" id="liveLast">—</div></div>');
-    parts.push('          </div>');
-    parts.push('          <div class="muted" id="liveJson" style="margin-top:8px;white-space:pre-wrap"></div>');
-    parts.push('        </div>');
-    parts.push('      </div>');
-
-    parts.push('      <div class="grid2">');
-    parts.push('        <div class="card" id="cardFunnel">');
-    parts.push('          <div class="cardHead"><div><div class="h">Conversion funnel</div><div class="muted">Visits → Leads → Purchases (estimated)</div></div><div class="cardActions"><button class="chip" data-ai="funnel_diagnosis" type="button">AI explain</button></div></div>');
-    parts.push('          <div class="chartBox"><svg id="funnelSvg" viewBox="0 0 800 200" preserveAspectRatio="none"></svg></div>');
-    parts.push('          <div class="muted" id="funnelNote" style="margin-top:8px"></div>');
-    parts.push('          <div class="kpiRow"><div class="pill">Lead rate: <span id="kpiLeadRate">—</span></div><div class="pill">Purchase rate: <span id="kpiPurchaseRate">—</span></div></div>');
-    parts.push('        </div>');
-    parts.push('        <div class="card" id="cardSources">');
-    parts.push('          <div class="cardHead"><div><div class="h">Traffic sources</div><div class="muted">Where visitors come from (demo)</div></div><div class="cardActions"><button class="chip" data-ai="sources_explain" type="button">AI explain</button></div></div>');
-    parts.push('          <div class="chartBox"><svg id="sourcesSvg" viewBox="0 0 800 200" preserveAspectRatio="none"></svg></div>');
-    parts.push('          <div class="muted" id="sourcesNote" style="margin-top:8px"></div>');
-    parts.push('        </div>');
-    parts.push('      </div>');
-
-    parts.push('      <div class="grid2">');
-    parts.push('        <div class="card" id="cardEvents">');
-    parts.push('          <div class="cardHead"><div><div class="h">Events over time</div><div class="muted">Clicks / leads / purchases trend</div></div><div class="cardActions"><button class="chip" data-ai="anomalies" type="button">AI anomalies</button></div></div>');
-    parts.push('          <div class="chartBox"><svg id="eventsSvg" viewBox="0 0 800 220" preserveAspectRatio="none"></svg></div>');
-    parts.push('        </div>');
-    parts.push('        <div class="card" id="cardRetention">');
-    parts.push('          <div class="cardHead"><div><div class="h">Retention snapshot</div><div class="muted">Returning visitors proxy</div></div><div class="cardActions"><button class="chip" data-ai="retention_explain" type="button">AI explain</button></div></div>');
-    parts.push('          <div class="chartBox"><svg id="retentionSvg" viewBox="0 0 800 220" preserveAspectRatio="none"></svg></div>');
-    parts.push('        </div>');
-    parts.push('      </div>');
-
-    parts.push('      <div class="grid2">');
-    parts.push('        <div class="card" id="cardTopPages">');
-    parts.push('          <div class="cardHead"><div><div class="h">Top pages</div><div class="muted">Most viewed pages in range</div></div><div class="cardActions"><button class="chip" data-ai="top_pages_actions" type="button">AI explain</button></div></div>');
-    parts.push('          <div id="topPages" class="listBox"></div>');
-    parts.push('        </div>');
-    parts.push('        <div class="card" id="cardDevice">');
-    parts.push('          <div class="cardHead"><div><div class="h">Device mix & goals</div><div class="muted">Breakdown + conversions</div></div><div class="cardActions"><button class="chip" data-ai="device_explain" type="button">AI explain</button></div></div>');
-    parts.push('          <div class="grid2small">');
-    parts.push('            <div class="chartBox"><svg id="deviceSvg" viewBox="0 0 360 220" preserveAspectRatio="none"></svg></div>');
-    parts.push('            <div>');
-    parts.push('              <div class="pill">Mobile: <span id="mob">—</span></div>');
-    parts.push('              <div class="pill">Desktop: <span id="desk">—</span></div>');
-    parts.push('              <div class="pill">Leads: <span id="leads">—</span></div>');
-    parts.push('              <div class="pill">Purchases: <span id="purchases">—</span></div>');
-    parts.push('              <div class="pill">CTA: <span id="cta">—</span></div>');
-    parts.push('              <div class="muted" style="margin-top:10px">Last event</div>');
-    parts.push('              <div class="pill" id="lastEvent">—</div>');
-    parts.push('            </div>');
-    parts.push('          </div>');
-    parts.push('        </div>');
-    parts.push('      </div>');
-
-    parts.push('      <div class="card" id="cardAiChat" style="margin-top:14px">');
-    parts.push('        <div class="cardHead"><div><div class="h">Live AI Helper</div><div class="muted">Ask questions about traffic, pages, conversions, and next steps.</div></div><div class="cardActions"><button class="chip" data-ai="weekly_summary" type="button">AI summary</button></div></div>');
-    parts.push('        <div id="chatBox" class="chatBox"></div>');
-    parts.push('        <div class="chatRow"><input id="chatInput" class="input" placeholder="Ask: What should I improve first?"/><button id="chatSend" class="btn" type="button">Send</button><button id="chatClear" class="btnGhost" type="button">Clear</button></div>');
-    parts.push('        <div class="muted" style="margin-top:8px">Note: Requires the Full AI plan (or the endpoint will return 403).</div>');
-    parts.push('      </div>');
-    parts.push('    </section>');
-
-    // Additional panels (placeholders, still functional)
-    parts.push('    <section class="gaPanel" id="gaRealtime"><div class="card"><div class="h">Realtime</div><div class="muted">Use the realtime card on Home.</div></div></section>');
-    parts.push('    <section class="gaPanel" id="gaAcq"><div class="card"><div class="h">Acquisition</div><div class="muted">Coming soon: campaign + channel analytics.</div><button class="btnGhost" data-ai="acquisition_recs" type="button">AI explain</button></div></section>');
-    parts.push('    <section class="gaPanel" id="gaEng"><div class="card"><div class="h">Engagement</div><div class="muted">Coming soon: content engagement + scroll depth.</div><button class="btnGhost" data-ai="engagement_recs" type="button">AI explain</button></div></section>');
-    parts.push('    <section class="gaPanel" id="gaMon"><div class="card"><div class="h">Monetization</div><div class="muted">Coming soon: revenue + LTV + pricing insights.</div><button class="btnGhost" data-ai="monetization_recs" type="button">AI explain</button></div></section>');
-    parts.push('    <section class="gaPanel" id="gaExplore"><div class="card"><div class="h">Explore</div><div class="muted">Build custom views by filtering events (next).</div><button class="btnGhost" data-ai="explore_ideas" type="button">AI explain</button></div></section>');
-    parts.push('    <section class="gaPanel" id="gaAI"><div class="card"><div class="h">AI Studio</div><div class="muted">Use AI chat on Home for now (this becomes advanced later).</div></div></section>');
-    parts.push('    <section class="gaPanel" id="gaConfig"><div class="card"><div class="h">Configure</div><div class="muted">Use Customize to show/hide widgets. More controls next.</div><button class="btn" id="gaCustomize2" type="button">Customize</button></div></section>');
-
-    parts.push('  </main>');
-    parts.push('</div>');
-
-    root.innerHTML = parts.join("");
-
-    // Bind GA nav clicks
-    document.querySelectorAll(".gaBtn").forEach(b => {
-      b.addEventListener("click", () => setGaPanel(String(b.getAttribute("data-ga") || "gaHome")));
-    });
-
-    // Secondary customize button
-    const c2 = document.getElementById("gaCustomize2");
-    if (c2) c2.addEventListener("click", openCustomize);
+  // ---------- Modal ----------
+  function openModal(title, html) {
+    const back = $("modalBack");
+    const t = $("modalTitle");
+    const b = $("modalBody");
+    if (!back || !t || !b) return;
+    t.textContent = title || "AI summary";
+    b.innerHTML = html || "";
+    back.classList.add("show");
+    back.setAttribute("aria-hidden", "false");
   }
-function setStatus(t){
-    const el = $("status");
-    if (el) el.textContent = "Status: " + t;
+  function closeModal() {
+    const back = $("modalBack");
+    if (!back) return;
+    back.classList.remove("show");
+    back.setAttribute("aria-hidden", "true");
   }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function pct(n){
-    return (Math.round((Number(n) || 0) * 10000) / 100).toFixed(2) + "%";
+  function pct(n) {
+    const x = Number(n);
+    if (!isFinite(x)) return "—";
+    return Math.round(x * 1000) / 10 + "%";
   }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function clamp(n, min, max) {
-    n = Number(n) || 0;
-    return Math.max(min, Math.min(max, n));
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function esc(s) {
-    return String(s || "").replace(/[&<>"']/g, (c) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
-    }[c]));
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function renderTrend(svgEl, trend) {
-    if (!svgEl) return;
-    const W = 900, H = 260, p = 18;
-    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("x", "0");
-    bg.setAttribute("y", "0");
-    bg.setAttribute("width", String(W));
-    bg.setAttribute("height", String(H));
-    bg.setAttribute("rx", "14");
-    bg.setAttribute("fill", "rgba(15,23,42,.25)");
-    bg.setAttribute("stroke", "rgba(255,255,255,.10)");
-    svgEl.appendChild(bg);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const n = (trend && trend.length) ? trend.length : 0;
-    if (!n) return;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    let maxV = 0, sumV = 0;
-    for (const r of trend) { maxV = Math.max(maxV, r.visits || 0); sumV += (r.visits || 0); }
-    const avg = sumV / n;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    if ($("maxDay")) $("maxDay").textContent = String(maxV);
-    if ($("avgDay")) $("avgDay").textContent = String(Math.round(avg * 10) / 10);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const innerW = W - p * 2;
-    const innerH = H - p * 2;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const x = (i) => (n === 1 ? p + innerW / 2 : p + (i * innerW) / (n - 1));
-    const y = (v) => {
-      const m = Math.max(1, maxV);
-      const t = clamp(v / m, 0, 1);
-      return p + (1 - t) * innerH;
+  // ---------- Charts ----------
+  function drawLine(canvas, series, key) {
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+
+    const pad = 18;
+    const xs = series.map((_, i) => i);
+    const ys = series.map((d) => Number(d[key] ?? d));
+
+    const maxY = Math.max(1, ...ys);
+    const minY = Math.min(0, ...ys);
+
+    // background grid
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(124,58,237,.18)";
+    for (let i=0;i<5;i++){
+      const y = pad + (h-2*pad) * (i/4);
+      ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w-pad, y); ctx.stroke();
+    }
+
+    const xTo = (i) => pad + (w-2*pad) * (i / Math.max(1, xs.length-1));
+    const yTo = (v) => {
+      const t = (v - minY) / (maxY - minY || 1);
+      return (h - pad) - t * (h - 2*pad);
     };
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    let d = "";
-    for (let i = 0; i < n; i++) d += (i === 0 ? "M " : " L ") + x(i) + " " + y(trend[i].visits || 0);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", d);
-    path.setAttribute("stroke", "rgba(96,165,250,.90)");
-    path.setAttribute("stroke-width", "3");
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke-linecap", "round");
-    path.setAttribute("stroke-linejoin", "round");
-    svgEl.appendChild(path);
+    // line
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(124,58,237,.85)";
+    ctx.beginPath();
+    ys.forEach((v, i) => {
+      const x = xTo(i), y = yTo(v);
+      if (i === 0) ctx.moveTo(x,y);
+      else {
+        if (state.smooth) {
+          const x0 = xTo(i-1), y0 = yTo(ys[i-1]);
+          const cx = (x0 + x) / 2;
+          ctx.bezierCurveTo(cx, y0, cx, y, x, y);
+        } else {
+          ctx.lineTo(x,y);
+        }
+      }
+    });
+    ctx.stroke();
+
+    // points
+    if (state.points) {
+      ctx.fillStyle = "rgba(124,58,237,.95)";
+      ys.forEach((v, i) => {
+        const x = xTo(i), y = yTo(v);
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI*2);
+        ctx.fill();
+      });
+    }
   }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-
-  function renderBars(svgEl, items, opts = {}) {
-    if (!svgEl) return;
-    const W = 900, H = 260, p = 18;
-    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
-
-    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("x", "0"); bg.setAttribute("y", "0");
-    bg.setAttribute("width", String(W)); bg.setAttribute("height", String(H));
-    bg.setAttribute("rx", "14");
-    bg.setAttribute("fill", "rgba(15,23,42,.25)");
-    bg.setAttribute("stroke", "rgba(255,255,255,.10)");
-    svgEl.appendChild(bg);
-
-    const max = Math.max(1, ...items.map(x => Number(x.value || 0)));
-    const n = Math.max(1, items.length);
-    const barW = (W - p*2) / n;
+  function drawBars(canvas, items) {
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0,0,w,h);
+    const pad = 18;
+    const vals = items.map((x) => Number(x.v));
+    const max = Math.max(1, ...vals);
+    const bw = (w - 2*pad) / items.length;
 
     items.forEach((it, i) => {
-      const v = Number(it.value || 0);
-      const h = (H - p*2) * (v / max);
-      const x = p + i*barW + 6;
-      const y = H - p - h;
-
-      const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      r.setAttribute("x", String(x));
-      r.setAttribute("y", String(y));
-      r.setAttribute("width", String(Math.max(6, barW - 12)));
-      r.setAttribute("height", String(Math.max(2, h)));
-      r.setAttribute("rx", "10");
-      r.setAttribute("fill", opts.fill || "rgba(124,58,237,0.65)");
-      r.setAttribute("stroke", "rgba(255,255,255,.12)");
-      svgEl.appendChild(r);
-
-      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      label.setAttribute("x", String(x + 4));
-      label.setAttribute("y", String(H - 6));
-      label.setAttribute("fill", "rgba(255,255,255,.65)");
-      label.setAttribute("font-size", "12");
-      label.textContent = String(it.label || "").slice(0, 10);
-      svgEl.appendChild(label);
+      const v = Number(it.v);
+      const bh = (h - 2*pad) * (v / max);
+      const x = pad + i*bw + bw*0.15;
+      const y = (h - pad) - bh;
+      const ww = bw*0.7;
+      ctx.fillStyle = "rgba(124,58,237,.55)";
+      ctx.fillRect(x, y, ww, bh);
+      ctx.fillStyle = "rgba(17,24,39,.70)";
+      ctx.font = "12px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+      ctx.fillText(String(it.label), x, h - 6);
     });
   }
 
-  function renderFunnel(svgEl, visits, leads, purchases) {
-    if (!svgEl) return;
-    const W = 900, H = 260;
-    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
-
-    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("x", "0"); bg.setAttribute("y", "0");
-    bg.setAttribute("width", String(W)); bg.setAttribute("height", String(H));
-    bg.setAttribute("rx", "14");
-    bg.setAttribute("fill", "rgba(15,23,42,.25)");
-    bg.setAttribute("stroke", "rgba(255,255,255,.10)");
-    svgEl.appendChild(bg);
-
-    const stages = [
-      { label: "Visits", value: Math.max(0, visits|0) },
-      { label: "Leads", value: Math.max(0, leads|0) },
-      { label: "Purchases", value: Math.max(0, purchases|0) }
-    ];
-    const max = Math.max(1, ...stages.map(s => s.value));
-    const baseW = 780;
-    const x0 = 60;
-    const y0 = 40;
-    const gap = 10;
-    const bandH = 55;
-
-    stages.forEach((st, i) => {
-      const w = baseW * (st.value / max);
-      const x = x0 + (baseW - w)/2;
-      const y = y0 + i*(bandH + gap);
-
-      const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      r.setAttribute("x", String(x));
-      r.setAttribute("y", String(y));
-      r.setAttribute("width", String(Math.max(40, w)));
-      r.setAttribute("height", String(bandH));
-      r.setAttribute("rx", "16");
-      r.setAttribute("fill", i === 0 ? "rgba(124,58,237,0.40)" : i === 1 ? "rgba(124,58,237,0.55)" : "rgba(124,58,237,0.70)");
-      r.setAttribute("stroke", "rgba(255,255,255,.12)");
-      svgEl.appendChild(r);
-
-      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      t.setAttribute("x", String(x + 18));
-      t.setAttribute("y", String(y + 34));
-      t.setAttribute("fill", "rgba(255,255,255,.85)");
-      t.setAttribute("font-size", "16");
-      t.setAttribute("font-weight", "800");
-      t.textContent = (st.label + ": " + st.value);
-      svgEl.appendChild(t);
+  function resizeCanvases() {
+    const big = state.big;
+    qsa("canvas").forEach((c) => {
+      const desiredH = c.classList.contains("smallCanvas") ? (big ? 220 : 160) : (big ? 300 : 220);
+      c.style.height = desiredH + "px";
     });
   }
 
-  function renderRetention(svgEl, trend) {
-    // Proxy: returning visitors = smooth trend changes
-    if (!svgEl) return;
-    const vals = (trend || []).map(x => Number(x.v || x.value || 0));
-    const n = Math.max(10, vals.length || 10);
-    const recent = vals.slice(0, n);
-    const avg = recent.reduce((a,b)=>a+b,0) / Math.max(1, recent.length);
-    const volatility = recent.reduce((a,b)=>a+Math.abs(b-avg),0) / Math.max(1, recent.length);
-    const returning = Math.max(0, Math.min(100, 70 - (volatility / Math.max(1, avg))*100));
-
-    const items = [
-      { label: "New", value: 100 - returning },
-      { label: "Return", value: returning }
-    ];
-    renderBars(svgEl, items, { fill: "rgba(124,58,237,0.65)" });
-  }
-
-  function renderEvents(svgEl, trend) {
-    // Split traffic trend into three event types (simulated) for demo visuals.
-    const vals = (trend || []).map(x => Number(x.v || x.value || 0)).slice().reverse();
-    const clicks = vals.map(v => Math.max(0, Math.round(v * 0.55)));
-    const leads = vals.map(v => Math.max(0, Math.round(v * 0.10)));
-    const buys  = vals.map(v => Math.max(0, Math.round(v * 0.03)));
-
-    if (!svgEl) return;
-    const W = 900, H = 260, p = 18;
-    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
-
-    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    bg.setAttribute("x", "0"); bg.setAttribute("y", "0");
-    bg.setAttribute("width", String(W)); bg.setAttribute("height", String(H));
-    bg.setAttribute("rx", "14");
-    bg.setAttribute("fill", "rgba(15,23,42,.25)");
-    bg.setAttribute("stroke", "rgba(255,255,255,.10)");
-    svgEl.appendChild(bg);
-
-    const max = Math.max(1, ...clicks, ...leads, ...buys);
-    const n = Math.max(2, clicks.length);
-    const xFor = (i) => p + (W - p*2) * (i/(n-1));
-    const yFor = (v) => (H - p) - (H - p*2) * (v/max);
-
-    function pathFor(arr){
-      let d = "";
-      arr.forEach((v,i) => {
-        const x = xFor(i), y = yFor(v);
-        d += (i===0 ? ("M " + x + " " + y) : (" L " + x + " " + y));
-      });
-      return d;
-    }
-
-    const mk = (d, stroke) => {
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", d);
-      path.setAttribute("fill", "none");
-      path.setAttribute("stroke", stroke);
-      path.setAttribute("stroke-width", "4");
-      path.setAttribute("stroke-linecap", "round");
-      svgEl.appendChild(path);
-    };
-
-    mk(pathFor(clicks), "rgba(124,58,237,0.85)");
-    mk(pathFor(leads),  "rgba(255,255,255,0.55)");
-    mk(pathFor(buys),   "rgba(255,255,255,0.28)");
-
-    const legend = [
-      { label: "Clicks", stroke: "rgba(124,58,237,0.85)" },
-      { label: "Leads", stroke: "rgba(255,255,255,0.55)" },
-      { label: "Purchases", stroke: "rgba(255,255,255,0.28)" }
-    ];
-    legend.forEach((l,i) => {
-      const y = 34 + i*18;
-      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      dot.setAttribute("cx", "44"); dot.setAttribute("cy", String(y-4));
-      dot.setAttribute("r", "5"); dot.setAttribute("fill", l.stroke);
-      svgEl.appendChild(dot);
-
-      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
-      t.setAttribute("x", "60"); t.setAttribute("y", String(y));
-      t.setAttribute("fill", "rgba(255,255,255,.75)");
-      t.setAttribute("font-size", "13");
-      t.textContent = l.label;
-      svgEl.appendChild(t);
-    });
-  }
-
-function renderDevice(svgEl, mobile, desktop) {
-    if (!svgEl) return;
-    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const cx = 80, cy = 80, r = 50, w = 16;
-    const total = (mobile || 0) + (desktop || 0);
-    const m = total ? mobile / total : 0.5;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const start = -Math.PI / 2;
-    const mid = start + Math.PI * 2 * m;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    function arc(a0, a1, color) {
-      const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
-      const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
-      const large = (a1 - a0) > Math.PI ? 1 : 0;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      const pth = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      pth.setAttribute("d", "M " + x0 + " " + y0 + " A " + r + " " + r + " 0 " + large + " 1 " + x1 + " " + y1);
-      pth.setAttribute("stroke", color);
-      pth.setAttribute("stroke-width", String(w));
-      pth.setAttribute("fill", "none");
-      pth.setAttribute("stroke-linecap", "round");
-      svgEl.appendChild(pth);
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    ring.setAttribute("cx", String(cx));
-    ring.setAttribute("cy", String(cy));
-    ring.setAttribute("r", String(r));
-    ring.setAttribute("stroke", "rgba(255,255,255,.12)");
-    ring.setAttribute("stroke-width", String(w));
-    ring.setAttribute("fill", "none");
-    svgEl.appendChild(ring);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    arc(start, mid, "rgba(52,211,153,.90)");
-    arc(mid, start + Math.PI * 2, "rgba(96,165,250,.90)");
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function renderTopPages(container, rows) {
-    if (!container) return;
-    container.innerHTML = "";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    if (!rows || !rows.length) {
-      container.textContent = "No page data yet.";
-      return;
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    for (const r of rows) {
-      const item = document.createElement("div");
-      item.className = "item";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      const left = document.createElement("div");
-      left.style.minWidth = "160px";
-      left.style.maxWidth = "55%";
-      left.style.overflow = "hidden";
-      left.style.textOverflow = "ellipsis";
-      left.style.whiteSpace = "nowrap";
-      left.innerHTML =
-        "<b>" + esc(r.page_type || "/") + "</b>" +
-        "<div class='muted'>" + (r.views || 0) + " views • " + (r.share || 0) + "%</div>";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      const barWrap = document.createElement("div");
-      barWrap.className = "barWrap";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      const bar = document.createElement("div");
-      bar.className = "bar";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      const fill = document.createElement("div");
-      fill.style.width = clamp(r.share || 0, 0, 100) + "%";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      bar.appendChild(fill);
-      barWrap.appendChild(bar);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      item.appendChild(left);
-      item.appendChild(barWrap);
-      container.appendChild(item);
-    }
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-  // ===== CRM (Leads) =====
-  let crmCache = [];
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function fmtTime(iso){
-    try{
-      const d = new Date(iso);
-      if (isNaN(d.getTime())) return String(iso || "");
-      return d.toLocaleString();
-    }catch{ return String(iso || ""); }
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function renderCRM(container, leads){
-    if (!container) return;
-    container.innerHTML = "";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const rows = Array.isArray(leads) ? leads : [];
-    crmCache = rows;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    if (!rows.length){
-      container.textContent = "No leads yet.";
-      return;
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    for (const l of rows){
-      const item = document.createElement("div");
-      item.className = "item";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      const left = document.createElement("div");
-      const title = (l.email || l.name || "(no email)") + "";
-      const sub = [
-        l.name ? ("Name: " + l.name) : null,
-        l.phone ? ("Phone: " + l.phone) : null,
-        l.source_page ? ("Page: " + l.source_page) : null,
-        ("Status: " + (l.status || "new")),
-        ("At: " + fmtTime(l.created_at))
-      ].filter(Boolean).join(" • ");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      left.innerHTML =
-        "<b>" + esc(title) + "</b>" +
-        "<div class='muted'>" + esc(sub) + "</div>" +
-        (l.notes ? "<div class='muted' style='margin-top:6px'>Notes: " + esc(l.notes) + "</div>" : "");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      const right = document.createElement("div");
-      right.style.display = "flex";
-      right.style.gap = "8px";
-      right.style.alignItems = "center";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      const btn = document.createElement("button");
-      btn.className = "btnGhost";
-      btn.textContent = "Edit";
-      btn.addEventListener("click", async () => {
-        const newStatus = prompt("Status (e.g. new, contacted, won, lost):", l.status || "new");
-        if (newStatus === null) return;
-        const newNotes = prompt("Notes (optional):", l.notes || "");
-        if (newNotes === null) return;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        const r = await fetch("/crm/update", {
-          method: "POST",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify({ token: TOKEN, lead_id: l.id, status: newStatus, notes: newNotes })
-        });
-        const j = await r.json().catch(()=>({}));
-        if(!j.ok){ alert(j.error || "Update failed"); return; }
-        await loadCRM();
-      await loadCRMv2();
-      });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      right.appendChild(btn);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      item.appendChild(left);
-      item.appendChild(right);
-      container.appendChild(item);
-    }
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function leadsToCSV(rows){
-    const cols = ["id","email","name","phone","source_page","status","notes","created_at"];
-    const escCsv = (v) => {
-      const s = String(v ?? "");
-      if (/["\n,]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
-      return s;
-    };
-    const out = [];
-    out.push(cols.join(","));
-    for (const r of (rows || [])){
-      out.push(cols.map(c => escCsv(r[c])).join(","));
-    }
-    return out.join("\n");
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  async function loadCRM(){
-    const box = $("crmLeads");
-    if (box) box.textContent = "Loading…";
-    const r = await fetch("/crm?token=" + encodeURIComponent(TOKEN) + "&limit=200");
-    const j = await r.json().catch(()=>({}));
-    if(!j.ok){
-      if (box) box.textContent = j.error || "Failed to load CRM.";
-      return;
-    }
-    renderCRM(box, j.leads || []);
-    // If a filter is set, re-render filtered view
-    try{ applyLeadFilter(); }catch{}
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function leadMatches(l, q){
-    q = String(q||"").trim().toLowerCase();
-    if(!q) return true;
-    const hay = [
-      l.email, l.name, l.phone, l.source_page, l.status, l.notes
-    ].filter(Boolean).join(" ").toLowerCase();
-    return hay.includes(q);
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function applyLeadFilter(){
-    const q = $("crmLeadSearch") ? $("crmLeadSearch").value : "";
-    const box = $("crmLeads");
-    if(!box) return;
-    const rows = (crmCache || []).filter(l => leadMatches(l, q));
-    renderCRM(box, rows);
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function applyClientFilter(){
-    const box = $("crmClients");
-    const q = $("crmClientFilter") ? $("crmClientFilter").value.trim().toLowerCase() : "";
-    if(!box) return;
-    const items = Array.from(box.querySelectorAll(".item"));
-    for(const it of items){
-      const txt = (it.textContent || "").toLowerCase();
-      it.style.display = (!q || txt.includes(q)) ? "" : "none";
-    }
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  async function crmChatRun(){
-    const out = $("crmChatOut");
-    const inp = $("crmChatInput");
-    if(!out || !inp) return;
-    const qRaw = inp.value.trim();
-    if(!qRaw){ out.textContent = "—"; return; }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    out.textContent = "Searching…";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // Ensure leads loaded once (so local search works)
-    if(!Array.isArray(crmCache) || crmCache.length === 0){
-      try{ await loadCRM(); }catch{}
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const q = qRaw.toLowerCase();
-    const leadHits = (crmCache || []).filter(l => leadMatches(l, qRaw)).slice(0, 12);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // Client search (server)
-    let clientHits = [];
-    try{
-      const r = await fetch("/crm/clients?token=" + encodeURIComponent(TOKEN) + "&q=" + encodeURIComponent(qRaw));
-      const j = await r.json().catch(()=>({}));
-      if(j.ok && Array.isArray(j.clients)) clientHits = j.clients.slice(0, 12);
-    }catch{}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const lines = [];
-    lines.push("QUERY: " + qRaw);
-    lines.push("");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    lines.push("LEADS (" + leadHits.length + (leadHits.length === 12 ? "+": "") + ")");
-    if(!leadHits.length) lines.push("- —");
-    for(const l of leadHits){
-      const who = (l.email || l.name || "(no email)") + "";
-      const sub = [
-        l.name ? ("name: " + l.name) : null,
-        l.phone ? ("phone: " + l.phone) : null,
-        l.status ? ("status: " + l.status) : null,
-        l.source_page ? ("page: " + l.source_page) : null,
-        l.created_at ? ("at: " + fmtTime(l.created_at)) : null
-      ].filter(Boolean).join(" • ");
-      lines.push("- " + who);
-      if(sub) lines.push("  " + sub);
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    lines.push("");
-    lines.push("CLIENTS (" + clientHits.length + (clientHits.length === 12 ? "+": "") + ")");
-    if(!clientHits.length) lines.push("- —");
-    for(const c of clientHits){
-      const title = (c.full_name || "(no name)") + (c.stage ? (" • " + c.stage) : "");
-      const sub = [
-        c.primary_email ? ("email: " + c.primary_email) : null,
-        c.primary_phone ? ("phone: " + c.primary_phone) : null,
-        c.last_touch_at ? ("last touch: " + fmtWhen(c.last_touch_at)) : null
-      ].filter(Boolean).join(" • ");
-      lines.push("- " + title);
-      if(sub) lines.push("  " + sub);
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    lines.push("");
-    lines.push("Tip: Click a client in the list to open status + activity.");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    out.textContent = lines.join("\n");
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// ===== CRM v2 (clients + review + AI) =====
-let crmSelectedClientId = null;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function fmtWhen(iso){
-  try{
-    if(!iso) return "—";
-    const d = new Date(iso);
-    if(isNaN(d.getTime())) return String(iso);
-    return d.toISOString().slice(0,19).replace("T"," ");
-  }catch{ return String(iso||"—"); }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function makeListItem(title, sub, right){
-  const item = document.createElement("div");
-  item.className = "item";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const left = document.createElement("div");
-  left.style.minWidth = "0";
-  left.innerHTML = "<b>" + esc(title) + "</b><div class='muted'>" + esc(sub || "") + "</div>";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const r = document.createElement("div");
-  r.className = "pill";
-  r.textContent = right || "Open";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  item.appendChild(left);
-  item.appendChild(r);
-  return item;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-async function loadCrmClients(q){
-  const box = $("crmClients");
-  if(!box) return;
-  box.textContent = "Loading…";
-  const url = "/crm/clients?token=" + encodeURIComponent(TOKEN) + (q ? "&q=" + encodeURIComponent(q) : "");
-  const r = await fetch(url);
-  const j = await r.json().catch(()=>({}));
-  box.innerHTML = "";
-  if(!j.ok){ box.textContent = j.error || "Failed."; return; }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  if(!j.clients || !j.clients.length){ box.textContent = "No clients yet."; return; }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  for(const c of j.clients){
-    const title = (c.full_name || "(no name)") + (c.stage ? " • " + c.stage : "");
-    const sub = [
-      c.primary_email ? ("email: " + c.primary_email) : null,
-      c.primary_phone ? ("phone: " + c.primary_phone) : null,
-      ("last touch: " + fmtWhen(c.last_touch_at))
-    ].filter(Boolean).join(" • ");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const item = makeListItem(title, sub, "Select");
-    item.style.cursor = "pointer";
-    item.addEventListener("click", () => {
-      crmSelectedClientId = c.id;
-      loadCrmClientDetail(c.id);
-    });
-    box.appendChild(item);
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-async function loadCrmClientDetail(clientId){
-  const pre = $("crmClientDetail");
-  if(!pre) return;
-  pre.textContent = "Loading client…";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const r = await fetch("/crm/client?token=" + encodeURIComponent(TOKEN) + "&client_id=" + encodeURIComponent(String(clientId)));
-  const j = await r.json().catch(()=>({}));
-  if(!j.ok){ pre.textContent = j.error || "Failed."; return; }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const c = j.client || {};
-  const acts = Array.isArray(j.activities) ? j.activities : [];
-  const ids = Array.isArray(j.identities) ? j.identities : [];
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const lines = [];
-  lines.push("CLIENT");
-  lines.push("- Name: " + (c.full_name || "—"));
-  lines.push("- Stage: " + (c.stage || "—") + " • Health: " + (c.health || "unknown"));
-  lines.push("- Confidence: " + Math.round((Number(c.confidence||0.5))*100) + "%");
-  lines.push("- Email: " + (c.primary_email || "—"));
-  lines.push("- Phone: " + (c.primary_phone || "—"));
-  lines.push("- Last touch: " + fmtWhen(c.last_touch_at));
-  lines.push("");
-  lines.push("IDENTITIES");
-  if(!ids.length) lines.push("- —");
-  for(const it of ids.slice(0,12)){
-    lines.push("- " + it.kind + ": " + it.value);
-  }
-  lines.push("");
-  lines.push("RECENT ACTIVITY");
-  if(!acts.length) lines.push("- —");
-  for(const a of acts.slice(0,8)){
-    const who = a.type === "email"
-      ? ((a.direction||"") + " " + (a.from_email || "—") + " → " + (a.to_email || "—")).trim()
-      : (a.phone ? ("phone: " + a.phone) : "");
-    const head = fmtWhen(a.occurred_at) + " • " + (a.type || "activity") + (a.match_status ? (" • " + a.match_status) : "");
-    const sub = (a.subject ? ("subject: " + a.subject) : "") || (a.body_preview ? ("notes: " + String(a.body_preview).slice(0,140)) : "");
-    lines.push("- " + head);
-    if(who) lines.push("  " + who);
-    if(sub) lines.push("  " + sub);
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  try{ applyClientFilter(); }catch{}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  pre.textContent = lines.join("\n");
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-async function loadCrmReview(){
-  const box = $("crmReview");
-  if(!box) return;
-  box.textContent = "Loading…";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const r = await fetch("/crm/review?token=" + encodeURIComponent(TOKEN));
-  const j = await r.json().catch(()=>({}));
-  box.innerHTML = "";
-  if(!j.ok){ box.textContent = j.error || "Failed."; return; }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const q = Array.isArray(j.queue) ? j.queue : [];
-  if(!q.length){ box.textContent = "Queue is empty ✅"; return; }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  for(const it of q){
-    const title = fmtWhen(it.occurred_at) + " • " + (it.type || "activity");
-    const sub =
-      (it.subject ? ("subject: " + it.subject) : (it.body_preview ? it.body_preview : "")) +
-      (it.phone ? (" • phone: " + it.phone) : "") +
-      (" • conf: " + Math.round((Number(it.confidence||0))*100) + "%");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const row = makeListItem(title, sub, "Review");
-    row.style.cursor = "pointer";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    row.addEventListener("click", async () => {
-      // quick action: confirm to selected client, else prompt to select first
-      if(!crmSelectedClientId){
-        alert("Select a client first (Clients list) to confirm this activity.");
-        return;
+  // ---------- Render ----------
+  function renderMetrics(m) {
+    state.metrics = m;
+
+    $("kpiVisits").textContent = String(m.visits_range ?? "—");
+    $("kpiLeads").textContent = String(m.leads ?? "—");
+    $("kpiPurchases").textContent = String(m.purchases ?? "—");
+    $("kpiCta").textContent = String(m.cta_clicks ?? "—");
+
+    // Traffic line
+    drawLine($("cTraffic"), (m.trend || []).map(t => ({ v: t.visits })), "v");
+
+    // Funnel bars
+    drawBars($("cFunnel"), [
+      { label: "Visits", v: m.visits_range || 0 },
+      { label: "Leads", v: m.leads || 0 },
+      { label: "Purch", v: m.purchases || 0 }
+    ]);
+
+    // Device mix
+    const dm = m.device_mix || { mobile: 0, desktop: 0 };
+    drawBars($("cDevice"), [
+      { label: "Mobile", v: dm.mobile || 0 },
+      { label: "Desktop", v: dm.desktop || 0 }
+    ]);
+
+    // Top pages
+    const tp = $("topPages");
+    if (tp) {
+      const arr = Array.isArray(m.top_pages_range) ? m.top_pages_range : [];
+      if (!arr.length) tp.textContent = "No page activity yet (demo).";
+      else {
+        tp.innerHTML = arr.slice(0, 12).map((r, idx) => {
+          const p = String(r.page_type || "/");
+          const n = Number(r.n || r.count || 0);
+          return (idx+1) + ". " + p + " — " + n;
+        }).join("<br/>");
       }
-      const ok = confirm("Assign this activity to the selected client?");
-      if(!ok) return;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      const rr = await fetch("/crm/review/confirm", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ token: TOKEN, match_id: it.match_id, client_id: crmSelectedClientId })
-      });
-      const jj = await rr.json().catch(()=>({}));
-      if(!jj.ok){ alert(jj.error || "Failed"); return; }
-      await loadCrmReview();
-      if(crmSelectedClientId) await loadCrmClientDetail(crmSelectedClientId);
-    });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // add a reject button
-    const rejectBtn = document.createElement("button");
-    rejectBtn.className = "btnDanger";
-    rejectBtn.textContent = "Reject";
-    rejectBtn.style.padding = "8px 10px";
-    rejectBtn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const ok = confirm("Reject this match?");
-      if(!ok) return;
-      const rr = await fetch("/crm/review/reject", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ token: TOKEN, match_id: it.match_id })
-      });
-      const jj = await rr.json().catch(()=>({}));
-      if(!jj.ok){ alert(jj.error || "Failed"); return; }
-      await loadCrmReview();
-    });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // replace right pill with button group
-    row.removeChild(row.lastChild);
-    const right = document.createElement("div");
-    right.style.display = "flex";
-    right.style.gap = "8px";
-    right.appendChild(rejectBtn);
-    const hint = document.createElement("div");
-    hint.className = "pill";
-    hint.textContent = "Assign";
-    right.appendChild(hint);
-    row.appendChild(right);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    box.appendChild(row);
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-async function crmCreateClient(){
-  const n = $("crmNewName") ? $("crmNewName").value.trim() : "";
-  const e = $("crmNewEmail") ? $("crmNewEmail").value.trim() : "";
-  const p = $("crmNewPhone") ? $("crmNewPhone").value.trim() : "";
-  if(!n && !e && !p){ alert("Add at least a name, email, or phone."); return; }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const r = await fetch("/crm/clients", {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ token: TOKEN, full_name: n, email: e, phone: p, stage:"lead" })
-  });
-  const j = await r.json().catch(()=>({}));
-  if(!j.ok){ alert(j.error || "Failed"); return; }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  if ($("crmNewName")) $("crmNewName").value = "";
-  if ($("crmNewEmail")) $("crmNewEmail").value = "";
-  if ($("crmNewPhone")) $("crmNewPhone").value = "";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  await loadCrmClients($("crmClientSearch") ? $("crmClientSearch").value.trim() : "");
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-async function crmAsk(){
-  const out = $("crmAskOut");
-  const input = $("crmAskInput");
-  if(!out || !input) return;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const q = input.value.trim();
-  if(!q) return;
-  out.textContent = "Thinking…";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const r = await fetch("/api/ai/crm/answer", {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify({ token: TOKEN, question: q })
-  });
-  const j = await r.json().catch(()=>({}));
-  if(!j.ok){ out.textContent = j.error || "Failed."; return; }
-  out.textContent = j.reply || "—";
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-async function loadCRMv2(){
-  await loadCrmClients("");
-  await loadCrmReview();
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// ===== Reports =====
-  function splitLines(txt){
-    return String(txt || "").replace(/\r\n/g,"\n").split("\n").map(s => s.trim()).filter(Boolean);
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function parseReportSections(text){
-    const lines = splitLines(text);
-    const sections = { summary: "", highlights: [], steps: [], kpi: "" };
-    let mode = "";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    for (const line0 of lines){
-      const line = line0.replace(/\*\*/g,"");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      if (/^SUMMARY:/i.test(line)) { mode="summary"; continue; }
-      if (/^HIGHLIGHTS:/i.test(line)) { mode="highlights"; continue; }
-      if (/^NEXT STEPS:/i.test(line)) { mode="steps"; continue; }
-      if (/^KPI:/i.test(line)){
-        sections.kpi = line.replace(/^KPI:\s*/i,"").trim();
-        mode="";
-        continue;
-      }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      const cleaned = line.replace(/^[-•]\s*/,"").replace(/^\d+\)\s*/,"").trim();
-      if (!cleaned) continue;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      if (mode==="summary") sections.summary += (sections.summary?" ":"") + cleaned;
-      if (mode==="highlights") sections.highlights.push(cleaned);
-      if (mode==="steps") sections.steps.push(cleaned);
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    return sections;
+    // Demo panels
+    drawBars($("cAcq"), [
+      { label: "Direct", v: Math.max(1, Math.round((m.visits_range||0)*0.45)) },
+      { label: "Search", v: Math.max(1, Math.round((m.visits_range||0)*0.30)) },
+      { label: "Social", v: Math.max(1, Math.round((m.visits_range||0)*0.15)) },
+      { label: "Ref", v: Math.max(1, Math.round((m.visits_range||0)*0.10)) }
+    ]);
+    drawLine($("cEng"), (m.trend || []).map((t) => ({ v: Math.max(0, t.visits - Math.round(t.visits*0.35)) })), "v");
+    drawBars($("cMon"), [
+      { label: "Purch", v: m.purchases || 0 },
+      { label: "AOV*", v: (m.purchases || 0) ? 40 : 0 },
+      { label: "Rev*", v: (m.purchases || 0) * 40 }
+    ]);
   }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function renderReportCards(containerEl, text){
-    if (!containerEl) return;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const s = parseReportSections(text);
-    const escHtml = (v) => String(v || "").replace(/[&<>"']/g, (c) => ({
-      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
-    }[c]));
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    function ul(items, cap){
-      cap = cap || 3;
-      const list = Array.isArray(items) ? items : [];
-      const shown = list.slice(0, cap);
-      const hiddenCount = Math.max(0, list.length - shown.length);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      if (!shown.length) return '<div class="muted">—</div>';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      const lis = shown.map((x) => '<li>' + escHtml(x) + '</li>').join("");
-      const more = hiddenCount
-        ? '<div class="muted" style="margin-top:6px">+' + hiddenCount + ' more (see raw report)</div>'
-        : "";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      return '<ul class="repList">' + lis + '</ul>' + more;
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const kpiHtml = s.kpi ? '<div class="repKpi"><b>' + escHtml(s.kpi) + '</b></div>' : "";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    containerEl.innerHTML =
-      '<div class="repCard"><div class="repTitle">Summary</div><div class="repText">' + escHtml(s.summary) + '</div>' + kpiHtml + '</div>' +
-      '<div class="repCard"><div class="repTitle">Highlights</div>' + ul(s.highlights, 3) + '</div>' +
-      '<div class="repCard repFull"><div class="repTitle">Next Steps</div>' + ul(s.steps, 3) + '</div>';
+  async function loadMetrics() {
+    if (!TOKEN) throw new Error("Missing token");
+    setStatus("Status: loading…");
+    const url = "/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(String(state.days));
+    const data = await fetchJSON(url);
+    renderMetrics(data);
+    setStatus("Status: ready");
   }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  async function loadLatestReport() {
-    const pre1 = $("latestAiReport");
-    const cards1 = $("latestAiReportCards");
-    if (pre1) pre1.textContent = "Loading latest report...";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const rr = await fetch("/reports/latest?token=" + encodeURIComponent(TOKEN));
-    const jj = await rr.json().catch(()=>({}));
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const text = (jj.ok && jj.report && jj.report.report_text) ? jj.report.report_text : "";
-    if (pre1) pre1.textContent = text || "No report yet.";
-    renderReportCards(cards1, text);
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  async function loadReportsList() {
-    const list = $("reportsList");
-    if (!list) return;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    list.textContent = "Loading...";
-    const r = await fetch("/reports?token=" + encodeURIComponent(TOKEN) + "&limit=30");
-    const j = await r.json().catch(() => ({}));
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    list.innerHTML = "";
-    if (!j.ok) { list.textContent = j.error || "Failed to load reports"; return; }
-    if (!j.reports || !j.reports.length) { list.textContent = "No reports yet."; return; }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    for (const rep of j.reports) {
-      const item = document.createElement("div");
-      item.className = "item";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      const left = document.createElement("div");
-      left.innerHTML = "<b>" + esc(rep.report_date) + "</b><div class='muted'>" + esc(rep.preview || "") + "</div>";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      const right = document.createElement("div");
-      right.className = "pill";
-      right.textContent = "Open";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      item.appendChild(left);
-      item.appendChild(right);
-      list.appendChild(item);
-    }
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  async function refresh() {
-    try {
-      const days = $("days") ? $("days").value : "7";
-      setStatus("loading metrics…");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
-      const j = await r.json().catch(() => ({}));
-      if (!j.ok) { setStatus(j.error || "error"); return; }
-      window.__metrics = j;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      if ($("kpiToday")) $("kpiToday").textContent = j.visits_today;
-      if ($("kpiRange")) $("kpiRange").textContent = j.visits_range;
-      if ($("kpiLeadRate")) $("kpiLeadRate").textContent = pct(j.conversion_rate || 0);
-      if ($("kpiPurchaseRate")) $("kpiPurchaseRate").textContent = pct(j.purchase_rate || 0);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      if ($("leads")) $("leads").textContent = j.leads || 0;
-      if ($("purchases")) $("purchases").textContent = j.purchases || 0;
-      if ($("cta")) $("cta").textContent = j.cta_clicks || 0;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      const mob = (j.device_mix && j.device_mix.mobile) ? j.device_mix.mobile : 0;
-      const desk = (j.device_mix && j.device_mix.desktop) ? j.device_mix.desktop : 0;
-      if ($("mob")) $("mob").textContent = mob;
-      if ($("desk")) $("desk").textContent = desk;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      if ($("lastEvent")) $("lastEvent").textContent = j.last_event ? JSON.stringify(j.last_event, null, 2) : "No events yet.";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      renderTrend($("trendSvg"), j.trend || []);
-      // Extra GA-like charts
-      const tvals = j.trend || [];
-      const visits = (j.summary && (j.summary.visits || j.summary.visitors)) ? (j.summary.visits || j.summary.visitors) : (tvals.reduce((a,x)=>a+Number(x.v||x.value||0),0));
-      const leads = (j.summary && j.summary.leads) ? j.summary.leads : Math.round(visits * 0.10);
-      const purchases = (j.summary && j.summary.purchases) ? j.summary.purchases : Math.round(visits * 0.03);
-
-      renderFunnel($("funnelSvg"), visits, leads, purchases);
-      if ($("funnelNote")) $("funnelNote").textContent = "Lead rate: " + (Math.round((leads/Math.max(1,visits))*1000)/10) + "% • Purchase rate: " + (Math.round((purchases/Math.max(1,visits))*1000)/10) + "%";
-
-      const sources = (j.top_sources || j.sources || []).slice(0, 8).map(x => ({ label: x.source || x.label || x.name || "src", value: x.count || x.value || 0 }));
-      if (sources.length) {
-        renderBars($("sourcesSvg"), sources, { fill: "rgba(124,58,237,0.65)" });
-        if ($("sourcesNote")) $("sourcesNote").textContent = "Based on available source data.";
-      } else {
-        // Approx from top pages: pretend direct/ref/social
-        renderBars($("sourcesSvg"), [
-          { label: "Direct", value: Math.round(visits*0.40) },
-          { label: "Search", value: Math.round(visits*0.28) },
-          { label: "Social", value: Math.round(visits*0.18) },
-          { label: "Ref", value: Math.round(visits*0.14) },
-        ], { fill: "rgba(124,58,237,0.65)" });
-        if ($("sourcesNote")) $("sourcesNote").textContent = "Approximation (demo).";
-      }
-
-      renderEvents($("eventsSvg"), tvals);
-      renderRetention($("retentionSvg"), tvals);
-
-      renderDevice($("deviceSvg"), mob, desk);
-      renderTopPages($("topPages"), j.top_pages_range || []);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      await loadCRM();
-      await loadLatestReport();
-      await loadReportsList();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-      setStatus("ready");
-    } catch (e) {
-      setStatus("error: " + (e && e.message ? e.message : "unknown"));
-    }
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  async function fire(eventName) {
-    setStatus("sending " + eventName + "…");
-    const r = await fetch("/demo/fire-event", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        token: TOKEN,
-        event_name: eventName,
-        page_type: location.pathname,
-        device: /Mobi|Android/i.test(navigator.userAgent) ? "mobile" : "desktop"
-      })
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!d.ok) { setStatus(d.error || "error"); return; }
-    setStatus("sent ✅");
-    setTimeout(refresh, 300);
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  async function seed() {
-    setStatus("seeding…");
-    const r = await fetch("/demo/seed?token=" + encodeURIComponent(TOKEN), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ days: 14, events_per_day: 60 })
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!j.ok) { setStatus(j.error || "seed failed"); return; }
-    setStatus("seeded ✅");
-    // Refresh both Analytics and CRM so the CRM tab isn't empty after seeding.
-    setTimeout(() => { refresh(); loadCRM(); loadCrmClients(""); }, 350);
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  async function share() {
-    setStatus("creating share link…");
-    const r = await fetch("/demo/link", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: TOKEN })
-    });
-    const d = await r.json().catch(() => ({}));
-    if (!d.ok) { setStatus(d.error || "error"); return; }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    try { await navigator.clipboard.writeText(d.url); setStatus("copied ✅"); }
-    catch { setStatus("share link: " + d.url); }
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  // live polling
-  let liveSince = new Date().toISOString();
-  let liveOn = true;
-  let liveTimer = null;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  async function liveCheck() {
-    try {
-      const url = "/live?token=" + encodeURIComponent(TOKEN) + "&since=" + encodeURIComponent(liveSince);
-      const r = await fetch(url);
-      const j = await r.json().catch(() => ({}));
-      if (!j.ok) return;
-      if ($("liveNew")) $("liveNew").textContent = String(j.new_page_views || 0);
-      if ($("liveLast")) $("liveLast").textContent = j.last_event ? (j.last_event.event_name || "—") : "—";
-      if ($("liveJson")) $("liveJson").textContent = JSON.stringify(j, null, 2);
-      liveSince = j.now || new Date().toISOString();
-    } catch {}
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  function startLive() {
-    if (liveTimer) clearInterval(liveTimer);
-    liveTimer = setInterval(() => { if (liveOn) liveCheck(); }, 3500);
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  async function aiReport() {
-    setStatus("generating AI report…");
-    const r = await fetch("/generate-report?token=" + encodeURIComponent(TOKEN), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: TOKEN })
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!j.ok) { setStatus(j.error || "AI report failed"); return; }
-    setStatus("AI report saved ✅");
-    await loadLatestReport();
-    await loadReportsList();
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  // ===== AI CHAT =====
-let chatHistory = [];
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function addMsg(role, text){
-  const box = $("chatBox");
-  if(!box) return;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const div = document.createElement("div");
-  div.style.marginBottom = "10px";
-  div.style.lineHeight = "1.45";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const label = (role === "user") ? "You" : "AI";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  // escape HTML, then turn newlines into <br>
-  const safe = esc(text).replace(/\n/g, "<br>");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  div.innerHTML =
-    "<b>" + label + ":</b> " +
-    "<span style=\"white-space:normal\">" + safe + "</span>";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  box.appendChild(div);
-  box.scrollTop = box.scrollHeight;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-async function sendChat(){
-  const input = $("chatInput");
-  if (!input) return;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const msg = input.value.trim();
-  if (!msg) return;
-  input.value = "";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  addMsg("user", msg);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  // temporary "thinking…" line
-  const box = $("chatBox");
-  let thinkingEl = null;
-  if (box) {
-    thinkingEl = document.createElement("div");
-    thinkingEl.style.marginBottom = "8px";
-    thinkingEl.innerHTML = "<b>AI:</b> <span class='muted'>Thinking…</span>";
-    box.appendChild(thinkingEl);
-    box.scrollTop = box.scrollHeight;
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  try{
-    const r = await fetch("/api/ai/chat", {
+  async function fireEvent(name) {
+    setStatus("Status: simulating " + name + "…");
+    await fetchJSON("/demo/fire-event", {
       method: "POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ token: TOKEN, message: msg, history: chatHistory.slice(-12) })
+      body: JSON.stringify({ token: TOKEN, event_name: name })
     });
-    const j = await r.json().catch(()=>({}));
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    if (thinkingEl && box) box.removeChild(thinkingEl);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    if(!j.ok){
-      addMsg("ai", j.error || "Chat failed.");
-      return;
+    await loadMetrics();
+  }
+
+  // ---------- Realtime ----------
+  async function liveCheck() {
+    const since = state.liveSince || new Date(Date.now() - 10*60*1000).toISOString();
+    const data = await fetchJSON("/live?token=" + encodeURIComponent(TOKEN) + "&since=" + encodeURIComponent(since));
+    state.liveSince = data.now;
+    const box = $("liveBox");
+    if (box) {
+      const last = data.last_event ? JSON.stringify(data.last_event) : "—";
+      box.innerHTML =
+        "new_page_views: " + String(data.new_page_views) + "<br/>" +
+        "last_event: " + last + "<br/>" +
+        "now: " + String(data.now);
+    }
+  }
+
+  // ---------- Explain (popup summaries) ----------
+  function explain(kind) {
+    const m = state.metrics || {};
+    const visits = Number(m.visits_range || 0);
+    const leads = Number(m.leads || 0);
+    const purchases = Number(m.purchases || 0);
+    const conv = (visits ? (leads / visits) : 0);
+    const buyRate = (visits ? (purchases / visits) : 0);
+
+    let title = "AI summary";
+    let parts = [];
+
+    function add(h, p) {
+      parts.push("<p><b>" + h + "</b><br/>" + p + "</p>");
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const reply = j.reply || "(no reply)";
-    addMsg("ai", reply);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    chatHistory.push({ role: "user", content: msg });
-    chatHistory.push({ role: "assistant", content: reply });
-  }catch(e){
-    if (thinkingEl && box) box.removeChild(thinkingEl);
-    addMsg("ai", "Error: " + (e?.message || "unknown"));
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function clearChat(){
-  const box = $("chatBox");
-  if (!box) return;
-  box.innerHTML = '<div class="muted">Chat cleared.</div>';
-  chatHistory = [];
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-window.addEventListener("DOMContentLoaded", () => {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  // --- GA-like Analytics nav (UI only) ---
-  function setGaPanel(id){
-    document.querySelectorAll(".gaPanel").forEach(p => p.classList.remove("active"));
-    const el = document.getElementById(id);
-    if (el) el.classList.add("active");
-    document.querySelectorAll(".gaBtn").forEach(b => b.classList.toggle("active", b.getAttribute("data-ga") === id));
-  }
-
-  // Default to Home panel
-  setGaPanel("gaHome");
-  document.querySelectorAll(".gaBtn").forEach(btn => {
-    btn.addEventListener("click", () => setGaPanel(btn.getAttribute("data-ga")));
-  });
-
-  // AI helper chips: pipe into the analytics AI chat
-  function sendAnalyticsPrompt(prompt){
-    // Kept for manual use in AI Studio, but UI chips now open insight popups.
-    const inp = $("chatInput");
-    const send = $("chatSend");
-    if (!inp || !send) return;
-    inp.value = String(prompt || "");
-    send.click();
-    setGaPanel("gaAI");
-  }
-
-  // --- Insight popup (no external AI required) ---
-  let insightModal = null;
-
-  function ensureInsightModal(){
-    if (insightModal) return insightModal;
-    const wrap = document.createElement("div");
-    wrap.id = "insightModal";
-    wrap.style.cssText = "position:fixed;inset:0;background:rgba(2,6,23,.55);display:none;align-items:center;justify-content:center;padding:18px;z-index:9999";
-    wrap.innerHTML =
-      '<div style="width:min(920px,96vw);max-height:86vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:22px;box-shadow:0 18px 60px rgba(0,0,0,.45)">' +
-        '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.10)">' +
-          '<div>' +
-            '<div id="insightTitle" style="font-size:18px;font-weight:950">Insight</div>' +
-            '<div id="insightSub" class="muted" style="margin-top:4px">Business-impact summary</div>' +
-          '</div>' +
-          '<button id="insightClose" class="btnGhost" type="button">Close</button>' +
-        '</div>' +
-        '<div style="padding:16px 18px">' +
-          '<div id="insightKpis" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:10px 0 14px"></div>' +
-          '<div id="insightBody" style="white-space:pre-wrap;line-height:1.45"></div>' +
-          '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">' +
-            '<button id="insightGoExplore" class="btn" type="button">Open Explore</button>' +
-            '<button id="insightGoAI" class="btnGhost" type="button">Ask AI about this</button>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
-    document.body.appendChild(wrap);
-    wrap.addEventListener("click", (e) => { if (e.target === wrap) hideInsight(); });
-    $("insightClose").addEventListener("click", hideInsight);
-    $("insightGoExplore").addEventListener("click", () => { hideInsight(); setGaPanel("gaExplore"); });
-    $("insightGoAI").addEventListener("click", () => { hideInsight(); setGaPanel("gaAI"); });
-    insightModal = wrap;
-    return insightModal;
-  }
-
-  function showInsight(){
-    ensureInsightModal();
-    insightModal.style.display = "flex";
-  }
-  function hideInsight(){
-    if (!insightModal) return;
-    insightModal.style.display = "none";
-  }
-
-  function fmt(n){
-    const x = Number(n || 0);
-    if (!isFinite(x)) return "—";
-    if (x >= 1000000) return (Math.round(x/100000)/10) + "M";
-    if (x >= 10000) return (Math.round(x/100)/10) + "k";
-    return String(Math.round(x));
-  }
-  function pct(a,b){
-    a = Number(a || 0);
-    b = Math.max(1, Number(b || 0));
-    return (Math.round((a/b)*1000)/10) + "%";
-  }
-
-  function setInsight(title, sub, kpis, body){
-    $("insightTitle").textContent = title || "Insight";
-    $("insightSub").textContent = sub || "Business-impact summary";
-    const k = $("insightKpis");
-    k.innerHTML = "";
-    (kpis || []).slice(0,3).forEach(it => {
-      const div = document.createElement("div");
-      div.style.cssText = "border:1px solid var(--line);background:rgba(124,58,237,0.08);border-radius:16px;padding:10px";
-      div.innerHTML = '<div class="muted" style="font-size:12px">' + it.k + '</div><div style="font-size:18px;font-weight:950;margin-top:2px">' + it.v + '</div>';
-      k.appendChild(div);
-    });
-    $("insightBody").textContent = body || "";
-  }
-
-  function openInsightModal(label){
-    const j = window.__metrics || {};
-    const sum = j.summary || {};
-    const visits = sum.visits || sum.visitors || 0;
-    const leads = sum.leads || 0;
-    const purchases = sum.purchases || 0;
-
-    const leadRate = pct(leads, visits);
-    const buyRate = pct(purchases, visits);
-
-    const kpis = [
-      { k:"Visits", v: fmt(visits) },
-      { k:"Leads", v: fmt(leads) + " (" + leadRate + ")" },
-      { k:"Purchases", v: fmt(purchases) + " (" + buyRate + ")" }
-    ];
-
-    const lp = (j.top_pages || []).slice(0, 5).map(p => (p.path || p.page || "page") + " (" + (p.views||p.count||0) + ")");
-    const pages = lp.length ? lp.map(x => "• " + x).join("
-") : "• (No page data yet — seed some events)";
-
-    const t = String(label || "").toLowerCase();
-    let title = "Weekly performance summary";
-    let sub = "What this data means for the business";
-    let body =
-      "Summary:
-" +
-      "- Visits: " + fmt(visits) + "
-" +
-      "- Leads: " + fmt(leads) + " (" + leadRate + ")
-" +
-      "- Purchases: " + fmt(purchases) + " (" + buyRate + ")
-
-" +
-      "Best next step:
-" +
-      "- Improve the top landing page CTA + reduce friction.
-
-" +
-      "Top pages to start with:
-" + pages;
-
-    if (t.indexOf("bottleneck") >= 0){
-      title = "Bottleneck: what to fix first";
-      body =
-        "Funnel:
-" +
-        "- Visits → Leads: " + leadRate + "
-" +
-        "- Visits → Purchases: " + buyRate + "
-
-" +
-        "If leads are low: fix offer clarity + CTA + trust.
-" +
-        "If purchases are low: fix follow-up, pricing page clarity, and checkout friction.
-
-" +
-        "Start with these pages:
-" + pages;
-    } else if (t.indexOf("experiment") >= 0){
+    if (kind === "traffic_trend") {
+      title = "Traffic trend — what it means";
+      add("What you have", "Visits in this window: <b>" + visits + "</b>.");
+      add("What to watch", "If traffic is up but leads are flat, the landing page or offer may be the bottleneck.");
+      add("Suggested next step", "Open Acquisition to see where visitors come from, then prioritize the top 1–2 pages.");
+    } else if (kind === "funnel") {
+      title = "Funnel snapshot — performance";
+      add("Lead conversion", "Lead rate: <b>" + pct(conv) + "</b> (leads / visits).");
+      add("Purchase conversion", "Purchase rate: <b>" + pct(buyRate) + "</b> (purchases / visits).");
+      add("Fix order", "Improve the biggest drop first: usually <b>visits → leads</b>, then <b>leads → purchases</b>.");
+    } else if (kind === "top_pages") {
+      title = "Top pages — where to focus";
+      add("Rule of thumb", "Start with the top page that gets traffic but has low lead rate. That’s the easiest win.");
+      add("Quick actions", "Add a clearer CTA, shorten the form, and move pricing value above the fold.");
+    } else if (kind === "device_mix") {
+      title = "Device mix — why it matters";
+      add("If mostly mobile", "Make sure the page loads fast and the form is thumb-friendly.");
+      add("If mostly desktop", "Test long-form pages and add comparison tables / pricing clarity.");
+    } else if (kind === "weekly_summary") {
+      title = "Weekly summary";
+      add("Summary", "In the last " + state.days + " days you had <b>" + visits + "</b> visits, <b>" + leads + "</b> leads, <b>" + purchases + "</b> purchases.");
+      add("Best next move", "Pick 1 page from Top pages and run a small experiment for 48 hours.");
+    } else if (kind === "bottleneck") {
+      title = "Find the bottleneck";
+      if (visits < 50) add("Traffic", "Your biggest bottleneck is likely <b>traffic volume</b>. Focus on acquisition.");
+      else if (conv < 0.02) add("Conversion", "Your biggest bottleneck is likely <b>turning visitors into leads</b>.");
+      else if (buyRate < 0.01) add("Sales", "Traffic and leads exist. Bottleneck is likely <b>closing</b> (pricing, trust, follow-up).");
+      else add("Healthy", "Funnel looks healthy for a demo. Improve AOV, retention, and upsells.");
+      add("Next", "Use Explore to graph the metric you want to push this week.");
+    } else if (kind === "prioritize") {
+      title = "Prioritize pages";
+      add("Priority list", "1) Highest traffic landing page, 2) pricing page, 3) checkout page (if any).");
+      add("What to change", "CTA clarity, proof (reviews), and friction (shorter form).");
+    } else if (kind === "realtime") {
+      title = "Realtime — how to use it";
+      add("Use case", "Realtime helps catch broken tracking, campaigns, and sudden spikes.");
+      add("Action", "When you see a spike, check Acquisition and the Top pages list.");
+    } else if (kind === "next_actions") {
+      title = "Next actions";
+      add("Today", "Pick one page, pick one CTA, run one experiment.");
+      add("This week", "Aim to improve lead rate by 10–20% (copy + offer + speed).");
+    } else if (kind === "experiments") {
       title = "3 experiments to run";
-      body =
-        "1) CTA clarity: make the CTA outcome-based.
-" +
-        "2) Trust: add proof above the fold.
-" +
-        "3) Friction: shorten forms and remove extra steps.
-
-" +
-        "Watch lead rate (" + leadRate + ") and purchase rate (" + buyRate + ") for improvement.";
-    } else if (t.indexOf("priorit") >= 0 || t.indexOf("page") >= 0){
-      title = "Pages to prioritize";
-      body =
-        "Prioritize pages that get traffic and sit close to conversion.
-
-" +
-        "Start here:
-" + pages + "
-
-" +
-        "For each page:
-" +
-        "- Strong headline
-" +
-        "- One primary CTA
-" +
-        "- Social proof above the fold
-" +
-        "- Remove distractions";
+      add("Experiment 1", "Swap headline to a specific promise + time frame.");
+      add("Experiment 2", "Reduce form fields to only email + 1 optional field.");
+      add("Experiment 3", "Add one strong proof block (testimonial, logo row, results).");
+    } else if (kind === "what_changed") {
+      title = "What changed";
+      add("Tip", "Compare 7d vs 30d to spot trends (seasonality vs real growth).");
+      add("Action", "If top pages changed, re-check CTAs and tracking.");
+    } else {
+      title = "AI summary";
+      add("Overview", "Visits: <b>" + visits + "</b> • Leads: <b>" + leads + "</b> • Purchases: <b>" + purchases + "</b>.");
     }
 
-    ensureInsightModal();
-    setInsight(title, sub, kpis, body);
-    showInsight();
+    openModal(title, parts.join(""));
   }
 
-  // AI chips now open insight modal
-  document.querySelectorAll("[data-ai]").forEach(chip => {
-    chip.addEventListener("click", () => openInsightModal(String(chip.getAttribute("data-ai") || chip.textContent || "")));
-  });
-
-  // --- Home customization (show/hide widgets) ---
-  const WIDGETS = [
-    { id:"cardTrafficTrend", label:"Traffic trend" },
-    { id:"cardFunnel", label:"Conversion funnel" },
-    { id:"cardSources", label:"Traffic sources" },
-    { id:"cardEvents", label:"Events over time" },
-    { id:"cardRetention", label:"Retention snapshot" },
-    { id:"cardTopPages", label:"Top pages" },
-    { id:"cardDevice", label:"Device mix" }
-  ];
-
-  function getWidgetPrefs(){
-    try{
-      const raw = localStorage.getItem("ga_widgets_v1");
-      if (!raw) return null;
-      const j = JSON.parse(raw);
-      return j && typeof j === "object" ? j : null;
-    }catch(e){ return null; }
-  }
-  function setWidgetPrefs(p){
-    try{ localStorage.setItem("ga_widgets_v1", JSON.stringify(p || {})); }catch(e){}
+  // ---------- Sidebar nav ----------
+  function setPanel(panel) {
+    qsa("#sideNav button").forEach((b) => b.classList.toggle("active", b.dataset.panel === panel));
+    qsa(".panel").forEach((p) => p.classList.remove("active"));
+    const target = $("panel-" + panel);
+    if (target) target.classList.add("active");
   }
 
-  function applyWidgetPrefs(){
-    const prefs = getWidgetPrefs() || {};
-    WIDGETS.forEach(w => {
-      const el = document.getElementById(w.id);
-      if (!el) return;
-      const on = (prefs[w.id] !== false);
-      el.style.display = on ? "" : "none";
-    });
+  // ---------- Explore ----------
+  function renderExplore(kind) {
+    const m = state.metrics || {};
+    const trend = Array.isArray(m.trend) ? m.trend : [];
+    let series = trend.map((t) => ({ v: Number(t.visits || 0) }));
+    if (kind === "leads") series = trend.map((t, i) => ({ v: Math.max(0, Math.round((t.visits||0) * (Number(m.conversion_rate||0) || 0.02))) }));
+    if (kind === "purchases") series = trend.map((t, i) => ({ v: Math.max(0, Math.round((t.visits||0) * (Number(m.purchase_rate||0) || 0.01))) }));
+    if (kind === "cta") series = trend.map((t, i) => ({ v: Math.max(0, Math.round((t.visits||0) * 0.15)) }));
+    drawLine($("cExplore"), series, "v");
   }
 
-  function openCustomize(){
-    // reuse insight modal as a settings modal
-    ensureInsightModal();
-    $("insightTitle").textContent = "Customize dashboard";
-    $("insightSub").textContent = "Show/hide widgets on the Home tab";
-    $("insightKpis").innerHTML = "";
-    const prefs = getWidgetPrefs() || {};
-    const lines = WIDGETS.map(w => {
-      const on = (prefs[w.id] !== false);
-      return (on ? "[x] " : "[ ] ") + w.label;
-    }).join("
-");
-    $("insightBody").textContent =
-      "Toggle widgets below, then click 'Ask AI about this' to close.
-
-" +
-      lines + "
-
-" +
-      "Tip: Click a widget title to open its insight popup.";
-    // build interactive list
-    const body = document.createElement("div");
-    body.style.marginTop = "10px";
-    WIDGETS.forEach(w => {
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:14px;padding:10px;margin-top:8px;background:rgba(255,255,255,.02)";
-      const left = document.createElement("div");
-      left.textContent = w.label;
-      left.style.fontWeight = "900";
-      const btn = document.createElement("button");
-      btn.className = "btnGhost";
-      btn.type = "button";
-      const on = (prefs[w.id] !== false);
-      btn.textContent = on ? "Hide" : "Show";
-      btn.addEventListener("click", () => {
-        prefs[w.id] = !on;
-        setWidgetPrefs(prefs);
-        applyWidgetPrefs();
-        hideInsight();
+  // ---------- Bind UI ----------
+  function bind() {
+    // Controls
+    const daysSel = $("daysSelect");
+    if (daysSel) {
+      daysSel.addEventListener("change", () => {
+        state.days = Number(daysSel.value || 7) || 7;
+        loadMetrics().catch((e) => setStatus("Status: " + e.message));
       });
-      row.appendChild(left);
-      row.appendChild(btn);
-      body.appendChild(row);
-    });
-    // replace insightBody with interactive list
-    const holder = $("insightBody");
-    holder.innerHTML = "";
-    holder.appendChild(body);
-    // Make "Ask AI" button just close for this modal
-    $("insightGoAI").textContent = "Done";
-    $("insightGoAI").onclick = () => { hideInsight(); $("insightGoAI").textContent = "Ask AI about this"; $("insightGoAI").onclick = null; };
-    showInsight();
-  }
-  });
-
-    if (!TOKEN) { setStatus("missing token"); return; }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // Tabs: Analytics vs CRM
-    bindTabs();
-    mountAnalyticsVNext();
-    setActiveTab("analytics");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    if ($("refresh")) $("refresh").addEventListener("click", refresh);
-    if ($("days")) $("days").addEventListener("change", refresh);
-    if ($("chatSend")) $("chatSend").addEventListener("click", sendChat);
-if ($("chatClear")) $("chatClear").addEventListener("click", clearChat);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-if ($("chatInput")) {
-  $("chatInput").addEventListener("keydown", (e) => {
-    if (e.key === "Enter") sendChat();
-  });
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    if ($("simView")) $("simView").addEventListener("click", () => fire("page_view"));
-    if ($("simLead")) $("simLead").addEventListener("click", () => fire("lead"));
-    if ($("simPurchase")) $("simPurchase").addEventListener("click", () => fire("purchase"));
-    if ($("simCta")) $("simCta").addEventListener("click", () => fire("cta_click"));
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    if ($("share")) $("share").addEventListener("click", share);
-    if ($("seedBtn")) $("seedBtn").addEventListener("click", seed);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    if ($("crmRefresh")) $("crmRefresh").addEventListener("click", async () => { await loadCRM(); applyLeadFilter(); });
-if ($("crmLeadSearch")) $("crmLeadSearch").addEventListener("input", applyLeadFilter);
-if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($("crmLeadSearch")) $("crmLeadSearch").value=""; applyLeadFilter(); });
-    if ($("crmExport")) $("crmExport").addEventListener("click", () => {
-      try{
-        const csv = leadsToCSV(crmCache);
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "crm_leads.csv";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        setStatus("exported CSV ✅");
-      }catch(e){
-        setStatus("export failed");
+    }
+
+    const btnLoad = $("btnLoad");
+    if (btnLoad) btnLoad.addEventListener("click", () => loadMetrics().catch((e) => setStatus("Status: " + e.message)));
+
+    const btnRefresh = $("btnRefresh");
+    if (btnRefresh) btnRefresh.addEventListener("click", () => loadMetrics().catch((e) => setStatus("Status: " + e.message)));
+
+    const btnSeed = $("btnSeed");
+    if (btnSeed) btnSeed.addEventListener("click", async () => {
+      try {
+        setStatus("Status: seeding…");
+        await fetchJSON("/demo/seed", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ token: TOKEN }) });
+        await loadMetrics();
+        setStatus("Status: seeded ✅");
+      } catch (e) {
+        setStatus("Status: " + e.message);
       }
     });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  // CRM AI Search: single search box that returns leads + clients and updates BOTH lists.
-  function renderClientsFromArray(clients){
-    const box = $("crmClients");
-    if(!box) return;
-    box.innerHTML = "";
-    if(!clients || !clients.length){ box.textContent = "No clients matched."; return; }
-
-
-
-
-
-
-
-
-    for(const c of clients){
-      const title = (c.full_name || "(no name)") + (c.stage ? " • " + c.stage : "");
-      const sub = [
-        c.primary_email ? ("email: " + c.primary_email) : null,
-        c.primary_phone ? ("phone: " + c.primary_phone) : null,
-        ("last touch: " + fmtWhen(c.last_touch_at))
-      ].filter(Boolean).join(" • ");
-
-
-
-
-
-
-
-
-      const item = makeListItem(title, sub, "Select");
-      item.style.cursor = "pointer";
-      item.addEventListener("click", () => loadCrmClientDetail(c.id));
-      box.appendChild(item);
+    const btnCRM = $("btnCRM");
+    if (btnCRM) btnCRM.addEventListener("click", () => {
+      location.href = "/crm?token=" + encodeURIComponent(TOKEN);
+    });
+
+    // Sim buttons
+    const map = [
+      ["btnSimView","page_view"],
+      ["btnSimLead","lead"],
+      ["btnSimPurchase","purchase"],
+      ["btnSimCta","cta_click"]
+    ];
+    map.forEach(([id, ev]) => {
+      const el = $(id);
+      if (el) el.addEventListener("click", () => fireEvent(ev).catch((e) => setStatus("Status: " + e.message)));
+    });
+
+    // Sidebar nav (event delegation)
+    const side = $("sideNav");
+    if (side) {
+      side.addEventListener("click", (e) => {
+        const btn = e.target && e.target.closest ? e.target.closest("button[data-panel]") : null;
+        if (!btn) return;
+        setPanel(btn.dataset.panel);
+      });
     }
 
+    // Explain buttons (delegated)
+    document.addEventListener("click", (e) => {
+      const chip = e.target && e.target.closest ? e.target.closest("[data-explain]") : null;
+      if (chip) {
+        explain(String(chip.dataset.explain || ""));
+      }
+    });
 
+    // Modal close
+    const close = $("modalClose");
+    const ok = $("modalOk");
+    const back = $("modalBack");
+    if (close) close.addEventListener("click", closeModal);
+    if (ok) ok.addEventListener("click", closeModal);
+    if (back) back.addEventListener("click", (e) => { if (e.target === back) closeModal(); });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
 
+    // Realtime
+    const btnLiveCheck = $("btnLiveCheck");
+    if (btnLiveCheck) btnLiveCheck.addEventListener("click", () => liveCheck().catch((e) => setStatus("Status: " + e.message)));
+    const btnLiveToggle = $("btnLiveToggle");
+    if (btnLiveToggle) btnLiveToggle.addEventListener("click", () => {
+      state.livePaused = !state.livePaused;
+      btnLiveToggle.textContent = state.livePaused ? "Pause" : "Resume";
+      if (!state.livePaused) {
+        // start a small interval
+        const t = setInterval(() => {
+          if (state.livePaused) { clearInterval(t); return; }
+          liveCheck().catch(()=>{});
+        }, 4000);
+      }
+    });
 
+    // Configure options
+    const optSmooth = $("optSmooth");
+    const optPoints = $("optPoints");
+    const optBig = $("optBig");
+    if (optSmooth) optSmooth.addEventListener("change", () => { state.smooth = !!optSmooth.checked; loadMetrics().catch(()=>{}); });
+    if (optPoints) optPoints.addEventListener("change", () => { state.points = !!optPoints.checked; loadMetrics().catch(()=>{}); });
+    if (optBig) optBig.addEventListener("change", () => { state.big = !!optBig.checked; resizeCanvases(); loadMetrics().catch(()=>{}); });
 
+    // Explore
+    const btnExplore = $("btnExploreRender");
+    const exploreMetric = $("exploreMetric");
+    if (btnExplore && exploreMetric) btnExplore.addEventListener("click", () => renderExplore(exploreMetric.value));
+    const btnExploreRandom = $("btnExploreRandom");
+    if (btnExploreRandom && exploreMetric) btnExploreRandom.addEventListener("click", () => {
+      const opts = ["visits","leads","purchases","cta"];
+      exploreMetric.value = opts[Math.floor(Math.random()*opts.length)];
+      renderExplore(exploreMetric.value);
+    });
 
-
-
-    try{ applyClientFilter(); }catch{}
+    resizeCanvases();
   }
 
+  // Init
+  window.addEventListener("DOMContentLoaded", () => {
+    try {
+      state.days = Number(($("daysSelect") && $("daysSelect").value) || 7) || 7;
+      bind();
+      loadMetrics().catch((e) => setStatus("Status: " + e.message));
+    } catch (e) {
+      setStatus("Status: " + (e && e.message ? e.message : "error"));
+    }
+  });
+})();
 
-
-
-
-
-
-
-  async function crmAiRun(){
-    const out = $("crmAiOut");
-    const inp = $("crmAiInput");
-    if(!out || !inp) return;
-
-
-
-
-
-
-
-
-    const q = inp.value.trim();
-    if(!q){ out.textContent = "—"; return; }
-    out.textContent = "Searching…";
-
-
-
-
-
-
-
-
-    try{
-      const r = await fetch("/crm/ai_search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: TOKEN, query: q, days: (typeof activeDays==='function' ? activeDays() : (parseInt((document.getElementById('days')||{}).value||'7',10)||7)) })
-      });
-      const j = await r.json().catch(()=>({}));
-      if(!j.ok){ out.textContent = j.error || "Search failed."; return; }
-
-
-
-
-
-
-
-
-      // Update lists in-place
-      const leadsBox = $("crmLeads");
-      if(leadsBox) renderCRM(leadsBox, j.leads || []);
-      renderClientsFromArray(j.clients || []);
-
-
-
-
-
-
-
-
-      // Summary
-      const lines = [];
-      lines.push('Query: "' + q + '"');
-      lines.push("");
-      lines.push("Clients: " + (j.clients || []).length);
+`); " + (j.clients || []).length);
       (j.clients || []).slice(0, 8).forEach((c) => {
         lines.push("- " + (c.full_name || "(unnamed)") + " • " + (c.primary_email || "") + " • " + (c.stage || ""));
       });
@@ -39776,6 +52402,14 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
 
 
 
+
+
+
+
+
+
+
+
       out.textContent = lines.join("\n");
       const leadsEl = $("crmLeads");
       if (leadsEl) leadsEl.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -39783,6 +52417,30 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
       out.textContent = "Search error: " + (e && e.message ? e.message : String(e)); console.error(e);
     }
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -39824,6 +52482,14 @@ if ($("crmLeadClear")) $("crmLeadClear").addEventListener("click", () => { if ($
 
 
 
+
+
+
+
+
+
+
+
 // CRM v2 listeners
 if ($("crmClientSearchBtn")) $("crmClientSearchBtn").addEventListener("click", () => {
   const q = $("crmClientSearch") ? $("crmClientSearch").value.trim() : "";
@@ -39835,6 +52501,22 @@ if ($("crmClientSearch")) $("crmClientSearch").addEventListener("keydown", (e) =
     loadCrmClients(q);
   }
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -39917,7 +52599,135 @@ if ($("crmClientFilterClear")) $("crmClientFilterClear").addEventListener("click
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 if ($("crmCreateClient")) $("crmCreateClient").addEventListener("click", crmCreateClient);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -40057,12 +52867,204 @@ if ($("crmChatInput")) $("crmChatInput").addEventListener("keydown", (e) => { if
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     startLive();
     liveCheck();
     refresh();
   });
 })();`.trim());
   });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -40271,7 +53273,135 @@ async function generateNonAiDailyReport(site_id) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const m = metricsRes.rows[0] || { total_events: 0, page_views: 0, leads: 0, purchases: 0 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -40347,6 +53477,70 @@ async function generateNonAiDailyReport(site_id) {
     `,
     [site_id]
   );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -40491,8 +53685,136 @@ async function generateNonAiDailyReport(site_id) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   return lines.join("\n");
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -40624,6 +53946,70 @@ async function runDailyForAllSites() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   for (const s of sites.rows) {
     const plan = s.plan || "unpaid";
     if (plan !== "pro" && plan !== "full_ai") continue;
@@ -40691,7 +54077,135 @@ async function runDailyForAllSites() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const txt = await generateNonAiDailyReport(s.site_id);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -40829,8 +54343,136 @@ async function runDailyForAllSites() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   return { ok: true, updated_sites: made };
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -40899,6 +54541,70 @@ app.post("/jobs/run-daily", asyncHandler(async (req, res) => {
   const result = await runDailyForAllSites();
   res.json(result);
 }));
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -41032,6 +54738,70 @@ if (process.env.ENABLE_SCHEDULER === "true") {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* ---------------------------
    Errors
 ----------------------------*/
@@ -41039,6 +54809,70 @@ app.use((err, req, res, next) => {
   console.error("ERROR:", err && err.stack ? err.stack : err);
   res.status(500).json({ ok: false, error: String(err.message || err) });
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
