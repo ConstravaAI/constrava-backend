@@ -24065,6 +24065,27 @@ app.get("/storefront", asyncHandler(async (req, res) => {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Constrava — Plans</title>
 <style>
+
+/* ---- GA-like Analytics Layout ---- */
+.gaWrap{display:flex;gap:14px;align-items:stretch}
+.gaSide{width:220px;flex:0 0 220px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:12px;position:sticky;top:10px;height:fit-content}
+.gaBrand{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+.gaDot{width:12px;height:12px;border-radius:99px;background:var(--accent)}
+.gaTitle{font-weight:950}
+.gaNav{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.gaBtn{width:100%;text-align:left;border:1px solid var(--line);background:rgba(255,255,255,0.02);color:var(--ink);border-radius:14px;padding:10px 10px;font-weight:800;cursor:pointer}
+.gaBtn:hover{transform:translateY(-1px)}
+.gaBtn.active{border-color:rgba(124,58,237,0.45);background:rgba(124,58,237,0.12)}
+.gaMain{flex:1;min-width:0}
+.gaTop{display:flex;justify-content:space-between;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:10px}
+.gaTop h2{margin:0;font-size:20px}
+.gaSub{color:var(--muted);font-size:13px;margin-top:2px}
+.gaPanel{display:none}
+.gaPanel.active{display:block}
+.aiChips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.aiChip{border:1px solid var(--line);background:rgba(124,58,237,0.10);color:var(--ink);border-radius:999px;padding:7px 10px;font-weight:800;cursor:pointer}
+.aiChip:hover{transform:translateY(-1px)}
+
 :root{
   --bg:#0b0f19; --text:#e5e7eb; --muted:#9ca3af;
   --border:rgba(255,255,255,.10); --shadow:0 10px 30px rgba(0,0,0,.35);
@@ -25618,262 +25639,54 @@ pre{
 <div class="wrap">
   <div class="top">
     <div class="brand">
-      <div class="logo"></div>
-      <div>
-        <h1>Constrava Dashboard</h1>
-        <div class="sub">Token-auth dashboard • secure it later with accounts if desired</div>
-      </div>
-    </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    <div class="row">
-      <select id="days">
-        <option value="1">1 day</option>
-        <option value="7" selected>7 days</option>
-        <option value="30">30 days</option>
-        <option value="365">1 year</option>
-      </select>
-      <button class="btnDanger" id="seedBtn">Seed demo data</button>
-      <button class="btnGreen" id="aiReportTopBtn">Generate AI report</button>
-      <button class="btn" id="refresh">Refresh</button>
-      <a class="btnGhost" id="plansLink" href="/storefront?token=${encodeURIComponent(String(token))}">Plans</a>
-      <button class="btnGhost" id="tabCRM" type="button">CRM</button>
-      <span class="pill" id="status">Status: idle</span>
-    </div>
-  </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    <div class="tabs" style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 6px">
-      <button class="tabBtn active" id="tabAnalytics" type="button">Analytics</button>
-      <button class="tabBtn" id="tabCRMTop" type="button">CRM</button>
-    </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    <div id="sectionAnalytics">
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  <div class="grid">
-    <div class="card span12" id="chatCard">
-      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+      
+<div id="sectionAnalytics">
+  <div class="gaWrap">
+    <aside class="gaSide">
+      <div class="gaBrand">
+        <div class="gaDot"></div>
         <div>
-          <div style="font-weight:950">Live AI Helper</div>
-          <div class="muted">Ask questions about your traffic, pages, conversions, and next steps.</div>
+          <div class="gaTitle">Analytics</div>
+          <div class="muted" style="font-size:12px">GA-style + AI helpers</div>
+        </div>
+      </div>
+      <div class="gaNav">
+        <button class="gaBtn active" data-ga="gaOverview" type="button">Home</button>
+        <button class="gaBtn" data-ga="gaRealtime" type="button">Realtime</button>
+        <button class="gaBtn" data-ga="gaAcq" type="button">Acquisition</button>
+        <button class="gaBtn" data-ga="gaEng" type="button">Engagement</button>
+        <button class="gaBtn" data-ga="gaMon" type="button">Monetization</button>
+        <button class="gaBtn" data-ga="gaExplore" type="button">Explore</button>
+        <button class="gaBtn" data-ga="gaAI" type="button">AI Studio</button>
+        <button class="gaBtn" data-ga="gaConfig" type="button">Configure</button>
+      </div>
+      <div style="margin-top:10px" class="muted">
+        Tip: Click any purple chip to ask the AI.
+      </div>
+    </aside>
+
+    <main class="gaMain">
+      <div class="gaTop">
+        <div>
+          <h2>Constrava Analytics</h2>
+          <div class="gaSub">Google Analytics-like layout with AI assistants in every section.</div>
+          <div class="aiChips">
+            <button class="aiChip" data-ai="Summarize my last 7 days: traffic, top pages, conversions, and what to fix next." type="button">Weekly summary</button>
+            <button class="aiChip" data-ai="What is my biggest conversion bottleneck right now? Use the data on this dashboard." type="button">Find bottleneck</button>
+            <button class="aiChip" data-ai="Give me 3 experiments to increase leads this week, with steps." type="button">3 experiments</button>
+            <button class="aiChip" data-ai="Which pages should I improve first, and why? Give an ordered list." type="button">Prioritize pages</button>
+          </div>
+        </div>
+        <div class="row" style="gap:10px;flex-wrap:wrap">
+          <button class="btnGhost" id="share" type="button">Share</button>
+          <button class="btn" id="loadReports" type="button">Load reports</button>
+        </div>
+      </div>
+
+      <section class="gaPanel active" id="gaOverview">
+        <div class="grid">
+          <div class="grid">
+    <div class="muted">Ask questions about your traffic, pages, conversions, and next steps.</div>
         </div>
         <span class="pill">Chat</span>
       </div>
@@ -25958,72 +25771,7 @@ pre{
       <div style="font-weight:950">Latest AI Report</div>
       <div class="muted">Your most recent report (or seed sample).</div>
       <div class="divider"></div>
-      <div id="latestAiReportCards" class="repWrap">Loading latest report…</div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<details style="margin-top:10px">
+      <details style="margin-top:10px">
   <summary class="muted" style="cursor:pointer">Show raw report</summary>
   <pre id="latestAiReport" class="mono" style="max-height:320px;overflow:auto">Loading…</pre>
 </details>
@@ -26510,6 +26258,63 @@ pre{
       <div class="chartBox" style="margin-top:10px">
         <svg id="trendSvg" viewBox="0 0 900 260" role="img" aria-label="Traffic trend chart"></svg>
       </div>
+
+      <div class="grid" style="margin-top:12px">
+        <div class="card span6" style="background:var(--panel2)">
+          <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px">
+            <div>
+              <div style="font-weight:950">Conversion funnel</div>
+              <div class="muted">Visits → Leads → Purchases (estimated)</div>
+            </div>
+            <button class="btnGhost" type="button" data-ai="Explain my funnel. Where are people dropping off and what should I change first?">AI explain</button>
+          </div>
+          <div class="chartBox" style="margin-top:10px">
+            <svg id="funnelSvg" viewBox="0 0 900 260" role="img" aria-label="Conversion funnel chart"></svg>
+          </div>
+          <div class="muted" id="funnelNote" style="margin-top:8px"></div>
+        </div>
+
+        <div class="card span6" style="background:var(--panel2)">
+          <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px">
+            <div>
+              <div style="font-weight:950">Traffic sources</div>
+              <div class="muted">Where visitors come from (approx.)</div>
+            </div>
+            <button class="btnGhost" type="button" data-ai="Which traffic sources are best, which are wasting time, and what should I do next?">AI explain</button>
+          </div>
+          <div class="chartBox" style="margin-top:10px">
+            <svg id="sourcesSvg" viewBox="0 0 900 260" role="img" aria-label="Traffic sources chart"></svg>
+          </div>
+          <div class="muted" id="sourcesNote" style="margin-top:8px"></div>
+        </div>
+
+        <div class="card span8" style="background:var(--panel2)">
+          <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px">
+            <div>
+              <div style="font-weight:950">Events over time</div>
+              <div class="muted">Clicks / leads / purchases trend (simulated from events)</div>
+            </div>
+            <button class="btnGhost" type="button" data-ai="Spot anomalies in my events over time and tell me why they might be happening.">AI anomalies</button>
+          </div>
+          <div class="chartBox" style="margin-top:10px">
+            <svg id="eventsSvg" viewBox="0 0 900 260" role="img" aria-label="Events chart"></svg>
+          </div>
+        </div>
+
+        <div class="card span4" style="background:var(--panel2)">
+          <div class="row" style="justify-content:space-between;align-items:flex-start;gap:10px">
+            <div>
+              <div style="font-weight:950">Retention snapshot</div>
+              <div class="muted">Returning visitors proxy</div>
+            </div>
+            <button class="btnGhost" type="button" data-ai="Explain retention: are people coming back? What would improve it?">AI explain</button>
+          </div>
+          <div class="chartBox" style="margin-top:10px">
+            <svg id="retentionSvg" viewBox="0 0 900 260" role="img" aria-label="Retention chart"></svg>
+          </div>
+        </div>
+      </div>
+
 
 
 
@@ -27413,6 +27218,424 @@ pre{
 
 
 
+
+        </div>
+      </section>
+
+      <section class="gaPanel" id="gaRealtime">
+        <div class="grid">
+          <div class="card span12" style="background:var(--panel2)">
+            <div style="font-weight:950">Realtime overview</div>
+            <div class="muted">Live visitors and events. Use AI to interpret spikes.</div>
+            <div class="aiChips">
+              <button class="aiChip" data-ai="Explain what is happening in realtime right now, and what I should do." type="button">Explain realtime</button>
+              <button class="aiChip" data-ai="Do you see any anomaly in realtime? If yes, what likely caused it?" type="button">Detect anomaly</button>
+            </div>
+          </div>
+          <div class="card span12">
+            <div style="font-weight:950">Tip</div>
+            <div class="muted">Your live widgets (events, now/last/new) are still shown on the Home tab. This tab is a focused place to ask realtime questions.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="gaPanel" id="gaAcq">
+        <div class="grid">
+          <div class="card span12" style="background:var(--panel2)">
+            <div style="font-weight:950">Acquisition</div>
+            <div class="muted">Where your traffic comes from and what converts.</div>
+            <div class="aiChips">
+              <button class="aiChip" data-ai="Based on this data, what acquisition sources should I double down on? Explain." type="button">Double down</button>
+              <button class="aiChip" data-ai="Suggest 3 new acquisition channels to test next and what to post/run." type="button">New channels</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="gaPanel" id="gaEng">
+        <div class="grid">
+          <div class="card span12" style="background:var(--panel2)">
+            <div style="font-weight:950">Engagement</div>
+            <div class="muted">Pages, actions, and user behavior.</div>
+            <div class="aiChips">
+              <button class="aiChip" data-ai="Which pages are underperforming? Give fixes for each." type="button">Underperforming pages</button>
+              <button class="aiChip" data-ai="Write 5 copy improvements for the top landing page." type="button">Improve copy</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="gaPanel" id="gaMon">
+        <div class="grid">
+          <div class="card span12" style="background:var(--panel2)">
+            <div style="font-weight:950">Monetization</div>
+            <div class="muted">Lead rate, purchase rate, and conversion strategy.</div>
+            <div class="aiChips">
+              <button class="aiChip" data-ai="Give me a 7-day conversion plan to increase purchases." type="button">7-day plan</button>
+              <button class="aiChip" data-ai="Estimate what my revenue could be with a 20% lift in lead rate and purchase rate." type="button">Forecast lift</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="gaPanel" id="gaExplore">
+        <div class="grid">
+          <div class="card span12" style="background:var(--panel2)">
+            <div style="font-weight:950">Explore</div>
+            <div class="muted">Ask advanced questions and get evidence-backed answers.</div>
+            <div class="aiChips">
+              <button class="aiChip" data-ai="Find visitor segments from the last 30 days and what each segment cares about." type="button">Segments</button>
+              <button class="aiChip" data-ai="If I can only fix one thing on this site this week, what should it be and why?" type="button">One fix</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="gaPanel" id="gaAI">
+        <div class="grid">
+          <div class="card span12" id="chatCard">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Live AI Helper</div>
+          
+          
+          <div id="latestAiReportCards" class="repWrap">Loading latest report…</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        </div>
+      </section>
+
+      <section class="gaPanel" id="gaConfig">
+        <div class="grid">
+          <div class="card span12" style="background:var(--panel2)">
+            <div style="font-weight:950">Configure</div>
+            <div class="muted">Saved reports and analytics settings.</div>
+            <div class="aiChips">
+              <button class="aiChip" data-ai="What reports should I review weekly and why? Keep it short." type="button">Weekly reports</button>
+              <button class="aiChip" data-ai="What data is missing from my tracking, and how do I capture it?" type="button">Tracking gaps</button>
+            </div>
+          </div>
+          <div class="card span12" id="reportsList"></div>
+          <div class="card span12" id="report"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+span12">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:950">Reports</div>
+          <div class="muted">History list</div>
+        </div>
+        <div class="rightBtns">
+          <button class="btnGhost" id="loadReports">Refresh list</button>
+        </div>
+      </div>
+      <div class="grid" style="margin-top:10px;gap:12px">
+        <div class="card span6" style="background: var(--panel2); box-shadow:none">
+          <div class="muted">Latest</div>
+          <div id="reportCards" class="repWrap">Loading…</div>
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<details style="margin-top:10px">
+  <summary class="muted" style="cursor:pointer">Show raw report</summary>
+  <pre id="report" class="mono" style="max-height:320px;overflow:auto">Loading…</pre>
+</details>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        </div>
+        <div class="card span6" style="background: var(--panel2); box-shadow:none">
+          <div class="muted">History</div>
+          <div class="list" id="reportsList">Loading…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 </div>
 
 
@@ -27447,21 +27670,6 @@ pre{
 
 
 <div id="sectionCRM" style="display:none">
-
-  <div class="card span12" style="border:1px dashed var(--line);background:rgba(124,58,237,0.10);">
-    <div style="display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">
-      <div>
-        <div style="font-weight:950">CRM is under development</div>
-        <div class="muted" style="margin-top:4px">
-          This area is still in progress. Some features may be incomplete or change without notice.
-        </div>
-      </div>
-      <div class="pill" style="border-color:rgba(124,58,237,0.35);background:rgba(124,58,237,0.16);color:var(--ink);">
-        Coming soon
-      </div>
-    </div>
-  </div>
-
   <div class="grid">
 
 
@@ -29325,7 +29533,188 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
-  function renderDevice(svgEl, mobile, desktop) {
+  
+
+  function renderBars(svgEl, items, opts = {}) {
+    if (!svgEl) return;
+    const W = 900, H = 260, p = 18;
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bg.setAttribute("x", "0"); bg.setAttribute("y", "0");
+    bg.setAttribute("width", String(W)); bg.setAttribute("height", String(H));
+    bg.setAttribute("rx", "14");
+    bg.setAttribute("fill", "rgba(15,23,42,.25)");
+    bg.setAttribute("stroke", "rgba(255,255,255,.10)");
+    svgEl.appendChild(bg);
+
+    const max = Math.max(1, ...items.map(x => Number(x.value || 0)));
+    const n = Math.max(1, items.length);
+    const barW = (W - p*2) / n;
+
+    items.forEach((it, i) => {
+      const v = Number(it.value || 0);
+      const h = (H - p*2) * (v / max);
+      const x = p + i*barW + 6;
+      const y = H - p - h;
+
+      const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      r.setAttribute("x", String(x));
+      r.setAttribute("y", String(y));
+      r.setAttribute("width", String(Math.max(6, barW - 12)));
+      r.setAttribute("height", String(Math.max(2, h)));
+      r.setAttribute("rx", "10");
+      r.setAttribute("fill", opts.fill || "rgba(124,58,237,0.65)");
+      r.setAttribute("stroke", "rgba(255,255,255,.12)");
+      svgEl.appendChild(r);
+
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      label.setAttribute("x", String(x + 4));
+      label.setAttribute("y", String(H - 6));
+      label.setAttribute("fill", "rgba(255,255,255,.65)");
+      label.setAttribute("font-size", "12");
+      label.textContent = String(it.label || "").slice(0, 10);
+      svgEl.appendChild(label);
+    });
+  }
+
+  function renderFunnel(svgEl, visits, leads, purchases) {
+    if (!svgEl) return;
+    const W = 900, H = 260;
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bg.setAttribute("x", "0"); bg.setAttribute("y", "0");
+    bg.setAttribute("width", String(W)); bg.setAttribute("height", String(H));
+    bg.setAttribute("rx", "14");
+    bg.setAttribute("fill", "rgba(15,23,42,.25)");
+    bg.setAttribute("stroke", "rgba(255,255,255,.10)");
+    svgEl.appendChild(bg);
+
+    const stages = [
+      { label: "Visits", value: Math.max(0, visits|0) },
+      { label: "Leads", value: Math.max(0, leads|0) },
+      { label: "Purchases", value: Math.max(0, purchases|0) }
+    ];
+    const max = Math.max(1, ...stages.map(s => s.value));
+    const baseW = 780;
+    const x0 = 60;
+    const y0 = 40;
+    const gap = 10;
+    const bandH = 55;
+
+    stages.forEach((st, i) => {
+      const w = baseW * (st.value / max);
+      const x = x0 + (baseW - w)/2;
+      const y = y0 + i*(bandH + gap);
+
+      const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      r.setAttribute("x", String(x));
+      r.setAttribute("y", String(y));
+      r.setAttribute("width", String(Math.max(40, w)));
+      r.setAttribute("height", String(bandH));
+      r.setAttribute("rx", "16");
+      r.setAttribute("fill", i === 0 ? "rgba(124,58,237,0.40)" : i === 1 ? "rgba(124,58,237,0.55)" : "rgba(124,58,237,0.70)");
+      r.setAttribute("stroke", "rgba(255,255,255,.12)");
+      svgEl.appendChild(r);
+
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      t.setAttribute("x", String(x + 18));
+      t.setAttribute("y", String(y + 34));
+      t.setAttribute("fill", "rgba(255,255,255,.85)");
+      t.setAttribute("font-size", "16");
+      t.setAttribute("font-weight", "800");
+      t.textContent = `${st.label}: ${st.value}`;
+      svgEl.appendChild(t);
+    });
+  }
+
+  function renderRetention(svgEl, trend) {
+    // Proxy: returning visitors = smooth trend changes
+    if (!svgEl) return;
+    const vals = (trend || []).map(x => Number(x.v || x.value || 0));
+    const n = Math.max(10, vals.length || 10);
+    const recent = vals.slice(0, n);
+    const avg = recent.reduce((a,b)=>a+b,0) / Math.max(1, recent.length);
+    const volatility = recent.reduce((a,b)=>a+Math.abs(b-avg),0) / Math.max(1, recent.length);
+    const returning = Math.max(0, Math.min(100, 70 - (volatility / Math.max(1, avg))*100));
+
+    const items = [
+      { label: "New", value: 100 - returning },
+      { label: "Return", value: returning }
+    ];
+    renderBars(svgEl, items, { fill: "rgba(124,58,237,0.65)" });
+  }
+
+  function renderEvents(svgEl, trend) {
+    // Split traffic trend into three event types (simulated) for demo visuals.
+    const vals = (trend || []).map(x => Number(x.v || x.value || 0)).slice().reverse();
+    const clicks = vals.map(v => Math.max(0, Math.round(v * 0.55)));
+    const leads = vals.map(v => Math.max(0, Math.round(v * 0.10)));
+    const buys  = vals.map(v => Math.max(0, Math.round(v * 0.03)));
+
+    if (!svgEl) return;
+    const W = 900, H = 260, p = 18;
+    while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
+
+    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bg.setAttribute("x", "0"); bg.setAttribute("y", "0");
+    bg.setAttribute("width", String(W)); bg.setAttribute("height", String(H));
+    bg.setAttribute("rx", "14");
+    bg.setAttribute("fill", "rgba(15,23,42,.25)");
+    bg.setAttribute("stroke", "rgba(255,255,255,.10)");
+    svgEl.appendChild(bg);
+
+    const max = Math.max(1, ...clicks, ...leads, ...buys);
+    const n = Math.max(2, clicks.length);
+    const xFor = (i) => p + (W - p*2) * (i/(n-1));
+    const yFor = (v) => (H - p) - (H - p*2) * (v/max);
+
+    function pathFor(arr){
+      let d = "";
+      arr.forEach((v,i) => {
+        const x = xFor(i), y = yFor(v);
+        d += (i===0 ? `M ${x} ${y}` : ` L ${x} ${y}`);
+      });
+      return d;
+    }
+
+    const mk = (d, stroke) => {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", d);
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke", stroke);
+      path.setAttribute("stroke-width", "4");
+      path.setAttribute("stroke-linecap", "round");
+      svgEl.appendChild(path);
+    };
+
+    mk(pathFor(clicks), "rgba(124,58,237,0.85)");
+    mk(pathFor(leads),  "rgba(255,255,255,0.55)");
+    mk(pathFor(buys),   "rgba(255,255,255,0.28)");
+
+    const legend = [
+      { label: "Clicks", stroke: "rgba(124,58,237,0.85)" },
+      { label: "Leads", stroke: "rgba(255,255,255,0.55)" },
+      { label: "Purchases", stroke: "rgba(255,255,255,0.28)" }
+    ];
+    legend.forEach((l,i) => {
+      const y = 34 + i*18;
+      const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      dot.setAttribute("cx", "44"); dot.setAttribute("cy", String(y-4));
+      dot.setAttribute("r", "5"); dot.setAttribute("fill", l.stroke);
+      svgEl.appendChild(dot);
+
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      t.setAttribute("x", "60"); t.setAttribute("y", String(y));
+      t.setAttribute("fill", "rgba(255,255,255,.75)");
+      t.setAttribute("font-size", "13");
+      t.textContent = l.label;
+      svgEl.appendChild(t);
+    });
+  }
+
+function renderDevice(svgEl, mobile, desktop) {
     if (!svgEl) return;
     while (svgEl.firstChild) svgEl.removeChild(svgEl.firstChild);
 
@@ -36220,7 +36609,35 @@ async function loadCRMv2(){
 
 
 
+
       renderTrend($("trendSvg"), j.trend || []);
+      // Extra GA-like charts
+      const tvals = j.trend || [];
+      const visits = (j.summary && (j.summary.visits || j.summary.visitors)) ? (j.summary.visits || j.summary.visitors) : (tvals.reduce((a,x)=>a+Number(x.v||x.value||0),0));
+      const leads = (j.summary && j.summary.leads) ? j.summary.leads : Math.round(visits * 0.10);
+      const purchases = (j.summary && j.summary.purchases) ? j.summary.purchases : Math.round(visits * 0.03);
+
+      renderFunnel($("funnelSvg"), visits, leads, purchases);
+      if ($("funnelNote")) $("funnelNote").textContent = `Lead rate: ${Math.round((leads/Math.max(1,visits))*1000)/10}% • Purchase rate: ${Math.round((purchases/Math.max(1,visits))*1000)/10}%`;
+
+      const sources = (j.top_sources || j.sources || []).slice(0, 8).map(x => ({ label: x.source || x.label || x.name || "src", value: x.count || x.value || 0 }));
+      if (sources.length) {
+        renderBars($("sourcesSvg"), sources, { fill: "rgba(124,58,237,0.65)" });
+        if ($("sourcesNote")) $("sourcesNote").textContent = "Based on available source data.";
+      } else {
+        // Approx from top pages: pretend direct/ref/social
+        renderBars($("sourcesSvg"), [
+          { label: "Direct", value: Math.round(visits*0.40) },
+          { label: "Search", value: Math.round(visits*0.28) },
+          { label: "Social", value: Math.round(visits*0.18) },
+          { label: "Ref", value: Math.round(visits*0.14) },
+        ], { fill: "rgba(124,58,237,0.65)" });
+        if ($("sourcesNote")) $("sourcesNote").textContent = "Approximation (demo).";
+      }
+
+      renderEvents($("eventsSvg"), tvals);
+      renderRetention($("retentionSvg"), tvals);
+
       renderDevice($("deviceSvg"), mob, desk);
       renderTopPages($("topPages"), j.top_pages_range || []);
 
@@ -38287,6 +38704,30 @@ window.addEventListener("DOMContentLoaded", () => {
 
 
 
+
+  // --- GA-like Analytics nav (UI only) ---
+  function setGaPanel(id){
+    document.querySelectorAll(".gaPanel").forEach(p => p.classList.remove("active"));
+    const el = document.getElementById(id);
+    if (el) el.classList.add("active");
+    document.querySelectorAll(".gaBtn").forEach(b => b.classList.toggle("active", b.getAttribute("data-ga") === id));
+  }
+  document.querySelectorAll(".gaBtn").forEach(btn => {
+    btn.addEventListener("click", () => setGaPanel(btn.getAttribute("data-ga")));
+  });
+
+  // AI helper chips: pipe into the analytics AI chat
+  function sendAnalyticsPrompt(prompt){
+    const inp = $("chatInput");
+    const send = $("chatSend");
+    if (!inp || !send) return;
+    inp.value = prompt;
+    send.click();
+    setGaPanel("gaAI");
+  }
+  document.querySelectorAll("[data-ai]").forEach(chip => {
+    chip.addEventListener("click", () => sendAnalyticsPrompt(chip.getAttribute("data-ai")));
+  });
 
     if (!TOKEN) { setStatus("missing token"); return; }
 
