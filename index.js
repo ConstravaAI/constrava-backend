@@ -24068,33 +24068,6 @@ app.get("/storefront", asyncHandler(async (req, res) => {
 
 
 
-
-
-/* --- Vertical GA-style tabs --- */
-.gaWrap{display:flex;gap:14px;align-items:flex-start}
-.gaSide{width:230px;flex:0 0 230px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:12px;position:sticky;top:12px;height:fit-content}
-.gaBrand{display:flex;gap:10px;align-items:center;margin-bottom:10px}
-.gaDot{width:12px;height:12px;border-radius:99px;background:var(--accent)}
-.gaTitle{font-weight:950}
-.gaNav{display:flex;flex-direction:column;gap:6px;margin-top:8px}
-.gaBtn{width:100%;text-align:left;border:1px solid var(--line);background:rgba(255,255,255,0.02);color:var(--ink);border-radius:14px;padding:10px 10px;font-weight:900;cursor:pointer}
-.gaBtn:hover{transform:translateY(-1px)}
-.gaBtn.active{border-color:rgba(124,58,237,0.45);background:rgba(124,58,237,0.12)}
-.gaMain{flex:1;min-width:0}
-
-/* --- AI Insight Modal (Analytics) --- */
-.modalBackdrop{position:fixed;inset:0;background:rgba(2,6,23,.55);display:none;align-items:center;justify-content:center;padding:20px;z-index:9999}
-.modalBackdrop.show{display:flex}
-.modalCard{width:min(860px,96vw);max-height:min(86vh,900px);overflow:auto;background:var(--panel);border:1px solid rgba(255,255,255,.12);border-radius:22px;box-shadow:0 18px 60px rgba(0,0,0,.45)}
-.modalHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.10)}
-.modalHead h3{margin:0;font-size:18px}
-.modalBody{padding:16px 18px}
-.modalKpis{display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:10px;margin:10px 0 14px}
-.modalKpi{border:1px solid var(--line);background:rgba(124,58,237,0.08);border-radius:16px;padding:10px}
-.modalKpi .k{font-size:12px;color:var(--muted)}
-.modalKpi .v{font-size:18px;font-weight:950;margin-top:2px}
-.modalActions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-
 /* --- Fix: analytics chat sizing --- */
 #chatCard .chatBox, #chatBox { min-height:220px; height:220px; }
 #chatCard .row { align-items:stretch; }
@@ -24172,6 +24145,32 @@ ul{margin:12px 0 0 0;padding:0 0 0 18px;line-height:1.6}
   margin-top:16px; padding:12px; border-radius: 14px; border:1px dashed rgba(255,255,255,.16);
   background: rgba(15,23,42,.35); color: var(--muted); font-size:13px; line-height: 1.55;
 }
+
+/* --- Analytics VNext --- */
+.gaVNext{display:flex;gap:14px;align-items:stretch}
+.gaSideV2{width:220px;min-width:220px;background:rgba(124,58,237,.06);border:1px solid var(--line);border-radius:22px;padding:14px;position:sticky;top:14px;height:calc(100vh - 28px);overflow:auto}
+.gaBrandV2{display:flex;gap:10px;align-items:center;margin-bottom:12px}
+.gaSideBtns{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.gaSideFooter{margin-top:14px;line-height:1.35}
+.gaMainV2{flex:1;min-width:0}
+.gaTopbarV2{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}
+.gaTopRight{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.gaKpisRow{display:flex;gap:10px;flex-wrap:wrap}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid2small{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width: 980px){.gaVNext{flex-direction:column}.gaSideV2{position:relative;top:auto;height:auto;width:auto;min-width:0}.grid2,.grid2small{grid-template-columns:1fr}}
+.card{background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:22px;padding:14px}
+.cardHead{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}
+.cardActions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.h{font-weight:950;font-size:16px}
+.chartBox{height:220px;border-radius:18px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);overflow:hidden}
+.listBox{min-height:220px}
+.big{font-size:22px;font-weight:950}
+.split2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chatBox{height:220px;overflow:auto;border-radius:18px;border:1px solid var(--line);padding:12px;background:rgba(0,0,0,.22)}
+.chatRow{display:flex;gap:10px;margin-top:10px}
+.input{flex:1;min-width:0}
+.chip{padding:10px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(124,58,237,.10);color:#e9ddff;font-weight:900;cursor:pointer}
 </style>
 </head>
 <body>
@@ -28678,7 +28677,146 @@ app.get("/dashboard.js", (req, res) => {
 
 
 
-  function setStatus(t){
+  
+  // --- Analytics VNext layout (big UI refresh) ---
+  function mountAnalyticsVNext(){
+    const root = $("sectionAnalytics");
+    if (!root) return;
+    // avoid remounting if already vnext
+    if (root.getAttribute("data-analytics-vnext") === "1") return;
+    root.setAttribute("data-analytics-vnext","1");
+
+    const parts = [];
+    parts.push('<div class="gaVNext">');
+    parts.push('  <aside class="gaSideV2">');
+    parts.push('    <div class="gaBrandV2"><div class="gaDot"></div><div><div class="gaTitle">Constrava Analytics</div><div class="muted" style="font-size:12px">GA-inspired + AI popups</div></div></div>');
+    parts.push('    <div class="gaSideBtns">');
+    parts.push('      <button class="gaBtn active" data-ga="gaHome" type="button">Home</button>');
+    parts.push('      <button class="gaBtn" data-ga="gaRealtime" type="button">Realtime</button>');
+    parts.push('      <button class="gaBtn" data-ga="gaAcq" type="button">Acquisition</button>');
+    parts.push('      <button class="gaBtn" data-ga="gaEng" type="button">Engagement</button>');
+    parts.push('      <button class="gaBtn" data-ga="gaMon" type="button">Monetization</button>');
+    parts.push('      <button class="gaBtn" data-ga="gaExplore" type="button">Explore</button>');
+    parts.push('      <button class="gaBtn" data-ga="gaAI" type="button">AI Studio</button>');
+    parts.push('      <button class="gaBtn" data-ga="gaConfig" type="button">Configure</button>');
+    parts.push('    </div>');
+    parts.push('    <div class="gaSideFooter muted">Tip: click any <span style="color:var(--accent);font-weight:900">AI explain</span> button for a business summary.</div>');
+    parts.push('  </aside>');
+
+    parts.push('  <main class="gaMainV2">');
+    parts.push('    <div class="gaTopbarV2">');
+    parts.push('      <div class="gaTopLeft">');
+    parts.push('        <div class="gaKpisRow">');
+    parts.push('          <div class="pill">Range: <span id="kpiRange">—</span></div>');
+    parts.push('          <div class="pill">Max/day: <span id="maxDay">—</span></div>');
+    parts.push('          <div class="pill">Avg/day: <span id="avgDay">—</span></div>');
+    parts.push('        </div>');
+    parts.push('      </div>');
+    parts.push('      <div class="gaTopRight">');
+    parts.push('        <button id="gaCustomize" class="btnGhost" type="button">Customize</button>');
+    parts.push('        <button class="btn" data-ai="weekly_summary" type="button">Weekly summary</button>');
+    parts.push('        <button class="btnGhost" data-ai="find_bottleneck" type="button">Find bottleneck</button>');
+    parts.push('        <button class="btnGhost" data-ai="3_experiments" type="button">3 experiments</button>');
+    parts.push('        <button class="btnGhost" data-ai="prioritize_pages" type="button">Prioritize pages</button>');
+    parts.push('      </div>');
+    parts.push('    </div>');
+
+    // Panels
+    parts.push('    <section class="gaPanel active" id="gaHome">');
+    parts.push('      <div class="grid2">');
+    parts.push('        <div class="card" id="cardTrafficTrend">');
+    parts.push('          <div class="cardHead"><div><div class="h">Traffic trend</div><div class="muted">Visits per day (selected window)</div></div><div class="cardActions"><button class="chip" data-ai="what_is_happening_with_traffic" type="button">AI explain</button></div></div>');
+    parts.push('          <div class="chartBox"><svg id="trendSvg" viewBox="0 0 800 200" preserveAspectRatio="none"></svg></div>');
+    parts.push('        </div>');
+    parts.push('        <div class="card" id="cardRealtime">');
+    parts.push('          <div class="cardHead"><div><div class="h">Realtime</div><div class="muted">Polling for new events</div></div><div class="cardActions"><button id="liveToggle" class="btnGhost" type="button">Pause</button><button id="liveNow" class="btn" type="button">Check now</button></div></div>');
+    parts.push('          <div class="split2">');
+    parts.push('            <div><div class="muted">New page_views</div><div class="big" id="liveNew">—</div></div>');
+    parts.push('            <div><div class="muted">Last event</div><div class="big" id="liveLast">—</div></div>');
+    parts.push('          </div>');
+    parts.push('          <div class="muted" id="liveJson" style="margin-top:8px;white-space:pre-wrap"></div>');
+    parts.push('        </div>');
+    parts.push('      </div>');
+
+    parts.push('      <div class="grid2">');
+    parts.push('        <div class="card" id="cardFunnel">');
+    parts.push('          <div class="cardHead"><div><div class="h">Conversion funnel</div><div class="muted">Visits → Leads → Purchases (estimated)</div></div><div class="cardActions"><button class="chip" data-ai="funnel_diagnosis" type="button">AI explain</button></div></div>');
+    parts.push('          <div class="chartBox"><svg id="funnelSvg" viewBox="0 0 800 200" preserveAspectRatio="none"></svg></div>');
+    parts.push('          <div class="muted" id="funnelNote" style="margin-top:8px"></div>');
+    parts.push('          <div class="kpiRow"><div class="pill">Lead rate: <span id="kpiLeadRate">—</span></div><div class="pill">Purchase rate: <span id="kpiPurchaseRate">—</span></div></div>');
+    parts.push('        </div>');
+    parts.push('        <div class="card" id="cardSources">');
+    parts.push('          <div class="cardHead"><div><div class="h">Traffic sources</div><div class="muted">Where visitors come from (demo)</div></div><div class="cardActions"><button class="chip" data-ai="sources_explain" type="button">AI explain</button></div></div>');
+    parts.push('          <div class="chartBox"><svg id="sourcesSvg" viewBox="0 0 800 200" preserveAspectRatio="none"></svg></div>');
+    parts.push('          <div class="muted" id="sourcesNote" style="margin-top:8px"></div>');
+    parts.push('        </div>');
+    parts.push('      </div>');
+
+    parts.push('      <div class="grid2">');
+    parts.push('        <div class="card" id="cardEvents">');
+    parts.push('          <div class="cardHead"><div><div class="h">Events over time</div><div class="muted">Clicks / leads / purchases trend</div></div><div class="cardActions"><button class="chip" data-ai="anomalies" type="button">AI anomalies</button></div></div>');
+    parts.push('          <div class="chartBox"><svg id="eventsSvg" viewBox="0 0 800 220" preserveAspectRatio="none"></svg></div>');
+    parts.push('        </div>');
+    parts.push('        <div class="card" id="cardRetention">');
+    parts.push('          <div class="cardHead"><div><div class="h">Retention snapshot</div><div class="muted">Returning visitors proxy</div></div><div class="cardActions"><button class="chip" data-ai="retention_explain" type="button">AI explain</button></div></div>');
+    parts.push('          <div class="chartBox"><svg id="retentionSvg" viewBox="0 0 800 220" preserveAspectRatio="none"></svg></div>');
+    parts.push('        </div>');
+    parts.push('      </div>');
+
+    parts.push('      <div class="grid2">');
+    parts.push('        <div class="card" id="cardTopPages">');
+    parts.push('          <div class="cardHead"><div><div class="h">Top pages</div><div class="muted">Most viewed pages in range</div></div><div class="cardActions"><button class="chip" data-ai="top_pages_actions" type="button">AI explain</button></div></div>');
+    parts.push('          <div id="topPages" class="listBox"></div>');
+    parts.push('        </div>');
+    parts.push('        <div class="card" id="cardDevice">');
+    parts.push('          <div class="cardHead"><div><div class="h">Device mix & goals</div><div class="muted">Breakdown + conversions</div></div><div class="cardActions"><button class="chip" data-ai="device_explain" type="button">AI explain</button></div></div>');
+    parts.push('          <div class="grid2small">');
+    parts.push('            <div class="chartBox"><svg id="deviceSvg" viewBox="0 0 360 220" preserveAspectRatio="none"></svg></div>');
+    parts.push('            <div>');
+    parts.push('              <div class="pill">Mobile: <span id="mob">—</span></div>');
+    parts.push('              <div class="pill">Desktop: <span id="desk">—</span></div>');
+    parts.push('              <div class="pill">Leads: <span id="leads">—</span></div>');
+    parts.push('              <div class="pill">Purchases: <span id="purchases">—</span></div>');
+    parts.push('              <div class="pill">CTA: <span id="cta">—</span></div>');
+    parts.push('              <div class="muted" style="margin-top:10px">Last event</div>');
+    parts.push('              <div class="pill" id="lastEvent">—</div>');
+    parts.push('            </div>');
+    parts.push('          </div>');
+    parts.push('        </div>');
+    parts.push('      </div>');
+
+    parts.push('      <div class="card" id="cardAiChat" style="margin-top:14px">');
+    parts.push('        <div class="cardHead"><div><div class="h">Live AI Helper</div><div class="muted">Ask questions about traffic, pages, conversions, and next steps.</div></div><div class="cardActions"><button class="chip" data-ai="weekly_summary" type="button">AI summary</button></div></div>');
+    parts.push('        <div id="chatBox" class="chatBox"></div>');
+    parts.push('        <div class="chatRow"><input id="chatInput" class="input" placeholder="Ask: What should I improve first?"/><button id="chatSend" class="btn" type="button">Send</button><button id="chatClear" class="btnGhost" type="button">Clear</button></div>');
+    parts.push('        <div class="muted" style="margin-top:8px">Note: Requires the Full AI plan (or the endpoint will return 403).</div>');
+    parts.push('      </div>');
+    parts.push('    </section>');
+
+    // Additional panels (placeholders, still functional)
+    parts.push('    <section class="gaPanel" id="gaRealtime"><div class="card"><div class="h">Realtime</div><div class="muted">Use the realtime card on Home.</div></div></section>');
+    parts.push('    <section class="gaPanel" id="gaAcq"><div class="card"><div class="h">Acquisition</div><div class="muted">Coming soon: campaign + channel analytics.</div><button class="btnGhost" data-ai="acquisition_recs" type="button">AI explain</button></div></section>');
+    parts.push('    <section class="gaPanel" id="gaEng"><div class="card"><div class="h">Engagement</div><div class="muted">Coming soon: content engagement + scroll depth.</div><button class="btnGhost" data-ai="engagement_recs" type="button">AI explain</button></div></section>');
+    parts.push('    <section class="gaPanel" id="gaMon"><div class="card"><div class="h">Monetization</div><div class="muted">Coming soon: revenue + LTV + pricing insights.</div><button class="btnGhost" data-ai="monetization_recs" type="button">AI explain</button></div></section>');
+    parts.push('    <section class="gaPanel" id="gaExplore"><div class="card"><div class="h">Explore</div><div class="muted">Build custom views by filtering events (next).</div><button class="btnGhost" data-ai="explore_ideas" type="button">AI explain</button></div></section>');
+    parts.push('    <section class="gaPanel" id="gaAI"><div class="card"><div class="h">AI Studio</div><div class="muted">Use AI chat on Home for now (this becomes advanced later).</div></div></section>');
+    parts.push('    <section class="gaPanel" id="gaConfig"><div class="card"><div class="h">Configure</div><div class="muted">Use Customize to show/hide widgets. More controls next.</div><button class="btn" id="gaCustomize2" type="button">Customize</button></div></section>');
+
+    parts.push('  </main>');
+    parts.push('</div>');
+
+    root.innerHTML = parts.join("");
+
+    // Bind GA nav clicks
+    document.querySelectorAll(".gaBtn").forEach(b => {
+      b.addEventListener("click", () => setGaPanel(String(b.getAttribute("data-ga") || "gaHome")));
+    });
+
+    // Secondary customize button
+    const c2 = document.getElementById("gaCustomize2");
+    if (c2) c2.addEventListener("click", openCustomize);
+  }
+function setStatus(t){
     const el = $("status");
     if (el) el.textContent = "Status: " + t;
   }
@@ -36313,6 +36451,7 @@ async function loadCRMv2(){
       const r = await fetch("/metrics?token=" + encodeURIComponent(TOKEN) + "&days=" + encodeURIComponent(days));
       const j = await r.json().catch(() => ({}));
       if (!j.ok) { setStatus(j.error || "error"); return; }
+      window.__metrics = j;
 
 
 
@@ -38747,54 +38886,98 @@ window.addEventListener("DOMContentLoaded", () => {
     const el = document.getElementById(id);
     if (el) el.classList.add("active");
     document.querySelectorAll(".gaBtn").forEach(b => b.classList.toggle("active", b.getAttribute("data-ga") === id));
-  
-  // Default to Home panel
-  setGaPanel("gaOverview");
+  }
 
-  // --- Analytics AI Insight Modal (no external AI required) ---
-  const aiModal = document.getElementById("aiModal");
-  const aiModalClose = document.getElementById("aiModalClose");
-  function openModal(){ if (aiModal) aiModal.classList.add("show"); }
-  function closeModal(){ if (aiModal) aiModal.classList.remove("show"); }
-  if (aiModalClose) aiModalClose.addEventListener("click", closeModal);
-  if (aiModal) aiModal.addEventListener("click", (e) => { if (e.target === aiModal) closeModal(); });
+  // Default to Home panel
+  setGaPanel("gaHome");
+  document.querySelectorAll(".gaBtn").forEach(btn => {
+    btn.addEventListener("click", () => setGaPanel(btn.getAttribute("data-ga")));
+  });
+
+  // AI helper chips: pipe into the analytics AI chat
+  function sendAnalyticsPrompt(prompt){
+    // Kept for manual use in AI Studio, but UI chips now open insight popups.
+    const inp = $("chatInput");
+    const send = $("chatSend");
+    if (!inp || !send) return;
+    inp.value = String(prompt || "");
+    send.click();
+    setGaPanel("gaAI");
+  }
+
+  // --- Insight popup (no external AI required) ---
+  let insightModal = null;
+
+  function ensureInsightModal(){
+    if (insightModal) return insightModal;
+    const wrap = document.createElement("div");
+    wrap.id = "insightModal";
+    wrap.style.cssText = "position:fixed;inset:0;background:rgba(2,6,23,.55);display:none;align-items:center;justify-content:center;padding:18px;z-index:9999";
+    wrap.innerHTML =
+      '<div style="width:min(920px,96vw);max-height:86vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:22px;box-shadow:0 18px 60px rgba(0,0,0,.45)">' +
+        '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.10)">' +
+          '<div>' +
+            '<div id="insightTitle" style="font-size:18px;font-weight:950">Insight</div>' +
+            '<div id="insightSub" class="muted" style="margin-top:4px">Business-impact summary</div>' +
+          '</div>' +
+          '<button id="insightClose" class="btnGhost" type="button">Close</button>' +
+        '</div>' +
+        '<div style="padding:16px 18px">' +
+          '<div id="insightKpis" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:10px 0 14px"></div>' +
+          '<div id="insightBody" style="white-space:pre-wrap;line-height:1.45"></div>' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">' +
+            '<button id="insightGoExplore" class="btn" type="button">Open Explore</button>' +
+            '<button id="insightGoAI" class="btnGhost" type="button">Ask AI about this</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    wrap.addEventListener("click", (e) => { if (e.target === wrap) hideInsight(); });
+    $("insightClose").addEventListener("click", hideInsight);
+    $("insightGoExplore").addEventListener("click", () => { hideInsight(); setGaPanel("gaExplore"); });
+    $("insightGoAI").addEventListener("click", () => { hideInsight(); setGaPanel("gaAI"); });
+    insightModal = wrap;
+    return insightModal;
+  }
+
+  function showInsight(){
+    ensureInsightModal();
+    insightModal.style.display = "flex";
+  }
+  function hideInsight(){
+    if (!insightModal) return;
+    insightModal.style.display = "none";
+  }
 
   function fmt(n){
     const x = Number(n || 0);
     if (!isFinite(x)) return "—";
-    if (x >= 1_000_000) return (Math.round(x/100_000)/10) + "M";
-    if (x >= 10_000) return Math.round(x/100)/10 + "k";
+    if (x >= 1000000) return (Math.round(x/100000)/10) + "M";
+    if (x >= 10000) return (Math.round(x/100)/10) + "k";
     return String(Math.round(x));
   }
   function pct(a,b){
-    a = Number(a||0); b = Math.max(1, Number(b||0));
+    a = Number(a || 0);
+    b = Math.max(1, Number(b || 0));
     return (Math.round((a/b)*1000)/10) + "%";
   }
 
-  // Keep last analytics payload so the modal can summarize the business impact.
-  window.__lastAnalytics = window.__lastAnalytics || null;
-
-  function setModal(title, subtitle, kpis, body){
-    const t = document.getElementById("aiModalTitle");
-    const sub = document.getElementById("aiModalSub");
-    const k = document.getElementById("aiModalKpis");
-    const b = document.getElementById("aiModalBody");
-    if (t) t.textContent = title || "AI Insight";
-    if (sub) sub.textContent = subtitle || "Business-impact summary from the charts on this page.";
-    if (k){
-      k.innerHTML = "";
-      (kpis||[]).slice(0,3).forEach(it => {
-        const div = document.createElement("div");
-        div.className = "modalKpi";
-        div.innerHTML = '<div class="k">' + it.k + '</div><div class="v">' + it.v + '</div>';
-        k.appendChild(div);
-      });
-    }
-    if (b) b.textContent = body || "";
+  function setInsight(title, sub, kpis, body){
+    $("insightTitle").textContent = title || "Insight";
+    $("insightSub").textContent = sub || "Business-impact summary";
+    const k = $("insightKpis");
+    k.innerHTML = "";
+    (kpis || []).slice(0,3).forEach(it => {
+      const div = document.createElement("div");
+      div.style.cssText = "border:1px solid var(--line);background:rgba(124,58,237,0.08);border-radius:16px;padding:10px";
+      div.innerHTML = '<div class="muted" style="font-size:12px">' + it.k + '</div><div style="font-size:18px;font-weight:950;margin-top:2px">' + it.v + '</div>';
+      k.appendChild(div);
+    });
+    $("insightBody").textContent = body || "";
   }
 
-  function summarizeFromContext(kind){
-    const j = window.__lastAnalytics || {};
+  function openInsightModal(label){
+    const j = window.__metrics || {};
     const sum = j.summary || {};
     const visits = sum.visits || sum.visitors || 0;
     const leads = sum.leads || 0;
@@ -38806,129 +38989,179 @@ window.addEventListener("DOMContentLoaded", () => {
     const kpis = [
       { k:"Visits", v: fmt(visits) },
       { k:"Leads", v: fmt(leads) + " (" + leadRate + ")" },
-      { k:"Purchases", v: fmt(purchases) + " (" + buyRate + ")" },
+      { k:"Purchases", v: fmt(purchases) + " (" + buyRate + ")" }
     ];
 
-    const topPages = (j.top_pages || []).slice(0, 5).map(p => (p.path || p.page || "page") + " (" + (p.views||p.count||0) + ")");
+    const lp = (j.top_pages || []).slice(0, 5).map(p => (p.path || p.page || "page") + " (" + (p.views||p.count||0) + ")");
+    const pages = lp.length ? lp.map(x => "• " + x).join("
+") : "• (No page data yet — seed some events)";
 
-    function bullets(arr, fallback){
-      if (!arr || !arr.length) return fallback;
-      return arr.map(x => "• " + x).join("\n");
+    const t = String(label || "").toLowerCase();
+    let title = "Weekly performance summary";
+    let sub = "What this data means for the business";
+    let body =
+      "Summary:
+" +
+      "- Visits: " + fmt(visits) + "
+" +
+      "- Leads: " + fmt(leads) + " (" + leadRate + ")
+" +
+      "- Purchases: " + fmt(purchases) + " (" + buyRate + ")
+
+" +
+      "Best next step:
+" +
+      "- Improve the top landing page CTA + reduce friction.
+
+" +
+      "Top pages to start with:
+" + pages;
+
+    if (t.indexOf("bottleneck") >= 0){
+      title = "Bottleneck: what to fix first";
+      body =
+        "Funnel:
+" +
+        "- Visits → Leads: " + leadRate + "
+" +
+        "- Visits → Purchases: " + buyRate + "
+
+" +
+        "If leads are low: fix offer clarity + CTA + trust.
+" +
+        "If purchases are low: fix follow-up, pricing page clarity, and checkout friction.
+
+" +
+        "Start with these pages:
+" + pages;
+    } else if (t.indexOf("experiment") >= 0){
+      title = "3 experiments to run";
+      body =
+        "1) CTA clarity: make the CTA outcome-based.
+" +
+        "2) Trust: add proof above the fold.
+" +
+        "3) Friction: shorten forms and remove extra steps.
+
+" +
+        "Watch lead rate (" + leadRate + ") and purchase rate (" + buyRate + ") for improvement.";
+    } else if (t.indexOf("priorit") >= 0 || t.indexOf("page") >= 0){
+      title = "Pages to prioritize";
+      body =
+        "Prioritize pages that get traffic and sit close to conversion.
+
+" +
+        "Start here:
+" + pages + "
+
+" +
+        "For each page:
+" +
+        "- Strong headline
+" +
+        "- One primary CTA
+" +
+        "- Social proof above the fold
+" +
+        "- Remove distractions";
     }
 
-    if (kind === "bottleneck"){
-      return {
-        title: "Bottleneck analysis",
-        subtitle: "What to fix first to increase revenue/leads.",
-        kpis: kpis,
-        body:
-          "Your funnel right now looks like:\n" +
-          "- Visits \u2192 Leads: " + leadRate + "\n" +
-          "- Visits \u2192 Purchases: " + buyRate + "\n\n" +
-          "What this means:\n" +
-          "1) If leads are low, your landing pages aren’t turning interest into action (CTA, trust, offer clarity).\n" +
-          "2) If purchases are low but leads are decent, follow-up or pricing/checkout friction is the issue.\n\n" +
-          "Next best move (fastest impact):\n" +
-          "- Pick the top landing page and tighten the CTA + reduce friction.\n" +
-          "Top pages to start with:\n" +
-          bullets(topPages, "• (No page data yet — seed some events)")
-      };
-    }
-
-    if (kind === "experiments"){
-      return {
-        title: "3 experiments to run this week",
-        subtitle: "Low-effort tests that usually move leads and sales.",
-        kpis: kpis,
-        body:
-          "Experiment 1 — CTA clarity:\n" +
-          "- Change the primary CTA copy to a concrete outcome (e.g. “Get a quote in 60 seconds”).\n" +
-          "- Success metric: lead rate increases above " + leadRate + ".\n\n" +
-          "Experiment 2 — Trust + proof:\n" +
-          "- Add 2–3 proof elements above the fold (testimonial, logos, guarantee).\n" +
-          "- Success metric: more leads from top pages.\n\n" +
-          "Experiment 3 — Offer friction:\n" +
-          "- Reduce form fields (email + 1 question), add optional phone.\n" +
-          "- Success metric: more form completions without hurting purchase rate.\n\n" +
-          "If you want, I can turn these into a “plan” checklist inside the UI next."
-      };
-    }
-
-    if (kind === "pages"){
-      const pageLine = bullets(topPages, "• (No page data yet)");
-      return {
-        title: "Which pages to prioritize",
-        subtitle: "Highest leverage pages based on traffic + funnel.",
-        kpis: kpis,
-        body:
-          "Prioritize pages that get traffic AND are closest to conversion.\n\n" +
-          "Start here:\n" + pageLine + "\n\n" +
-          "What to change on each:\n" +
-          "- Strong headline (what you do + for who + result)\n" +
-          "- Single primary CTA\n" +
-          "- Social proof above the fold\n" +
-          "- Remove distractions (extra links) on conversion pages"
-      };
-    }
-
-    // default weekly summary
-    return {
-      title: "Weekly business summary",
-      subtitle: "What the data means for performance.",
-      kpis: kpis,
-      body:
-        "Summary:\n" +
-        "- You had about " + fmt(visits) + " visits in the selected window.\n" +
-        "- You generated " + fmt(leads) + " leads (" + leadRate + " of visits).\n" +
-        "- You got " + fmt(purchases) + " purchases (" + buyRate + " of visits).\n\n" +
-        "What this means:\n" +
-        "- If lead rate is under ~1–3%, your CTA/offer clarity is likely the biggest lever.\n" +
-        "- If lead rate is solid but purchases are low, focus on follow-up, pricing page clarity, and friction in checkout.\n\n" +
-        "Quick next step:\n" +
-        "- Improve the top landing page and make your CTA unavoidable."
-    };
+    ensureInsightModal();
+    setInsight(title, sub, kpis, body);
+    showInsight();
   }
 
-  function openInsightFromButton(text){
-    // Map button intent to summary type
-    const t = String(text||"").toLowerCase();
-    let kind = "weekly";
-    if (t.includes("bottleneck")) kind = "bottleneck";
-    else if (t.includes("experiment")) kind = "experiments";
-    else if (t.includes("priorit")) kind = "pages";
-    else if (t.includes("anomal")) kind = "weekly";
-    const r = summarizeFromContext(kind);
-    setModal(r.title, r.subtitle, r.kpis, r.body);
-    openModal();
-  }
-
-  // Replace AI chips behavior: show modal instead of sending to chat
-  document.querySelectorAll("[data-ai]").forEach(el => {
-    el.addEventListener("click", () => openInsightFromButton(el.getAttribute("data-ai") || el.textContent));
-  });
-
-  // Optional modal actions
-  const a1 = document.getElementById("aiModalAction1");
-  const a2 = document.getElementById("aiModalAction2");
-  if (a1) a1.addEventListener("click", () => { closeModal(); setGaPanel && setGaPanel("gaExplore"); });
-  if (a2) a2.addEventListener("click", () => { closeModal(); setGaPanel && setGaPanel("gaOverview"); });
-
-}
-  document.querySelectorAll(".gaBtn").forEach(btn => {
-    btn.addEventListener("click", () => setGaPanel(btn.getAttribute("data-ga")));
-  });
-
-  // AI helper chips: pipe into the analytics AI chat
-  function sendAnalyticsPrompt(prompt){
-    const inp = $("chatInput");
-    const send = $("chatSend");
-    if (!inp || !send) return;
-    inp.value = prompt;
-    send.click();
-    setGaPanel("gaAI");
-  }
+  // AI chips now open insight modal
   document.querySelectorAll("[data-ai]").forEach(chip => {
-    chip.addEventListener("click", () => sendAnalyticsPrompt(chip.getAttribute("data-ai")));
+    chip.addEventListener("click", () => openInsightModal(String(chip.getAttribute("data-ai") || chip.textContent || "")));
+  });
+
+  // --- Home customization (show/hide widgets) ---
+  const WIDGETS = [
+    { id:"cardTrafficTrend", label:"Traffic trend" },
+    { id:"cardFunnel", label:"Conversion funnel" },
+    { id:"cardSources", label:"Traffic sources" },
+    { id:"cardEvents", label:"Events over time" },
+    { id:"cardRetention", label:"Retention snapshot" },
+    { id:"cardTopPages", label:"Top pages" },
+    { id:"cardDevice", label:"Device mix" }
+  ];
+
+  function getWidgetPrefs(){
+    try{
+      const raw = localStorage.getItem("ga_widgets_v1");
+      if (!raw) return null;
+      const j = JSON.parse(raw);
+      return j && typeof j === "object" ? j : null;
+    }catch(e){ return null; }
+  }
+  function setWidgetPrefs(p){
+    try{ localStorage.setItem("ga_widgets_v1", JSON.stringify(p || {})); }catch(e){}
+  }
+
+  function applyWidgetPrefs(){
+    const prefs = getWidgetPrefs() || {};
+    WIDGETS.forEach(w => {
+      const el = document.getElementById(w.id);
+      if (!el) return;
+      const on = (prefs[w.id] !== false);
+      el.style.display = on ? "" : "none";
+    });
+  }
+
+  function openCustomize(){
+    // reuse insight modal as a settings modal
+    ensureInsightModal();
+    $("insightTitle").textContent = "Customize dashboard";
+    $("insightSub").textContent = "Show/hide widgets on the Home tab";
+    $("insightKpis").innerHTML = "";
+    const prefs = getWidgetPrefs() || {};
+    const lines = WIDGETS.map(w => {
+      const on = (prefs[w.id] !== false);
+      return (on ? "[x] " : "[ ] ") + w.label;
+    }).join("
+");
+    $("insightBody").textContent =
+      "Toggle widgets below, then click 'Ask AI about this' to close.
+
+" +
+      lines + "
+
+" +
+      "Tip: Click a widget title to open its insight popup.";
+    // build interactive list
+    const body = document.createElement("div");
+    body.style.marginTop = "10px";
+    WIDGETS.forEach(w => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:14px;padding:10px;margin-top:8px;background:rgba(255,255,255,.02)";
+      const left = document.createElement("div");
+      left.textContent = w.label;
+      left.style.fontWeight = "900";
+      const btn = document.createElement("button");
+      btn.className = "btnGhost";
+      btn.type = "button";
+      const on = (prefs[w.id] !== false);
+      btn.textContent = on ? "Hide" : "Show";
+      btn.addEventListener("click", () => {
+        prefs[w.id] = !on;
+        setWidgetPrefs(prefs);
+        applyWidgetPrefs();
+        hideInsight();
+      });
+      row.appendChild(left);
+      row.appendChild(btn);
+      body.appendChild(row);
+    });
+    // replace insightBody with interactive list
+    const holder = $("insightBody");
+    holder.innerHTML = "";
+    holder.appendChild(body);
+    // Make "Ask AI" button just close for this modal
+    $("insightGoAI").textContent = "Done";
+    $("insightGoAI").onclick = () => { hideInsight(); $("insightGoAI").textContent = "Ask AI about this"; $("insightGoAI").onclick = null; };
+    showInsight();
+  }
   });
 
     if (!TOKEN) { setStatus("missing token"); return; }
@@ -38966,6 +39199,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // Tabs: Analytics vs CRM
     bindTabs();
+    mountAnalyticsVNext();
     setActiveTab("analytics");
 
 
