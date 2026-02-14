@@ -74165,61 +74165,6 @@ window.addEventListener("DOMContentLoaded", () => {
     bindTabs();
     mountAnalyticsVNext();
     setActiveTab("analytics");
-    // --- Robust event delegation (prevents "buttons not working" when UI re-renders) ---
-    document.addEventListener("click", (ev) => {
-      const t = ev.target;
-
-      // GA sidebar nav
-      const gaBtn = t && t.closest ? t.closest(".gaBtn") : null;
-      if (gaBtn) {
-        ev.preventDefault();
-        const panel = String(gaBtn.getAttribute("data-ga") || "gaHome");
-        try { setGaPanel(panel); } catch (e) {}
-        return;
-      }
-
-      // AI insight / helper buttons (popups)
-      const aiBtn = t && t.closest ? t.closest("[data-ai]") : null;
-      if (aiBtn) {
-        ev.preventDefault();
-        const kind = String(aiBtn.getAttribute("data-ai") || "");
-        try {
-          const r = insight(kind);
-          setModal(r.title, r.sub, r.kpis, r.body);
-          openModal();
-        } catch (e) {}
-        return;
-      }
-
-      // Primary controls
-      const id = t && t.id ? String(t.id) : "";
-      if (id === "refresh") { ev.preventDefault(); try { refresh(); } catch(e) {} return; }
-      if (id === "chatSend") { ev.preventDefault(); try { sendChat(); } catch(e) {} return; }
-      if (id === "chatClear") { ev.preventDefault(); try { clearChat(); } catch(e) {} return; }
-      if (id === "liveNow") { ev.preventDefault(); try { liveCheck(); } catch(e) {} return; }
-      if (id === "liveToggle") {
-        ev.preventDefault();
-        try {
-          liveOn = !liveOn;
-          const btn = $("liveToggle");
-          if (btn) btn.textContent = liveOn ? "Pause" : "Resume";
-          setStatus(liveOn ? "live on" : "live paused");
-        } catch(e) {}
-        return;
-      }
-      if (id === "gaCustomize" || id === "gaCustomize2") { ev.preventDefault(); try { openCustomize(); } catch(e) {} return; }
-
-      // Insight modal quick actions
-      if (id === "insightClose") { ev.preventDefault(); try { hideInsight(); } catch(e) {} return; }
-      if (id === "insightGoExplore") { ev.preventDefault(); try { hideInsight(); setGaPanel("gaExplore"); } catch(e) {} return; }
-      if (id === "insightGoAI") { ev.preventDefault(); try { hideInsight(); setGaPanel("gaAI"); } catch(e) {} return; }
-    }, { capture: true });
-
-    document.addEventListener("change", (ev) => {
-      const t = ev.target;
-      if (t && t.id === "days") { try { refresh(); } catch(e) {} }
-    });
-
 
 
 
@@ -75808,6 +75753,261 @@ if ($("crmChatInput")) $("crmChatInput").addEventListener("keydown", (e) => { if
     liveCheck();
     refresh();
   });
+
+
+  // --------- vNext Analytics UI injection (sidebar + working buttons) ----------
+  function ensureModal(){
+    if (document.getElementById("aiInsightModal")) return;
+    const wrap = document.createElement("div");
+    wrap.id = "aiInsightModal";
+    wrap.style.cssText = "position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:18px;background:rgba(2,6,23,.55);z-index:99999";
+    wrap.innerHTML =
+      '<div style="width:min(860px,96vw);max-height:86vh;overflow:auto;background:var(--panel);border:1px solid rgba(255,255,255,.12);border-radius:22px;box-shadow:0 18px 60px rgba(0,0,0,.45)">' +
+        '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.10)">' +
+          '<div><div id="aiInsightTitle" style="font-size:18px;font-weight:950">AI Insight</div><div id="aiInsightSub" class="muted" style="margin-top:4px">Business-impact summary</div></div>' +
+          '<button class="btnGhost" id="aiInsightClose" type="button">Close</button>' +
+        '</div>' +
+        '<div style="padding:16px 18px">' +
+          '<div id="aiInsightKpis" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:10px 0 14px"></div>' +
+          '<div id="aiInsightBody" style="white-space:pre-wrap;line-height:1.45"></div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    document.getElementById("aiInsightClose").addEventListener("click", function(){ wrap.style.display="none"; });
+    wrap.addEventListener("click", function(e){ if (e.target === wrap) wrap.style.display="none"; });
+  }
+
+  function fmtNum(n){
+    const x = Number(n || 0);
+    if (!isFinite(x)) return "—";
+    if (x >= 1000000) return (Math.round(x/100000)/10) + "M";
+    if (x >= 10000) return (Math.round(x/100)/10) + "k";
+    return String(Math.round(x));
+  }
+  function pct(a,b){
+    a = Number(a||0); b = Math.max(1, Number(b||0));
+    return (Math.round((a/b)*1000)/10) + "%";
+  }
+
+  function openInsight(kind){
+    ensureModal();
+    const j = window.__lastAnalytics || {};
+    const sum = j.summary || {};
+    const visits = sum.visits || sum.visitors || 0;
+    const leads = sum.leads || 0;
+    const purchases = sum.purchases || 0;
+
+    const leadRate = pct(leads, visits);
+    const buyRate = pct(purchases, visits);
+
+    const kpis = [
+      { k:"Visits", v: fmtNum(visits) },
+      { k:"Leads", v: fmtNum(leads) + " (" + leadRate + ")" },
+      { k:"Purchases", v: fmtNum(purchases) + " (" + buyRate + ")" }
+    ];
+
+    const titleEl = document.getElementById("aiInsightTitle");
+    const subEl = document.getElementById("aiInsightSub");
+    const kpiEl = document.getElementById("aiInsightKpis");
+    const bodyEl = document.getElementById("aiInsightBody");
+
+    if (kpiEl){
+      kpiEl.innerHTML = "";
+      kpis.forEach(function(it){
+        const d = document.createElement("div");
+        d.style.cssText = "border:1px solid var(--line);background:rgba(124,58,237,0.08);border-radius:16px;padding:10px";
+        d.innerHTML = '<div style="font-size:12px;color:var(--muted)">' + it.k + '</div><div style="font-size:18px;font-weight:950;margin-top:2px">' + it.v + '</div>';
+        kpiEl.appendChild(d);
+      });
+    }
+
+    function setContent(t, sub, body){
+      if (titleEl) titleEl.textContent = t;
+      if (subEl) subEl.textContent = sub;
+      if (bodyEl) bodyEl.textContent = body;
+      const modal = document.getElementById("aiInsightModal");
+      if (modal) modal.style.display = "flex";
+    }
+
+    if (kind === "bottleneck"){
+      setContent(
+        "Bottleneck analysis",
+        "What to fix first to increase revenue/leads.",
+        "Your funnel right now looks like:\n" +
+        "- Visits → Leads: " + leadRate + "\n" +
+        "- Visits → Purchases: " + buyRate + "\n\n" +
+        "What this means:\n" +
+        "1) If leads are low, your landing pages aren’t turning interest into action (CTA, trust, offer clarity).\n" +
+        "2) If purchases are low but leads are decent, follow-up or pricing/checkout friction is the issue.\n\n" +
+        "Fastest next step:\n" +
+        "- Improve the top landing page CTA and remove friction (shorter form, clearer offer)."
+      );
+      return;
+    }
+    if (kind === "experiments"){
+      setContent(
+        "3 experiments to run this week",
+        "Low-effort tests that usually move leads and sales.",
+        "Experiment 1 — CTA clarity:\n" +
+        "- Make the CTA outcome-specific (e.g. “Get a quote in 60 seconds”).\n\n" +
+        "Experiment 2 — Trust + proof:\n" +
+        "- Add testimonials/logos/guarantee above the fold.\n\n" +
+        "Experiment 3 — Offer friction:\n" +
+        "- Reduce form fields and add a strong confirmation message.\n\n" +
+        "Measure: lead rate above " + leadRate + " and purchase rate above " + buyRate + "."
+      );
+      return;
+    }
+    setContent(
+      "Business performance summary",
+      "Plain-English meaning of your analytics.",
+      "Summary:\n" +
+      "- Visits: " + fmtNum(visits) + "\n" +
+      "- Leads: " + fmtNum(leads) + " (" + leadRate + ")\n" +
+      "- Purchases: " + fmtNum(purchases) + " (" + buyRate + ")\n\n" +
+      "What this means:\n" +
+      "- If lead rate is under ~1–3%, your offer/CTA clarity is the biggest lever.\n" +
+      "- If lead rate is solid but purchases are low, focus on follow-up + pricing/checkout clarity.\n\n" +
+      "Next best action:\n" +
+      "- Improve the highest-traffic landing page and make the primary CTA unavoidable."
+    );
+  }
+
+  function ensureAnalyticsSidebar(){
+    const section = document.getElementById("sectionAnalytics");
+    if (!section) return;
+
+    // If already built, skip.
+    if (section.querySelector(".gaSideV2")) return;
+
+    // Inject minimal CSS once (safe)
+    if (!document.getElementById("gaV2Styles")) {
+      const st = document.createElement("style");
+      st.id = "gaV2Styles";
+      st.textContent =
+        ".gaV2Wrap{display:flex;gap:14px;align-items:flex-start}" +
+        ".gaSideV2{width:240px;flex:0 0 240px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:12px;position:sticky;top:12px;height:fit-content}" +
+        ".gaMainV2{flex:1;min-width:0}" +
+        ".gaBtnV2{width:100%;text-align:left;border:1px solid var(--line);background:rgba(255,255,255,0.02);color:var(--ink);border-radius:14px;padding:10px 10px;font-weight:900;cursor:pointer}" +
+        ".gaBtnV2:hover{transform:translateY(-1px)}" +
+        ".gaBtnV2.active{border-color:rgba(124,58,237,0.45);background:rgba(124,58,237,0.12)}" +
+        ".gaPanelV2{display:none}.gaPanelV2.active{display:block}";
+      document.head.appendChild(st);
+    }
+
+    // Wrap existing content into Home panel
+    const wrap = document.createElement("div");
+    wrap.className = "gaV2Wrap";
+
+    const side = document.createElement("aside");
+    side.className = "gaSideV2";
+    side.innerHTML =
+      '<div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">' +
+        '<div style="width:12px;height:12px;border-radius:999px;background:var(--accent)"></div>' +
+        '<div><div style="font-weight:950">Analytics</div><div class="muted" style="font-size:12px">vNext layout</div></div>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:6px">' +
+        '<button type="button" class="gaBtnV2 active" data-panel="home">Home</button>' +
+        '<button type="button" class="gaBtnV2" data-panel="realtime">Realtime</button>' +
+        '<button type="button" class="gaBtnV2" data-panel="acq">Acquisition</button>' +
+        '<button type="button" class="gaBtnV2" data-panel="eng">Engagement</button>' +
+        '<button type="button" class="gaBtnV2" data-panel="mon">Monetization</button>' +
+        '<button type="button" class="gaBtnV2" data-panel="explore">Explore</button>' +
+        '<button type="button" class="gaBtnV2" data-panel="ai">AI Studio</button>' +
+        '<button type="button" class="gaBtnV2" data-panel="config">Configure</button>' +
+      '</div>' +
+      '<div class="muted" style="margin-top:10px">Tip: click any “AI explain” button for a business summary.</div>';
+
+    const main = document.createElement("main");
+    main.className = "gaMainV2";
+
+    const panels = document.createElement("div");
+    panels.id = "gaPanelsV2";
+
+    const home = document.createElement("section");
+    home.className = "gaPanelV2 active";
+    home.id = "gaP_home";
+
+    // Move current section content into home, but keep section element as container
+    const oldChildren = Array.from(section.childNodes);
+    oldChildren.forEach(function(n){ home.appendChild(n); });
+
+    const mkPanel = function(id, title, desc){
+      const p = document.createElement("section");
+      p.className = "gaPanelV2";
+      p.id = "gaP_" + id;
+      p.innerHTML =
+        '<div class="card span12" style="background:var(--panel2)">' +
+          '<div style="font-weight:950">' + title + '</div>' +
+          '<div class="muted" style="margin-top:4px">' + desc + '</div>' +
+          '<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">' +
+            '<button type="button" class="btnGhost" data-ai-kind="weekly">AI summary</button>' +
+            '<button type="button" class="btnGhost" data-ai-kind="bottleneck">AI bottleneck</button>' +
+            '<button type="button" class="btnGhost" data-ai-kind="experiments">AI experiments</button>' +
+          '</div>' +
+        '</div>';
+      return p;
+    };
+
+    panels.appendChild(home);
+    panels.appendChild(mkPanel("realtime","Realtime","Live activity feed and spikes."));
+    panels.appendChild(mkPanel("acq","Acquisition","Where traffic comes from and what converts."));
+    panels.appendChild(mkPanel("eng","Engagement","Top pages and actions."));
+    panels.appendChild(mkPanel("mon","Monetization","Leads and purchases trends."));
+    panels.appendChild(mkPanel("explore","Explore","Ask deeper questions and compare metrics."));
+    panels.appendChild(mkPanel("ai","AI Studio","Chat + insights (optional)."));
+    panels.appendChild(mkPanel("config","Configure","Display and reporting settings."));
+
+    main.appendChild(panels);
+    wrap.appendChild(side);
+    wrap.appendChild(main);
+
+    // Put wrap inside section
+    section.appendChild(wrap);
+  }
+
+  // Delegated clicks that won't break when the DOM changes
+  document.addEventListener("click", function(e){
+    const btn = e.target && e.target.closest ? e.target.closest("button") : null;
+    if (!btn) return;
+
+    // Sidebar navigation
+    if (btn.classList.contains("gaBtnV2")){
+      const panel = btn.getAttribute("data-panel");
+      if (!panel) return;
+      document.querySelectorAll(".gaBtnV2").forEach(function(b){ b.classList.remove("active"); });
+      btn.classList.add("active");
+      document.querySelectorAll(".gaPanelV2").forEach(function(p){ p.classList.remove("active"); });
+      const el = document.getElementById("gaP_" + panel);
+      if (el) el.classList.add("active");
+      return;
+    }
+
+    // AI explain buttons (either old data-ai attribute, or new modal buttons)
+    const kind = btn.getAttribute("data-ai-kind");
+    if (kind){
+      openInsight(kind);
+      return;
+    }
+    if (btn.hasAttribute("data-ai")){
+      // Map prompt-ish buttons to modal categories
+      const t = (btn.getAttribute("data-ai") || btn.textContent || "").toLowerCase();
+      if (t.indexOf("bottleneck") !== -1) openInsight("bottleneck");
+      else if (t.indexOf("experiment") !== -1) openInsight("experiments");
+      else openInsight("weekly");
+      return;
+    }
+  });
+
+  // Ensure layout exists after initial dashboard render
+  function afterRenderFixups(){
+    ensureAnalyticsSidebar();
+  }
+
+  // Run once now, and again after refreshes
+  try { afterRenderFixups(); } catch(e) {}
+
+
 })();`.trim());
   });
 
