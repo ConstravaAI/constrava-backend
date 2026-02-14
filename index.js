@@ -24068,6 +24068,33 @@ app.get("/storefront", asyncHandler(async (req, res) => {
 
 
 
+
+
+/* --- Vertical GA-style tabs --- */
+.gaWrap{display:flex;gap:14px;align-items:flex-start}
+.gaSide{width:230px;flex:0 0 230px;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:12px;position:sticky;top:12px;height:fit-content}
+.gaBrand{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+.gaDot{width:12px;height:12px;border-radius:99px;background:var(--accent)}
+.gaTitle{font-weight:950}
+.gaNav{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.gaBtn{width:100%;text-align:left;border:1px solid var(--line);background:rgba(255,255,255,0.02);color:var(--ink);border-radius:14px;padding:10px 10px;font-weight:900;cursor:pointer}
+.gaBtn:hover{transform:translateY(-1px)}
+.gaBtn.active{border-color:rgba(124,58,237,0.45);background:rgba(124,58,237,0.12)}
+.gaMain{flex:1;min-width:0}
+
+/* --- AI Insight Modal (Analytics) --- */
+.modalBackdrop{position:fixed;inset:0;background:rgba(2,6,23,.55);display:none;align-items:center;justify-content:center;padding:20px;z-index:9999}
+.modalBackdrop.show{display:flex}
+.modalCard{width:min(860px,96vw);max-height:min(86vh,900px);overflow:auto;background:var(--panel);border:1px solid rgba(255,255,255,.12);border-radius:22px;box-shadow:0 18px 60px rgba(0,0,0,.45)}
+.modalHead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.10)}
+.modalHead h3{margin:0;font-size:18px}
+.modalBody{padding:16px 18px}
+.modalKpis{display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:10px;margin:10px 0 14px}
+.modalKpi{border:1px solid var(--line);background:rgba(124,58,237,0.08);border-radius:16px;padding:10px}
+.modalKpi .k{font-size:12px;color:var(--muted)}
+.modalKpi .v{font-size:18px;font-weight:950;margin-top:2px}
+.modalActions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+
 /* --- Fix: analytics chat sizing --- */
 #chatCard .chatBox, #chatBox { min-height:220px; height:220px; }
 #chatCard .row { align-items:stretch; }
@@ -38723,6 +38750,174 @@ window.addEventListener("DOMContentLoaded", () => {
   
   // Default to Home panel
   setGaPanel("gaOverview");
+
+  // --- Analytics AI Insight Modal (no external AI required) ---
+  const aiModal = document.getElementById("aiModal");
+  const aiModalClose = document.getElementById("aiModalClose");
+  function openModal(){ if (aiModal) aiModal.classList.add("show"); }
+  function closeModal(){ if (aiModal) aiModal.classList.remove("show"); }
+  if (aiModalClose) aiModalClose.addEventListener("click", closeModal);
+  if (aiModal) aiModal.addEventListener("click", (e) => { if (e.target === aiModal) closeModal(); });
+
+  function fmt(n){
+    const x = Number(n || 0);
+    if (!isFinite(x)) return "—";
+    if (x >= 1_000_000) return (Math.round(x/100_000)/10) + "M";
+    if (x >= 10_000) return Math.round(x/100)/10 + "k";
+    return String(Math.round(x));
+  }
+  function pct(a,b){
+    a = Number(a||0); b = Math.max(1, Number(b||0));
+    return (Math.round((a/b)*1000)/10) + "%";
+  }
+
+  // Keep last analytics payload so the modal can summarize the business impact.
+  window.__lastAnalytics = window.__lastAnalytics || null;
+
+  function setModal(title, subtitle, kpis, body){
+    const t = document.getElementById("aiModalTitle");
+    const sub = document.getElementById("aiModalSub");
+    const k = document.getElementById("aiModalKpis");
+    const b = document.getElementById("aiModalBody");
+    if (t) t.textContent = title || "AI Insight";
+    if (sub) sub.textContent = subtitle || "Business-impact summary from the charts on this page.";
+    if (k){
+      k.innerHTML = "";
+      (kpis||[]).slice(0,3).forEach(it => {
+        const div = document.createElement("div");
+        div.className = "modalKpi";
+        div.innerHTML = `<div class="k">${it.k}</div><div class="v">${it.v}</div>`;
+        k.appendChild(div);
+      });
+    }
+    if (b) b.textContent = body || "";
+  }
+
+  function summarizeFromContext(kind){
+    const j = window.__lastAnalytics || {};
+    const sum = j.summary || {};
+    const visits = sum.visits || sum.visitors || 0;
+    const leads = sum.leads || 0;
+    const purchases = sum.purchases || 0;
+
+    const leadRate = pct(leads, visits);
+    const buyRate = pct(purchases, visits);
+
+    const kpis = [
+      { k:"Visits", v: fmt(visits) },
+      { k:"Leads", v: fmt(leads) + " (" + leadRate + ")" },
+      { k:"Purchases", v: fmt(purchases) + " (" + buyRate + ")" },
+    ];
+
+    const topPages = (j.top_pages || []).slice(0, 5).map(p => (p.path || p.page || "page") + " (" + (p.views||p.count||0) + ")");
+
+    if (kind === "bottleneck"){
+      return {
+        title: "Bottleneck analysis",
+        subtitle: "What to fix first to increase revenue/leads.",
+        kpis,
+        body:
+`Your funnel right now looks like:
+- Visits → Leads: ${leadRate}
+- Visits → Purchases: ${buyRate}
+
+What this means:
+1) If leads are low, your landing pages aren’t turning interest into action (CTA, trust, offer clarity).
+2) If purchases are low but leads are decent, follow-up or pricing/checkout friction is the issue.
+
+Next best move (fastest impact):
+- Pick the top landing page and tighten the CTA + reduce friction.
+Top pages to start with:
+${topPages.length ? topPages.map(x=>"• "+x).join("\n") : "• (No page data yet — seed some events)"}`
+      };
+    }
+
+    if (kind === "experiments"){
+      return {
+        title: "3 experiments to run this week",
+        subtitle: "Low-effort tests that usually move leads and sales.",
+        kpis,
+        body:
+`Experiment 1 — CTA clarity:
+- Change the primary CTA copy to a concrete outcome (e.g. “Get a quote in 60 seconds”).
+- Success metric: lead rate increases above ${leadRate}.
+
+Experiment 2 — Trust + proof:
+- Add 2–3 proof elements above the fold (testimonial, logos, guarantee).
+- Success metric: more leads from top pages.
+
+Experiment 3 — Offer friction:
+- Reduce form fields (email + 1 question), add optional phone.
+- Success metric: more form completions without hurting purchase rate.
+
+If you want, I can turn these into a “plan” checklist inside the UI next.`
+      };
+    }
+
+    if (kind === "pages"){
+      const pageLine = topPages.length ? topPages.map(x=>"• "+x).join("\n") : "• (No page data yet)";
+      return {
+        title: "Which pages to prioritize",
+        subtitle: "Highest leverage pages based on traffic + funnel.",
+        kpis,
+        body:
+`Prioritize pages that get traffic AND are closest to conversion.
+
+Start here:
+${pageLine}
+
+What to change on each:
+- Strong headline (what you do + for who + result)
+- Single primary CTA
+- Social proof above the fold
+- Remove distractions (extra links) on conversion pages`
+      };
+    }
+
+    // default weekly summary
+    return {
+      title: "Weekly business summary",
+      subtitle: "What the data means for performance.",
+      kpis,
+      body:
+`Summary:
+- You had about ${fmt(visits)} visits in the selected window.
+- You generated ${fmt(leads)} leads (${leadRate} of visits).
+- You got ${fmt(purchases)} purchases (${buyRate} of visits).
+
+What this means:
+- If lead rate is under ~1–3%, your CTA/offer clarity is likely the biggest lever.
+- If lead rate is solid but purchases are low, focus on follow-up, pricing page clarity, and friction in checkout.
+
+Quick next step:
+- Improve the top landing page and make your CTA unavoidable.`
+    };
+  }
+
+  function openInsightFromButton(text){
+    // Map button intent to summary type
+    const t = String(text||"").toLowerCase();
+    let kind = "weekly";
+    if (t.includes("bottleneck")) kind = "bottleneck";
+    else if (t.includes("experiment")) kind = "experiments";
+    else if (t.includes("priorit")) kind = "pages";
+    else if (t.includes("anomal")) kind = "weekly";
+    const r = summarizeFromContext(kind);
+    setModal(r.title, r.subtitle, r.kpis, r.body);
+    openModal();
+  }
+
+  // Replace AI chips behavior: show modal instead of sending to chat
+  document.querySelectorAll("[data-ai]").forEach(el => {
+    el.addEventListener("click", () => openInsightFromButton(el.getAttribute("data-ai") || el.textContent));
+  });
+
+  // Optional modal actions
+  const a1 = document.getElementById("aiModalAction1");
+  const a2 = document.getElementById("aiModalAction2");
+  if (a1) a1.addEventListener("click", () => { closeModal(); setGaPanel && setGaPanel("gaExplore"); });
+  if (a2) a2.addEventListener("click", () => { closeModal(); setGaPanel && setGaPanel("gaOverview"); });
+
 }
   document.querySelectorAll(".gaBtn").forEach(btn => {
     btn.addEventListener("click", () => setGaPanel(btn.getAttribute("data-ga")));
