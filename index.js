@@ -47756,7 +47756,7 @@ app.get("/dashboard.js", async (req, res) => {
       if(!panel) return;
 
       if(state.activeTab === "home"){
-        panel.innerHTML = `
+        panel.innerHTML = \`
           <div class="two">
             <div class="chartBox">
               <div class="row" style="justify-content:space-between">
@@ -47815,30 +47815,30 @@ app.get("/dashboard.js", async (req, res) => {
               <div class="footerNote" style="margin-top:10px">Seeder requires ENABLE_DEMO_SEED=true. Sim buttons work any time.</div>
             </div>
           </div>
-        `;
+        \`;
         // funnel chips
         const f = [
           ["Visits", m.visits_range || 0],
           ["Leads", m.leads_range || 0],
           ["Purchases", m.purchases_range || 0],
         ];
-        $("funnelChips").innerHTML = f.map(x => `<span class="chip" style="cursor:default">${escapeHtml(x[0])} <b>${fmt(x[1])}</b></span>`).join(" ");
+        $("funnelChips").innerHTML = f.map(x => \`<span class="chip" style="cursor:default">\${escapeHtml(x[0])} <b>\${fmt(x[1])}</b></span>\`).join(" ");
 
         // top pages table
         const pages = (m.top_pages_range || []).slice(0, 8);
         if(!pages.length){
-          $("topPages").innerHTML = `<div class="footerNote">No page data yet. Click “Seed demo data”, then Refresh.</div>`;
+          $("topPages").innerHTML = \`<div class="footerNote">No page data yet. Click “Seed demo data”, then Refresh.</div>\`;
         }else{
-          $("topPages").innerHTML = `
+          $("topPages").innerHTML = \`
             <table class="table">
-              ${pages.map(p => `
+              \${pages.map(p => \`
                 <tr>
-                  <td style="width:70%"><b>${escapeHtml(p.page)}</b></td>
-                  <td style="width:30%;text-align:right">${fmt(p.views)} views</td>
+                  <td style="width:70%"><b>\${escapeHtml(p.page)}</b></td>
+                  <td style="width:30%;text-align:right">\${fmt(p.views)} views</td>
                 </tr>
-              `).join("")}
+              \`).join("")}
             </table>
-          `;
+          \`;
         }
 
         // reload chart
@@ -47848,7 +47848,7 @@ app.get("/dashboard.js", async (req, res) => {
       }
 
       else if(state.activeTab === "realtime"){
-        panel.innerHTML = `
+        panel.innerHTML = \`
           <div class="chartBox">
             <div class="row" style="justify-content:space-between">
               <div>
@@ -47858,16 +47858,16 @@ app.get("/dashboard.js", async (req, res) => {
               <span class="chip" data-ai="realtime">AI explain</span>
             </div>
             <div style="margin-top:10px" class="row">
-              <div class="card" style="flex:1"><h4>New page_views</h4><div class="big">${fmt(m.page_views_recent || 0)}</div><div class="small">last few minutes</div></div>
-              <div class="card" style="flex:1"><h4>Last event</h4><div class="big" style="font-size:16px">${escapeHtml(m.last_event || "—")}</div><div class="small">${escapeHtml(m.last_event_time || "")}</div></div>
+              <div class="card" style="flex:1"><h4>New page_views</h4><div class="big">\${fmt(m.page_views_recent || 0)}</div><div class="small">last few minutes</div></div>
+              <div class="card" style="flex:1"><h4>Last event</h4><div class="big" style="font-size:16px">\${escapeHtml(m.last_event || "—")}</div><div class="small">\${escapeHtml(m.last_event_time || "")}</div></div>
             </div>
             <div class="footerNote" style="margin-top:10px">Tip: Use “Sim page_view” on Home to watch this change.</div>
           </div>
-        `;
+        \`;
       }
 
       else if(state.activeTab === "acq"){
-        panel.innerHTML = `
+        panel.innerHTML = \`
           <div class="chartBox">
             <div class="row" style="justify-content:space-between">
               <div>
@@ -47879,12 +47879,12 @@ app.get("/dashboard.js", async (req, res) => {
             <canvas id="srcCanvas" width="900" height="260"></canvas>
             <div class="footerNote" style="margin-top:10px">Customize: seed a new source mix in /demo/seed (later).</div>
           </div>
-        `;
+        \`;
         drawSources();
       }
 
       else if(state.activeTab === "eng"){
-        panel.innerHTML = `
+        panel.innerHTML = \`
           <div class="chartBox">
             <div class="row" style="justify-content:space-between">
               <div>
@@ -47895,12 +47895,12 @@ app.get("/dashboard.js", async (req, res) => {
             </div>
             <canvas id="evCanvas" width="900" height="260"></canvas>
           </div>
-        `;
+        \`;
         drawEvents();
       }
 
       else if(state.activeTab === "mon"){
-        panel.innerHTML = `
+        panel.innerHTML = \`
           <div class="chartBox">
             <div class="row" style="justify-content:space-between">
               <div>
@@ -47910,17 +47910,17 @@ app.get("/dashboard.js", async (req, res) => {
               <span class="chip" data-ai="monetization">AI explain</span>
             </div>
             <div class="row" style="margin-top:10px; gap:12px; flex-wrap:wrap">
-              <div class="card" style="flex:1"><h4>Lead rate</h4><div class="big">${((m.visits_range? (m.leads_range/m.visits_range):0)*100).toFixed(1)}%</div><div class="small">leads / visits</div></div>
-              <div class="card" style="flex:1"><h4>Purchase rate</h4><div class="big">${((m.visits_range? (m.purchases_range/m.visits_range):0)*100).toFixed(1)}%</div><div class="small">purchases / visits</div></div>
-              <div class="card" style="flex:1"><h4>Avg order (demo)</h4><div class="big">$${fmt(m.avg_order_value || 79)}</div><div class="small">assumption</div></div>
+              <div class="card" style="flex:1"><h4>Lead rate</h4><div class="big">\${((m.visits_range? (m.leads_range/m.visits_range):0)*100).toFixed(1)}%</div><div class="small">leads / visits</div></div>
+              <div class="card" style="flex:1"><h4>Purchase rate</h4><div class="big">\${((m.visits_range? (m.purchases_range/m.visits_range):0)*100).toFixed(1)}%</div><div class="small">purchases / visits</div></div>
+              <div class="card" style="flex:1"><h4>Avg order (demo)</h4><div class="big">$\${fmt(m.avg_order_value || 79)}</div><div class="small">assumption</div></div>
             </div>
             <div class="footerNote" style="margin-top:10px">Later: pull revenue from Stripe/Shopify and build real ROAS.</div>
           </div>
-        `;
+        \`;
       }
 
       else if(state.activeTab === "explore"){
-        panel.innerHTML = `
+        panel.innerHTML = \`
           <div class="chartBox">
             <div class="row" style="justify-content:space-between">
               <div>
@@ -47933,11 +47933,11 @@ app.get("/dashboard.js", async (req, res) => {
               <b>Coming next:</b> segment builder, cohorts, and “one fix” suggestions tied to page + event evidence.
             </div>
           </div>
-        `;
+        \`;
       }
 
       else if(state.activeTab === "studio"){
-        panel.innerHTML = `
+        panel.innerHTML = \`
           <div class="chartBox">
             <div class="row" style="justify-content:space-between">
               <div>
@@ -47950,11 +47950,11 @@ app.get("/dashboard.js", async (req, res) => {
               Add “AI helpers” beyond chat: one-click experiment generator, CTA rewrite, funnel diagnosis, and anomaly alerts.
             </div>
           </div>
-        `;
+        \`;
       }
 
       else if(state.activeTab === "cfg"){
-        panel.innerHTML = `
+        panel.innerHTML = \`
           <div class="chartBox">
             <div class="row" style="justify-content:space-between">
               <div>
@@ -47972,7 +47972,7 @@ app.get("/dashboard.js", async (req, res) => {
               </ul>
             </div>
           </div>
-        `;
+        \`;
       }
 
       // Delegated handlers inside panel
