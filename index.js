@@ -47664,19 +47664,19 @@ app.get("/dashboard.js", async (req, res) => {
       let focusLine = "";
       if (focus) focusLine = "<div class='footerNote'>Focus: <b>" + escapeHtml(focus) + "</b></div>";
 
-      return `
-        <div>
-          <div><b>What this means for the business</b></div>
-          <ul>${bullets.map(b => "<li>"+b+"</li>").join("")}</ul>
-          <div style="margin-top:10px"><b>Top opportunities</b></div>
-          <ul>${actions.map(a => "<li>"+a+"</li>").join("")}</ul>
-          <div style="margin-top:10px"><b>Top pages</b></div>
-          ${topList}
-          ${focusLine}
-          <div class="footerNote">This is a demo “AI explain” panel using simple rules. You can later swap in OpenAI for deeper reasoning.</div>
-        </div>
-      `;
-    }
+      return (
+        '<div>'
+        + '<div><b>What this means for the business</b></div>'
+        + '<ul>' + bullets.map(b => "<li>" + b + "</li>").join("") + '</ul>'
+        + '<div style="margin-top:10px"><b>Top opportunities</b></div>'
+        + '<ul>' + actions.map(a => "<li>" + a + "</li>").join("") + '</ul>'
+        + '<div style="margin-top:10px"><b>Top pages</b></div>'
+        + topList
+        + focusLine
+        + '<div class="footerNote">This is a demo “AI explain” panel using simple rules. You can later swap in OpenAI for deeper reasoning.</div>'
+        + '</div>'
+      );
+}
 
     function escapeHtml(s){
       return String(s ?? "")
