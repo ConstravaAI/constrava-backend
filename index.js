@@ -47710,30 +47710,30 @@ app.get("/dashboard.js", async (req, res) => {
       const purchases = m.purchases_range || 0;
       const cta = m.cta_range || 0;
 
-      root.innerHTML = `
-        <div class="grid">
-          <aside class="side">
-            <h3>Analytics</h3>
-            <div class="footerNote">GA-style nav + AI helpers</div>
-            <div class="navv" id="navv">
-              ${tabs.map(t => `
-                <button class="vbtn ${state.activeTab===t.key ? "active" : ""}" data-kt="${t.key}">${t.label}</button>
-              `).join("")}
-            </div>
-          </aside>
+      const navHtml = tabs.map(t => (
+        '<button class="vbtn '
+        + (state.activeTab===t.key ? 'active' : '')
+        + '" data-kt="' + escapeHtml(t.key) + '">' + escapeHtml(t.label) + '</button>'
+      )).join('');
 
-          <section class="content">
-            <div class="cards">
-              <div class="card"><h4>Visits</h4><div class="big">${fmt(visits)}</div><div class="small">Total visits in range</div></div>
-              <div class="card"><h4>Leads</h4><div class="big">${fmt(leads)}</div><div class="small">Lead events captured</div></div>
-              <div class="card"><h4>Purchases</h4><div class="big">${fmt(purchases)}</div><div class="small">Purchase events captured</div></div>
-              <div class="card"><h4>CTA clicks</h4><div class="big">${fmt(cta)}</div><div class="small">CTA events captured</div></div>
-            </div>
-
-            <div id="panel"></div>
-          </section>
-        </div>
-      `;
+      root.innerHTML = (
+        '<div class="grid">'
+        + '<aside class="side">'
+        + '<h3>Analytics</h3>'
+        + '<div class="footerNote">GA-style nav + AI helpers</div>'
+        + '<div class="navv" id="navv">' + navHtml + '</div>'
+        + '</aside>'
+        + '<section class="content">'
+        + '<div class="cards">'
+        + '<div class="card"><h4>Visits</h4><div class="big">' + fmt(visits) + '</div><div class="small">Total visits in range</div></div>'
+        + '<div class="card"><h4>Leads</h4><div class="big">' + fmt(leads) + '</div><div class="small">Lead events captured</div></div>'
+        + '<div class="card"><h4>Purchases</h4><div class="big">' + fmt(purchases) + '</div><div class="small">Purchase events captured</div></div>'
+        + '<div class="card"><h4>CTA clicks</h4><div class="big">' + fmt(cta) + '</div><div class="small">CTA events captured</div></div>'
+        + '</div>'
+        + '<div id="panel"></div>'
+        + '</section>'
+        + '</div>'
+      );
 
       // sidebar clicks (delegated)
       $("navv").addEventListener("click", (e) => {
