@@ -47308,2202 +47308,923 @@ async function activate(plan){
    Dashboard UI
    GET /dashboard?token=...
 ----------------------------*/
-app.get("/dashboard", asyncHandler(async (req, res) => {
-  setNoStore(res);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const token = req.query.token;
-  const site = await getSiteByToken(token);
-  if (!site) return res.status(401).send("Unauthorized. Add ?token=YOUR_TOKEN");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  const plan = site.plan || "unpaid";
-  if (plan === "unpaid") return res.redirect("/storefront?token=" + encodeURIComponent(token));
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  // Clean dashboard: HTML + CSS only. All behavior comes from /dashboard.js
-  res.send(`<!doctype html>
-<html lang="en">
+app.get("/dashboard", async (req, res) => {
+  // Token-auth demo dashboard (single-file UI served from backend)
+  // URL: /dashboard?token=...
+  const token = String(req.query.token || "").trim();
+
+  res.type("text/html").send(`<!doctype html>
+<html>
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Constrava Dashboard</title>
-<style>
-:root{
-  --bg:#ffffff;
-  --ink:#0b0b12;
-  --muted:#5b5b72;
-  --card:#f7f5ff;
-  --card2:#fbfaff;
-  --border:#d8ccff;
-  --purple:#6d28d9;
-  --purple2:#7c3aed;
-  --shadow:0 18px 60px rgba(41, 8, 84, .12);
-}
-*{box-sizing:border-box}
-html,body{height:100%}
-body{
-  margin:0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-  color:var(--ink);
-  background: radial-gradient(1200px 700px at 20% -10%, rgba(124,58,237,.18), rgba(255,255,255,0) 60%),
-              radial-gradient(900px 500px at 90% 10%, rgba(124,58,237,.10), rgba(255,255,255,0) 55%),
-              linear-gradient(180deg, #ffffff, #fbf9ff 55%, #ffffff);
-}
-a{color:var(--purple)}
-.wrap{max-width:1180px;margin:18px auto;padding:0 16px;}
-.top{
-  background: linear-gradient(180deg, rgba(124,58,237,.12), rgba(124,58,237,.06));
-  border:1px solid var(--border);
-  border-radius:18px;
-  box-shadow:var(--shadow);
-  padding:16px;
-}
-.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-.brand{display:flex;align-items:center;gap:12px}
-.logo{
-  width:42px;height:42px;border-radius:14px;
-  background: linear-gradient(135deg, rgba(124,58,237,.95), rgba(109,40,217,.55));
-  border:1px solid rgba(255,255,255,.35);
-}
-h1{font-size:20px;margin:0}
-.sub{margin:0;color:var(--muted);font-size:12px}
-.controls{margin-top:12px;display:flex;gap:10px;flex-wrap:wrap}
-.btn, select, input, textarea{
-  border:1px solid var(--border);
-  background:rgba(255,255,255,.85);
-  color:var(--ink);
-  border-radius:12px;
-  padding:10px 12px;
-  font-weight:650;
-}
-.btn{cursor:pointer}
-.btn.primary{background:linear-gradient(180deg, rgba(124,58,237,.18), rgba(124,58,237,.08))}
-.btn.solid{background:linear-gradient(180deg, var(--purple2), var(--purple)); color:#fff; border-color:rgba(255,255,255,.25)}
-.pill{
-  padding:10px 14px;
-  border-radius:999px;
-  border:1px solid var(--border);
-  background:rgba(255,255,255,.75);
-  font-weight:750;
-}
-.tabs{
-  margin-top:14px;
-  display:flex;
-  gap:10px;
-  align-items:center;
-  justify-content:flex-start;
-  background:rgba(255,255,255,.65);
-  border:1px solid var(--border);
-  border-radius:16px;
-  padding:10px;
-}
-.tabBtn{cursor:pointer}
-.tip{margin-left:auto;color:var(--muted);font-size:12px}
-.section{margin-top:14px;}
-#sectionCRM{display:none}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Constrava Dashboard</title>
+  <style>
+    :root{
+      --bg1:#f7f3ff; --bg2:#ffffff; --card:#ffffffcc;
+      --ink:#131125; --muted:#6b6288;
+      --p1:#7c3aed; --p2:#a78bfa; --p3:#ede9fe;
+      --line:#d9cffc; --shadow: 0 18px 60px rgba(20,12,60,.14);
+      --r:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      color:var(--ink);
+      background: radial-gradient(900px 500px at 15% 0%, rgba(167,139,250,.35), transparent 60%),
+                  radial-gradient(900px 500px at 85% 20%, rgba(124,58,237,.18), transparent 55%),
+                  linear-gradient(180deg, var(--bg1), var(--bg2));
+      min-height:100vh;
+    }
+    .wrap{max-width:1220px;margin:26px auto;padding:0 18px}
+    .shell{
+      border:1px solid var(--line);
+      border-radius: var(--r);
+      background: linear-gradient(180deg, rgba(255,255,255,.75), rgba(255,255,255,.55));
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .topbar{
+      padding:18px 18px 14px 18px;
+      border-bottom:1px solid var(--line);
+      background: linear-gradient(180deg, rgba(167,139,250,.18), rgba(255,255,255,.0));
+    }
+    .brandRow{display:flex; align-items:center; gap:12px;}
+    .logo{
+      width:44px;height:44px;border-radius:14px;
+      background: radial-gradient(circle at 30% 30%, var(--p2), var(--p1));
+      box-shadow: 0 12px 30px rgba(124,58,237,.22);
+    }
+    .brand h1{margin:0;font-size:18px;letter-spacing:.2px}
+    .brand p{margin:2px 0 0;color:var(--muted);font-size:12px}
+    .tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px}
+    .pill, button, select, input, textarea{
+      border:1px solid var(--line);
+      background:#fff;
+      border-radius:14px;
+      padding:10px 12px;
+      font-size:14px;
+      color:var(--ink);
+      outline:none;
+    }
+    button{cursor:pointer}
+    button.primary{
+      background: linear-gradient(180deg, var(--p1), #5b21b6);
+      border-color: rgba(124,58,237,.45);
+      color:#fff;
+      box-shadow: 0 12px 26px rgba(124,58,237,.18);
+    }
+    button.ghost{background: rgba(255,255,255,.6)}
+    button:disabled, .disabled{
+      opacity:.55; cursor:not-allowed; filter:saturate(.5);
+    }
+    select{padding:10px 12px}
+    .status{
+      margin-left:auto;
+      display:flex;align-items:center;gap:10px;
+      padding:10px 12px;
+      background: rgba(237,233,254,.85);
+      border:1px solid var(--line);
+      border-radius: 999px;
+      font-weight:600;
+    }
+    .dot{width:10px;height:10px;border-radius:50%;background: #22c55e; box-shadow: 0 0 0 4px rgba(34,197,94,.15);}
+    .subbar{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:12px 18px;
+      gap:12px;
+    }
+    .tabs{display:flex;gap:10px;align-items:center}
+    .tabbtn{padding:9px 12px;border-radius:999px;background:rgba(255,255,255,.7)}
+    .tabbtn.active{background:rgba(237,233,254,.9); border-color: rgba(124,58,237,.45)}
+    .hint{color:var(--muted);font-size:12px}
+    .main{padding:18px}
+    .grid{
+      display:grid;
+      grid-template-columns: 260px 1fr;
+      gap:14px;
+      align-items:start;
+    }
+    .side{
+      position:sticky; top:16px;
+      border:1px solid var(--line);
+      border-radius: var(--r);
+      background: rgba(255,255,255,.72);
+      padding:14px;
+      box-shadow: 0 10px 30px rgba(20,12,60,.08);
+    }
+    .side h3{margin:0 0 8px 0;font-size:14px}
+    .navv{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+    .vbtn{
+      width:100%;
+      text-align:left;
+      padding:10px 12px;
+      border-radius:14px;
+      background: rgba(255,255,255,.7);
+    }
+    .vbtn.active{
+      background: rgba(237,233,254,.95);
+      border-color: rgba(124,58,237,.55);
+      box-shadow: 0 10px 22px rgba(124,58,237,.10);
+      font-weight:700;
+    }
+    .content{
+      border:1px solid var(--line);
+      border-radius: var(--r);
+      background: rgba(255,255,255,.72);
+      padding:16px;
+      box-shadow: 0 10px 30px rgba(20,12,60,.08);
+      min-height:520px;
+    }
+    .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px}
+    .card{
+      border:1px solid var(--line);
+      border-radius: var(--r);
+      background: rgba(255,255,255,.75);
+      padding:12px;
+    }
+    .card h4{margin:0;font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.2px;text-transform:uppercase}
+    .big{font-size:26px;font-weight:800;margin-top:6px}
+    .small{color:var(--muted);font-size:12px;margin-top:6px}
+    .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+    .row > *{flex:0 0 auto}
+    .two{display:grid;grid-template-columns: 1.2fr .8fr; gap:12px}
+    .chartBox{
+      border:1px solid var(--line);
+      border-radius: var(--r);
+      background: rgba(255,255,255,.6);
+      padding:12px;
+    }
+    canvas{width:100%;height:260px}
+    .table{width:100%;border-collapse:separate;border-spacing:0 8px}
+    .table td{padding:10px 12px;background:rgba(255,255,255,.65);border:1px solid var(--line)}
+    .table td:first-child{border-radius:12px 0 0 12px}
+    .table td:last-child{border-radius:0 12px 12px 0}
+    .chip{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:8px 10px;
+      border-radius:999px;
+      background: rgba(237,233,254,.9);
+      border:1px solid rgba(124,58,237,.35);
+      color:#4c1d95;
+      font-weight:700;
+      cursor:pointer;
+      user-select:none;
+    }
+    .chip:active{transform: translateY(1px)}
+    .mutedBox{
+      padding:12px;border:1px dashed rgba(124,58,237,.35);
+      border-radius: var(--r); background: rgba(237,233,254,.35);
+      color: var(--muted);
+    }
+    /* Modal */
+    .modalBack{
+      position:fixed; inset:0;
+      background: rgba(10,8,20,.45);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+      z-index: 50;
+    }
+    .modal{
+      width:min(860px, 96vw);
+      background: rgba(255,255,255,.92);
+      border:1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: 0 30px 90px rgba(10,8,20,.40);
+      overflow:hidden;
+    }
+    .modalTop{
+      padding:14px 16px;
+      display:flex;align-items:center;justify-content:space-between;gap:12px;
+      border-bottom:1px solid var(--line);
+      background: linear-gradient(180deg, rgba(167,139,250,.24), rgba(255,255,255,.0));
+    }
+    .modalTop b{font-size:14px}
+    .modalBody{padding:16px;max-height:min(70vh,720px);overflow:auto}
+    .modalBody ul{margin:8px 0 0 18px}
+    .footerNote{color:var(--muted);font-size:12px;margin-top:12px}
+    @media (max-width: 980px){
+      .cards{grid-template-columns:repeat(2,1fr)}
+      .two{grid-template-columns:1fr}
+      .grid{grid-template-columns:1fr}
+      .side{position:relative;top:auto}
+      .status{margin-left:0}
+      .subbar{flex-wrap:wrap}
+    }
+  </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="top">
-    <div class="row brand">
-      <div class="logo"></div>
-      <div>
-        <h1>Constrava Dashboard</h1>
-        <p class="sub">Token-auth dashboard • secure it later with accounts if desired</p>
+  <div class="wrap">
+    <div class="shell">
+      <div class="topbar">
+        <div class="brandRow">
+          <div class="logo"></div>
+          <div class="brand">
+            <h1>Constrava Dashboard</h1>
+            <p>Token-auth dashboard • secure it later with accounts if desired</p>
+          </div>
+          <div class="status" id="statusPill" title="Backend status">
+            <span class="dot" id="statusDot"></span>
+            <span id="statusText">Status: ready</span>
+          </div>
+        </div>
+
+        <div class="tools">
+          <select id="daysSel" title="Time window">
+            <option value="1">1 day</option>
+            <option value="7" selected>7 days</option>
+            <option value="30">30 days</option>
+          </select>
+
+          <button id="seedBtn" class="ghost">Seed demo data</button>
+          <button id="aiBtn" class="primary">Generate AI report</button>
+          <button id="refreshBtn" class="ghost">Refresh</button>
+          <button id="plansBtn" class="ghost">Plans</button>
+          <button id="crmBtnTop" class="ghost">CRM</button>
+        </div>
+      </div>
+
+      <div class="subbar">
+        <div class="tabs">
+          <button class="tabbtn active" id="tabAnalytics">Analytics</button>
+          <button class="tabbtn" id="tabCRM">CRM</button>
+        </div>
+        <div class="hint">Tip: Use the sidebar tabs in Analytics • Click any “AI explain” to get a popup</div>
+      </div>
+
+      <div class="main">
+        <div id="analyticsRoot"></div>
+        <div id="crmRoot" style="display:none">
+          <div class="mutedBox">
+            <b>CRM is under development.</b>
+            <div style="margin-top:6px">We’re building a “copilot” that can reason over raw emails, call notes, and forms. For now, Analytics is the primary demo.</div>
+          </div>
+        </div>
       </div>
     </div>
+  </div>
 
-    <div class="controls">
-      <select id="days">
-        <option value="1">1 day</option>
-        <option value="7" selected>7 days</option>
-        <option value="30">30 days</option>
-      </select>
-
-      <button class="btn primary" id="btnSeed">Seed demo data</button>
-      <button class="btn primary" id="btnAiReport">Generate AI report</button>
-      <button class="btn primary" id="btnRefresh">Refresh</button>
-
-      <button class="btn" id="btnPlans">Plans</button>
-      <button class="btn" id="tabCRM">CRM</button>
-
-      <span class="pill" id="statusPill">Status: ready</span>
-    </div>
-
-    <div class="tabs">
-      <button class="btn tabBtn" id="tabAnalytics">Analytics</button>
-      <button class="btn tabBtn" id="tabCRMTop">CRM</button>
-      <div class="tip">Tip: Use the sidebar tabs in Analytics • Click any “AI explain” to get a popup</div>
+  <div class="modalBack" id="modalBack">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modalTop">
+        <b id="modalTitle">AI summary</b>
+        <button id="modalClose" class="ghost">Close</button>
+      </div>
+      <div class="modalBody" id="modalBody"></div>
     </div>
   </div>
 
-  <div class="section" id="sectionAnalytics">
-    <div id="analyticsApp" class="pill" style="border-radius:16px; width:100%; padding:14px; font-weight:650;">Loading analytics...</div>
-  </div>
-
-  <div class="section" id="sectionCRM">
-    <div class="pill" style="border-radius:16px; width:100%; padding:14px;">CRM is under development.</div>
-  </div>
-</div>
-
-<script>
-  window.CONSTRAVA_TOKEN = "{{TOKEN}}";
-</script>
-<script src="/dashboard.js?token={{TOKEN}}"></script>
+  <script>
+    window.CONSTRAVA_TOKEN = ${JSON.stringify(token)};
+  </script>
+  <script src="/dashboard.js?token=${encodeURIComponent(token)}"></script>
 </body>
-</html>`.replace(/\{\{TOKEN\}\}/g, token));
-}));
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* ---------------------------
-   Dashboard client JS
-   GET /dashboard.js?token=...
-----------------------------*/
-app.get("/dashboard.js", (req, res) => {
-  setNoStore(res);
-  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  res.send(String.raw`
-(() => {
-  "use strict";
-
-  const qs = (sel, root) => (root || document).querySelector(sel);
-  const qsa = (sel, root) => Array.from((root || document).querySelectorAll(sel));
-  const byId = (id) => document.getElementById(id);
-
-  const TOKEN =
-    String(window.CONSTRAVA_TOKEN || "") ||
-    (new URLSearchParams(location.search).get("token") || "");
-
-  function api(path) {
-    const u = new URL(path, location.origin);
-    if (TOKEN) u.searchParams.set("token", TOKEN);
-    return u.toString();
-  }
-
-  // ---------- Modal ----------
-  function ensureModal() {
-    let m = byId("aiModal");
-    if (m) return m;
-
-    m = document.createElement("div");
-    m.id = "aiModal";
-    m.style.cssText = "position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:9999;background:rgba(15,10,30,.35);padding:18px;";
-    m.innerHTML =
-      '<div id="aiModalCard" style="max-width:860px;width:100%;background:#fff;border:1px solid #d8ccff;border-radius:18px;box-shadow:0 25px 80px rgba(22,7,50,.22);overflow:hidden;">' +
-        '<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:14px 16px;background:linear-gradient(180deg, rgba(124,58,237,.14), rgba(124,58,237,.06));border-bottom:1px solid #d8ccff;">' +
-          '<div style="font-weight:850">AI insight</div>' +
-          '<button id="aiModalClose" class="btn" style="padding:8px 10px;border-radius:12px;">Close</button>' +
-        "</div>" +
-        '<div id="aiModalBody" style="padding:16px;line-height:1.45;color:#0b0b12;">...</div>' +
-        '<div style="padding:14px 16px;border-top:1px solid #d8ccff;display:flex;gap:10px;flex-wrap:wrap;background:#fbfaff;">' +
-          '<button id="aiModalAction1" class="btn solid" style="padding:10px 12px;border-radius:12px;">Create a next step</button>' +
-          '<button id="aiModalAction2" class="btn primary" style="padding:10px 12px;border-radius:12px;">Show supporting metrics</button>' +
-        "</div>" +
-      "</div>";
-    document.body.appendChild(m);
-
-    byId("aiModalClose").addEventListener("click", () => (m.style.display = "none"));
-    m.addEventListener("click", (e) => { if (e.target === m) m.style.display = "none"; });
-    return m;
-  }
-
-  function openModal(html) {
-    const m = ensureModal();
-    byId("aiModalBody").innerHTML = html;
-    m.style.display = "flex";
-  }
-
-  // ---------- Layout mount ----------
-  function mountAnalyticsShell() {
-    const host = byId("analyticsApp");
-    if (!host) return;
-
-    host.innerHTML = "";
-
-    const root = document.createElement("div");
-    root.id = "gaRoot";
-    root.style.cssText = "display:grid;grid-template-columns:230px 1fr;gap:14px;align-items:start;";
-
-    const sidebar = document.createElement("div");
-    sidebar.id = "gaSidebar";
-    sidebar.style.cssText = "position:sticky;top:14px;border:1px solid #d8ccff;border-radius:18px;background:rgba(255,255,255,.75);box-shadow:0 18px 60px rgba(41,8,84,.10);overflow:hidden;";
-
-    const sbTop = document.createElement("div");
-    sbTop.style.cssText = "padding:12px 12px;background:linear-gradient(180deg, rgba(124,58,237,.14), rgba(124,58,237,.06));border-bottom:1px solid #d8ccff;";
-    sbTop.innerHTML = '<div style="font-weight:900">Analytics</div><div style="font-size:12px;color:#5b5b72;margin-top:2px">GA-style nav + AI helpers</div>';
-
-    const nav = document.createElement("div");
-    nav.style.cssText = "padding:10px;display:flex;flex-direction:column;gap:8px;";
-    const items = [
-      ["home","Home"],["realtime","Realtime"],["acq","Acquisition"],["eng","Engagement"],
-      ["mon","Monetization"],["explore","Explore"],["ai","AI Studio"],["cfg","Configure"]
-    ];
-    for (const it of items) {
-      const b = document.createElement("button");
-      b.className = "btn";
-      b.setAttribute("data-ga-panel", it[0]);
-      b.style.cssText = "text-align:left;border-radius:14px;padding:10px 12px;background:rgba(255,255,255,.8);";
-      b.textContent = it[1];
-      nav.appendChild(b);
-    }
-
-    sidebar.appendChild(sbTop);
-    sidebar.appendChild(nav);
-
-    const main = document.createElement("div");
-    main.id = "gaMain";
-    main.innerHTML = buildHomePanel();
-
-    root.appendChild(sidebar);
-    root.appendChild(main);
-    host.appendChild(root);
-
-    setActivePanel("home");
-  }
-
-  function card(title, subtitle, innerHtml, actionsHtml) {
-    return (
-      '<div style="border:1px solid #d8ccff;border-radius:18px;background:rgba(255,255,255,.72);box-shadow:0 18px 60px rgba(41,8,84,.09);overflow:hidden;">' +
-        '<div style="padding:12px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between;background:#fbfaff;border-bottom:1px solid #d8ccff;">' +
-          '<div>' +
-            '<div style="font-weight:900">' + title + "</div>" +
-            '<div style="font-size:12px;color:#5b5b72">' + (subtitle || "") + "</div>" +
-          "</div>" +
-          (actionsHtml || "") +
-        "</div>" +
-        '<div style="padding:14px">' + (innerHtml || "") + "</div>" +
-      "</div>"
-    );
-  }
-
-  function buildHomePanel() {
-    const kpis =
-      '<div id="kpiRow" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px">' +
-        kpiTile("Visits", "—", "Total visits in range") +
-        kpiTile("Leads", "—", "Lead events captured") +
-        kpiTile("Purchases", "—", "Purchase events captured") +
-        kpiTile("CTA clicks", "—", "CTA events captured") +
-      "</div>";
-
-    const line =
-      '<canvas id="chartVisits" width="900" height="260" style="width:100%;height:260px;border:1px solid #d8ccff;border-radius:16px;background:#f7f5ff"></canvas>' +
-      '<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">' +
-        '<button class="btn primary" data-ai="traffic_trend" style="border-radius:12px">AI explain</button>' +
-        '<button class="btn" id="btnChartReload" style="border-radius:12px">Reload chart</button>' +
-      "</div>";
-
-    const funnel =
-      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
-        pillMetric("Visits", "0") + pillMetric("Leads", "0") + pillMetric("Purchases", "0") +
-      "</div>" +
-      '<div style="margin-top:10px"><button class="btn primary" data-ai="funnel" style="border-radius:12px">AI explain</button></div>';
-
-    const sims =
-      '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
-        '<button class="btn" data-sim="page_view">Sim page_view</button>' +
-        '<button class="btn" data-sim="lead">Sim lead</button>' +
-        '<button class="btn" data-sim="purchase">Sim purchase</button>' +
-        '<button class="btn" data-sim="cta_click">Sim cta_click</button>' +
-      "</div>" +
-      '<div style="margin-top:10px;color:#5b5b72;font-size:12px">Seeder requires ENABLE_DEMO_SEED=true.</div>';
-
-    const grid =
-      '<div style="display:grid;grid-template-columns:1.35fr .65fr;gap:14px;margin-top:14px">' +
-        card("Traffic trend","Visits per day (demo)", line, "") +
-        card("Conversation funnel","Visits → Leads → Purchases", funnel, "") +
-      "</div>" +
-      '<div style="margin-top:14px">' + card("Simulate events","Generate demo activity instantly", sims, "") + "</div>";
-
-    return (
-      '<div style="display:flex;flex-direction:column;gap:14px">' +
-        kpis +
-        grid +
-      "</div>"
-    );
-  }
-
-  function buildSimplePanel(title, text, aiKey) {
-    return card(
-      title,
-      text,
-      '<div style="color:#0b0b12">Use Home for charts. This tab is a focused workspace.</div>',
-      '<button class="btn primary" data-ai="' + aiKey + '" style="border-radius:12px">AI explain</button>'
-    );
-  }
-
-  function kpiTile(label, val, hint) {
-    return (
-      '<div style="border:1px solid #d8ccff;border-radius:16px;background:#fbfaff;padding:12px">' +
-        '<div style="font-size:12px;color:#5b5b72;font-weight:800">' + label + "</div>" +
-        '<div class="kpiVal" data-kpi="' + label + '" style="font-size:22px;font-weight:950;margin-top:4px">' + val + "</div>" +
-        '<div style="font-size:12px;color:#5b5b72;margin-top:4px">' + hint + "</div>" +
-      "</div>"
-    );
-  }
-
-  function pillMetric(k, v) {
-    return '<span style="display:inline-flex;gap:8px;align-items:center;border:1px solid #d8ccff;border-radius:999px;background:#fbfaff;padding:8px 10px;font-weight:850"><span style="color:#5b5b72">' + k + '</span><span data-pill="' + k + '">' + v + "</span></span>";
-  }
-
-  function setActivePanel(key) {
-    const main = byId("gaMain");
-    if (!main) return;
-
-    const map = {
-      home: () => buildHomePanel(),
-      realtime: () => buildSimplePanel("Realtime", "Live visitors and spikes", "realtime"),
-      acq: () => buildSimplePanel("Acquisition", "Channels, campaigns, landing pages", "acquisition"),
-      eng: () => buildSimplePanel("Engagement", "Pages, scroll, sessions, retention", "engagement"),
-      mon: () => buildSimplePanel("Monetization", "Leads, purchases, revenue proxy", "monetization"),
-      explore: () => buildSimplePanel("Explore", "Ask advanced questions", "explore"),
-      ai: () => buildSimplePanel("AI Studio", "Insights + experiments", "ai_studio"),
-      cfg: () => buildSimplePanel("Configure", "Tracking + settings", "configure")
-    };
-    main.innerHTML = (map[key] ? map[key]() : map.home());
-
-    qsa('#gaSidebar [data-ga-panel]').forEach((b) => {
-      const on = b.getAttribute("data-ga-panel") === key;
-      b.style.background = on ? "linear-gradient(180deg, rgba(124,58,237,.18), rgba(124,58,237,.08))" : "rgba(255,255,255,.8)";
-      b.style.fontWeight = on ? "900" : "650";
-    });
-
-    // When Home renders, (re)draw chart
-    if (key === "home") {
-      loadAndRender();
-    }
-  }
-
-  // ---------- Data + charts ----------
-  async function fetchMetrics(days) {
-    const u = api("/metrics") + "&days=" + encodeURIComponent(String(days || 7));
-    const r = await fetch(u, { credentials: "include" });
-    if (!r.ok) throw new Error("metrics failed: " + r.status);
-    return await r.json();
-  }
-
-  function getDays() {
-    const el = byId("days");
-    return el ? Number(el.value || 7) : 7;
-  }
-
-  function setKpis(data) {
-    const totalVisits = (data && data.visits_total) ? data.visits_total : 0;
-    const leads = (data && data.leads_total) ? data.leads_total : 0;
-    const purchases = (data && data.purchases_total) ? data.purchases_total : 0;
-    const ctas = (data && data.cta_total) ? data.cta_total : 0;
-
-    const map = {
-      "Visits": totalVisits,
-      "Leads": leads,
-      "Purchases": purchases,
-      "CTA clicks": ctas
-    };
-    qsa(".kpiVal").forEach((el) => {
-      const k = el.getAttribute("data-kpi");
-      if (k && map[k] !== undefined) el.textContent = String(map[k]);
-    });
-
-    const pillMap = { "Visits": totalVisits, "Leads": leads, "Purchases": purchases };
-    qsa("[data-pill]").forEach((el) => {
-      const k = el.getAttribute("data-pill");
-      if (k && pillMap[k] !== undefined) el.textContent = String(pillMap[k]);
-    });
-  }
-
-  function drawLine(canvas, points) {
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const w = canvas.width, h = canvas.height;
-    ctx.clearRect(0,0,w,h);
-
-    // background
-    ctx.fillStyle = "#f7f5ff";
-    ctx.fillRect(0,0,w,h);
-
-    const pad = 22;
-    const xs = points.map(p => p.x);
-    const ys = points.map(p => p.y);
-    const minY = 0;
-    const maxY = Math.max(1, ...ys);
-    const minX = 0;
-    const maxX = Math.max(1, points.length-1);
-
-    // axes
-    ctx.strokeStyle = "rgba(124,58,237,.25)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(pad, pad, w-2*pad, h-2*pad);
-
-    // line
-    ctx.strokeStyle = "rgba(124,58,237,.90)";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    points.forEach((p, i) => {
-      const x = pad + (i/maxX) * (w-2*pad);
-      const y = pad + (1 - ((p.y-minY)/(maxY-minY))) * (h-2*pad);
-      if (i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-    });
-    ctx.stroke();
-  }
-
-  async function loadAndRender() {
-    try {
-      const days = getDays();
-      const data = await fetchMetrics(days);
-      window.__lastMetrics = data;
-
-      setKpis(data);
-
-      // Build points from series if present, else flat
-      const series = (data && data.visits_series) ? data.visits_series : [];
-      const pts = series.map((it, idx) => ({ x: idx, y: Number(it.visits || 0) }));
-      if (!pts.length) {
-        for (let i=0;i<Math.max(7,days);i++) pts.push({x:i,y:0});
-      }
-      drawLine(byId("chartVisits"), pts);
-
-      const status = byId("statusPill");
-      if (status) status.textContent = "Status: ready";
-
-    } catch (e) {
-      const status = byId("statusPill");
-      if (status) status.textContent = "Status: metrics error";
-      // Keep UI visible
-      console.warn(e);
-    }
-  }
-
-  // ---------- AI explain (local) ----------
-  function explain(key) {
-    const m = window.__lastMetrics || {};
-    const v = (m.visits_total || 0);
-    const l = (m.leads_total || 0);
-    const p = (m.purchases_total || 0);
-    const leadRate = v ? Math.round((l / v) * 1000) / 10 : 0;
-    const purchaseRate = v ? Math.round((p / v) * 1000) / 10 : 0;
-
-    let title = "Insight";
-    let body = "";
-
-    if (key === "traffic_trend") {
-      title = "Traffic trend meaning";
-      body =
-        "<b>What it means:</b> Your traffic trend shows whether awareness is growing or shrinking.<br/>" +
-        "<b>Business impact:</b> If traffic is flat, conversion work matters more; if traffic spikes, capture leads ASAP.<br/>" +
-        "<b>Next actions:</b> Improve landing page clarity, add a stronger CTA, and track top pages.";
-    } else if (key === "funnel") {
-      title = "Funnel meaning";
-      body =
-        "<b>Lead rate:</b> " + leadRate + "% • <b>Purchase rate:</b> " + purchaseRate + "%<br/>" +
-        "<b>What it means:</b> This is your conversion pipeline efficiency.<br/>" +
-        "<b>Next actions:</b> Raise lead rate with better offers + forms; raise purchase rate with stronger pricing page + proof.";
-    } else {
-      title = "AI explain: " + key;
-      body =
-        "<b>What it means:</b> This section translates data into business decisions.<br/>" +
-        "<b>Hint:</b> Seed demo data and simulate events to see numbers move.";
-    }
-
-    openModal('<div style="font-weight:950;font-size:18px;margin-bottom:8px">' + title + "</div>" +
-              '<div style="color:#0b0b12">' + body + "</div>");
-  }
-
-  // ---------- Simulate events ----------
-  async function fireEvent(name) {
-    const r = await fetch(api("/demo/fire-event"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ event_name: name })
-    });
-    if (!r.ok) throw new Error("fire-event failed: " + r.status);
-    return await r.json();
-  }
-
-  // ---------- Tabs (Analytics/CRM) ----------
-  function setActiveTopTab(which) {
-    const secA = byId("sectionAnalytics");
-    const secC = byId("sectionCRM");
-    if (secA) secA.style.display = (which === "analytics") ? "" : "none";
-    if (secC) secC.style.display = (which === "crm") ? "" : "none";
-  }
-
-  // ---------- Wire events (delegation) ----------
-  document.addEventListener("click", async (e) => {
-    const t = e.target;
-
-    const panelBtn = t && t.closest && t.closest("[data-ga-panel]");
-    if (panelBtn) {
-      setActivePanel(panelBtn.getAttribute("data-ga-panel"));
-      return;
-    }
-
-    const aiBtn = t && t.closest && t.closest("[data-ai]");
-    if (aiBtn) {
-      explain(aiBtn.getAttribute("data-ai"));
-      return;
-    }
-
-    const simBtn = t && t.closest && t.closest("[data-sim]");
-    if (simBtn) {
-      try {
-        await fireEvent(simBtn.getAttribute("data-sim"));
-        await loadAndRender();
-      } catch (err) {
-        openModal("<b>Sim error:</b> " + String(err.message || err));
-      }
-      return;
-    }
-
-    if (t && t.id === "tabAnalytics") { setActiveTopTab("analytics"); return; }
-    if (t && (t.id === "tabCRMTop" || t.id === "tabCRM")) { setActiveTopTab("crm"); return; }
-
-    if (t && t.id === "btnRefresh") { loadAndRender(); return; }
-    if (t && t.id === "btnChartReload") { loadAndRender(); return; }
-
-    // Placeholders: keep buttons responsive even if endpoints disabled
-    if (t && t.id === "btnPlans") { openModal("<b>Plans:</b> This is a demo. Hook this to your /storefront or plans page."); return; }
-
-    if (t && t.id === "btnSeed") {
-      try {
-        const r = await fetch(api("/demo/seed"), { method: "POST" });
-        if (!r.ok) throw new Error("seed failed: " + r.status);
-        await loadAndRender();
-        openModal("<b>Demo seeded.</b> Now simulate events or refresh metrics.");
-      } catch (err) {
-        openModal("<b>Seed error:</b> " + String(err.message || err));
-      }
-      return;
-    }
-
-    if (t && t.id === "btnAiReport") {
-      // Keep this harmless if AI endpoint isn't enabled
-      openModal("<b>AI report:</b> Coming soon (hook to your AI report endpoint).");
-      return;
-    }
-  });
-
-  document.addEventListener("change", (e) => {
-    if (e.target && e.target.id === "days") loadAndRender();
-  });
-
-  // Boot
-  mountAnalyticsShell();
-  loadAndRender();
-})();
-`);
+</html>`);
 });
 
-// ---------- Non-AI daily report (simple, safe) ----------
-async function generateNonAiDailyReport(site_id) {
-  // Minimal, DB-backed summary using events_raw (mirrors /metrics logic)
-  const days = 7;
-  const countsRes = await pool.query(
-    `
-    SELECT
-      SUM(CASE WHEN event_name = 'page_view' THEN 1 ELSE 0 END)::int AS visits,
-      SUM(CASE WHEN event_name = 'lead' THEN 1 ELSE 0 END)::int AS leads,
-      SUM(CASE WHEN event_name = 'purchase' THEN 1 ELSE 0 END)::int AS purchases,
-      SUM(CASE WHEN event_name = 'cta_click' THEN 1 ELSE 0 END)::int AS cta_clicks
-    FROM events_raw
-    WHERE site_id = $1
-      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
-    `,
-    [site_id, days]
-  );
-
-  const topRes = await pool.query(
-    `
-    SELECT page_type, COUNT(*)::int AS views
-    FROM events_raw
-    WHERE site_id = $1
-      AND event_name = 'page_view'
-      AND created_at >= NOW() - ($2::int * INTERVAL '1 day')
-      AND page_type IS NOT NULL
-    GROUP BY page_type
-    ORDER BY views DESC
-    LIMIT 10
-    `,
-    [site_id, days]
-  );
-
-  const m = countsRes.rows[0] || { visits: 0, leads: 0, purchases: 0, cta_clicks: 0 };
-  const visits = Number(m.visits || 0);
-  const leads = Number(m.leads || 0);
-  const purchases = Number(m.purchases || 0);
-  const leadRate = visits ? Math.round((leads / visits) * 1000) / 10 : 0; // 1 decimal
-  const purchaseRate = visits ? Math.round((purchases / visits) * 1000) / 10 : 0;
-
-  const lines = [];
-  lines.push("Constrava — Daily summary (last 7 days)");
-  lines.push("Visits: " + visits);
-  lines.push("Leads: " + leads + " (" + leadRate + "% lead rate)");
-  lines.push("Purchases: " + purchases + " (" + purchaseRate + "% purchase rate)");
-  lines.push("CTA clicks: " + Number(m.cta_clicks || 0));
-  lines.push("");
-
-  lines.push("Top pages (7d):");
-  if (!topRes.rows.length) {
-    lines.push("- (no data yet)");
-  } else {
-    for (const r of topRes.rows) lines.push("- " + (r.page_type || "/") + ": " + r.views);
-  }
-
-  lines.push("");
-  lines.push("Next steps:");
-  lines.push("1) Put your strongest CTA on the top page");
-  lines.push("2) Add a lead capture (form / booking / email)");
-  lines.push("3) Track a conversion event next");
-  lines.push("");
-  lines.push("Metric to watch:");
-  lines.push("Lead rate (leads / visits)");
-
-  return lines.join("\n");
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-async function runDailyForAllSites() {
-  const sites = await pool.query(`SELECT site_id, plan FROM sites`);
-  let made = 0;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  for (const s of sites.rows) {
-    const plan = s.plan || "unpaid";
-    if (plan !== "pro" && plan !== "full_ai") continue;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const txt = await generateNonAiDailyReport(s.site_id);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    await pool.query(
-      `INSERT INTO daily_reports (site_id, report_date, report_text)
-       VALUES ($1, CURRENT_DATE, $2)
-       ON CONFLICT (site_id, report_date)
-       DO UPDATE SET report_text = EXCLUDED.report_text`,
-      [s.site_id, txt]
-    );
-    made++;
-  }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  return { ok: true, updated_sites: made };
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+app.get("/dashboard.js", async (req, res) => {
+  // Lightweight, dependency-free UI logic. Uses existing backend endpoints:
+  // - GET  /metrics?token=...&days=...
+  // - POST /demo/seed?token=...
+  // - POST /generate-report?token=...
+  const token = String(req.query.token || "").trim();
+  res.type("application/javascript").send(`(() => {
+    const TOKEN = ${JSON.stringify(token)} || (window.CONSTRAVA_TOKEN || "");
+    const $ = (id) => document.getElementById(id);
+
+    const state = {
+      days: 7,
+      activeTab: "home",
+      metrics: null,
+      busy: false,
+    };
+
+    const tabs = [
+      { key: "home", label: "Home" },
+      { key: "realtime", label: "Realtime" },
+      { key: "acq", label: "Acquisition" },
+      { key: "eng", label: "Engagement" },
+      { key: "mon", label: "Monetization" },
+      { key: "explore", label: "Explore" },
+      { key: "studio", label: "AI Studio" },
+      { key: "cfg", label: "Configure" },
+    ];
+
+    function setStatus(ok, text){
+      const dot = $("statusDot"); const t = $("statusText"); const pill = $("statusPill");
+      if(!dot || !t || !pill) return;
+      dot.style.background = ok ? "#22c55e" : "#f97316";
+      dot.style.boxShadow = ok ? "0 0 0 4px rgba(34,197,94,.15)" : "0 0 0 4px rgba(249,115,22,.15)";
+      t.textContent = text || (ok ? "Status: ready" : "Status: degraded");
+    }
+
+    function showModal(title, html){
+      $("modalTitle").textContent = title || "AI summary";
+      $("modalBody").innerHTML = html || "";
+      $("modalBack").style.display = "flex";
+    }
+    function hideModal(){ $("modalBack").style.display = "none"; }
+
+    function fmt(n){
+      const x = Number(n || 0);
+      return x.toLocaleString();
+    }
+
+    function aiSummaryFor(metrics, focus){
+      // No OpenAI needed: simple heuristic "assistant" summary.
+      const visits = metrics.visits_range || 0;
+      const leads  = metrics.leads_range  || 0;
+      const purchases = metrics.purchases_range || 0;
+      const cta = metrics.cta_range || 0;
+
+      const leadRate = visits ? (leads/visits)*100 : 0;
+      const purchaseRate = visits ? (purchases/visits)*100 : 0;
+      const ctaRate = visits ? (cta/visits)*100 : 0;
+
+      const top = (metrics.top_pages_range || []).slice(0,5);
+      const topList = top.length
+        ? "<ul>" + top.map(p => "<li><b>" + escapeHtml(p.page) + "</b> — " + fmt(p.views) + " views</li>").join("") + "</ul>"
+        : "<div class='footerNote'>No page data yet (try seeding demo events).</div>";
+
+      const bullets = [];
+      bullets.push("Traffic: <b>" + fmt(visits) + "</b> visits in the selected window.");
+      bullets.push("Leads: <b>" + fmt(leads) + "</b> • Lead rate <b>" + leadRate.toFixed(1) + "%</b>.");
+      bullets.push("Purchases: <b>" + fmt(purchases) + "</b> • Purchase rate <b>" + purchaseRate.toFixed(1) + "%</b>.");
+      bullets.push("CTA clicks: <b>" + fmt(cta) + "</b> • CTA rate <b>" + ctaRate.toFixed(1) + "%</b>.");
+
+      const actions = [];
+      if (visits < 100) actions.push("Focus on acquisition: improve channel mix, run 1–2 small experiments, and measure.");
+      if (leadRate < 2) actions.push("Improve lead capture: shorten forms, move primary CTA higher, add trust elements.");
+      if (purchaseRate < 1 && leads > 0) actions.push("Follow up leads faster: add an email sequence and a “book a call” CTA.");
+      if (!actions.length) actions.push("Keep momentum: identify your top pages, then A/B test one headline + one CTA this week.");
+
+      let focusLine = "";
+      if (focus) focusLine = "<div class='footerNote'>Focus: <b>" + escapeHtml(focus) + "</b></div>";
+
+      return `
+        <div>
+          <div><b>What this means for the business</b></div>
+          <ul>${bullets.map(b => "<li>"+b+"</li>").join("")}</ul>
+          <div style="margin-top:10px"><b>Top opportunities</b></div>
+          <ul>${actions.map(a => "<li>"+a+"</li>").join("")}</ul>
+          <div style="margin-top:10px"><b>Top pages</b></div>
+          ${topList}
+          ${focusLine}
+          <div class="footerNote">This is a demo “AI explain” panel using simple rules. You can later swap in OpenAI for deeper reasoning.</div>
+        </div>
+      `;
+    }
+
+    function escapeHtml(s){
+      return String(s ?? "")
+        .replaceAll("&","&amp;")
+        .replaceAll("<","&lt;")
+        .replaceAll(">","&gt;")
+        .replaceAll('"',"&quot;")
+        .replaceAll("'","&#39;");
+    }
+
+    async function api(path, opts){
+      const url = path + (path.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(TOKEN);
+      const r = await fetch(url, Object.assign({ headers: { "Content-Type":"application/json" }}, opts||{}));
+      const text = await r.text();
+      let json = null;
+      try{ json = text ? JSON.parse(text) : null; }catch(e){}
+      if(!r.ok){
+        const msg = (json && (json.error || json.message)) ? (json.error || json.message) : (text || ("HTTP " + r.status));
+        throw new Error(msg);
+      }
+      return json;
+    }
+
+    function render(){
+      const root = $("analyticsRoot");
+      if(!root) return;
+
+      const m = state.metrics || {};
+      const visits = m.visits_range || 0;
+      const leads = m.leads_range || 0;
+      const purchases = m.purchases_range || 0;
+      const cta = m.cta_range || 0;
+
+      root.innerHTML = `
+        <div class="grid">
+          <aside class="side">
+            <h3>Analytics</h3>
+            <div class="footerNote">GA-style nav + AI helpers</div>
+            <div class="navv" id="navv">
+              ${tabs.map(t => `
+                <button class="vbtn ${state.activeTab===t.key ? "active" : ""}" data-kt="${t.key}">${t.label}</button>
+              `).join("")}
+            </div>
+          </aside>
+
+          <section class="content">
+            <div class="cards">
+              <div class="card"><h4>Visits</h4><div class="big">${fmt(visits)}</div><div class="small">Total visits in range</div></div>
+              <div class="card"><h4>Leads</h4><div class="big">${fmt(leads)}</div><div class="small">Lead events captured</div></div>
+              <div class="card"><h4>Purchases</h4><div class="big">${fmt(purchases)}</div><div class="small">Purchase events captured</div></div>
+              <div class="card"><h4>CTA clicks</h4><div class="big">${fmt(cta)}</div><div class="small">CTA events captured</div></div>
+            </div>
+
+            <div id="panel"></div>
+          </section>
+        </div>
+      `;
+
+      // sidebar clicks (delegated)
+      $("navv").addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-kt]");
+        if(!btn) return;
+        state.activeTab = btn.getAttribute("data-kt");
+        render();
+        if(state.activeTab === "home") drawTrend();
+        if(state.activeTab === "acq") drawSources();
+        if(state.activeTab === "eng") drawEvents();
+        if(state.activeTab === "mon") drawFunnel();
+      });
+
+      renderPanel();
+    }
+
+    function renderPanel(){
+      const m = state.metrics || {};
+      const panel = $("panel");
+      if(!panel) return;
+
+      if(state.activeTab === "home"){
+        panel.innerHTML = `
+          <div class="two">
+            <div class="chartBox">
+              <div class="row" style="justify-content:space-between">
+                <div>
+                  <b>Traffic trend</b>
+                  <div class="footerNote">Visits per day (demo)</div>
+                </div>
+                <div class="row">
+                  <span class="chip" data-ai="trend">AI explain</span>
+                  <button id="reloadTrend" class="ghost">Reload chart</button>
+                </div>
+              </div>
+              <canvas id="trendCanvas" width="900" height="260"></canvas>
+            </div>
+
+            <div class="chartBox">
+              <div class="row" style="justify-content:space-between">
+                <div>
+                  <b>Conversation funnel</b>
+                  <div class="footerNote">Visits → Leads → Purchases</div>
+                </div>
+                <span class="chip" data-ai="funnel">AI explain</span>
+              </div>
+              <div style="margin-top:10px" id="funnelChips"></div>
+            </div>
+          </div>
+
+          <div style="height:12px"></div>
+
+          <div class="two">
+            <div class="chartBox">
+              <div class="row" style="justify-content:space-between">
+                <div>
+                  <b>Top pages</b>
+                  <div class="footerNote">Most viewed pages in range</div>
+                </div>
+                <span class="chip" data-ai="pages">AI explain</span>
+              </div>
+              <div style="margin-top:8px" id="topPages"></div>
+            </div>
+
+            <div class="chartBox">
+              <div class="row" style="justify-content:space-between">
+                <div>
+                  <b>Quick actions</b>
+                  <div class="footerNote">Simulate events to test UI</div>
+                </div>
+                <span class="chip" data-ai="actions">AI explain</span>
+              </div>
+              <div class="row" style="margin-top:10px; gap:10px; flex-wrap:wrap">
+                <button class="ghost" data-sim="page_view">Sim page_view</button>
+                <button class="ghost" data-sim="lead">Sim lead</button>
+                <button class="ghost" data-sim="purchase">Sim purchase</button>
+                <button class="ghost" data-sim="cta_click">Sim cta_click</button>
+              </div>
+              <div class="footerNote" style="margin-top:10px">Seeder requires ENABLE_DEMO_SEED=true. Sim buttons work any time.</div>
+            </div>
+          </div>
+        `;
+        // funnel chips
+        const f = [
+          ["Visits", m.visits_range || 0],
+          ["Leads", m.leads_range || 0],
+          ["Purchases", m.purchases_range || 0],
+        ];
+        $("funnelChips").innerHTML = f.map(x => `<span class="chip" style="cursor:default">${escapeHtml(x[0])} <b>${fmt(x[1])}</b></span>`).join(" ");
+
+        // top pages table
+        const pages = (m.top_pages_range || []).slice(0, 8);
+        if(!pages.length){
+          $("topPages").innerHTML = `<div class="footerNote">No page data yet. Click “Seed demo data”, then Refresh.</div>`;
+        }else{
+          $("topPages").innerHTML = `
+            <table class="table">
+              ${pages.map(p => `
+                <tr>
+                  <td style="width:70%"><b>${escapeHtml(p.page)}</b></td>
+                  <td style="width:30%;text-align:right">${fmt(p.views)} views</td>
+                </tr>
+              `).join("")}
+            </table>
+          `;
+        }
+
+        // reload chart
+        $("reloadTrend").addEventListener("click", () => drawTrend());
+        drawTrend();
+        drawFunnel(); // for modal reasoning
+      }
+
+      else if(state.activeTab === "realtime"){
+        panel.innerHTML = `
+          <div class="chartBox">
+            <div class="row" style="justify-content:space-between">
+              <div>
+                <b>Realtime overview</b>
+                <div class="footerNote">Live visitors and recent activity (polled)</div>
+              </div>
+              <span class="chip" data-ai="realtime">AI explain</span>
+            </div>
+            <div style="margin-top:10px" class="row">
+              <div class="card" style="flex:1"><h4>New page_views</h4><div class="big">${fmt(m.page_views_recent || 0)}</div><div class="small">last few minutes</div></div>
+              <div class="card" style="flex:1"><h4>Last event</h4><div class="big" style="font-size:16px">${escapeHtml(m.last_event || "—")}</div><div class="small">${escapeHtml(m.last_event_time || "")}</div></div>
+            </div>
+            <div class="footerNote" style="margin-top:10px">Tip: Use “Sim page_view” on Home to watch this change.</div>
+          </div>
+        `;
+      }
+
+      else if(state.activeTab === "acq"){
+        panel.innerHTML = `
+          <div class="chartBox">
+            <div class="row" style="justify-content:space-between">
+              <div>
+                <b>Traffic sources (demo)</b>
+                <div class="footerNote">Direct / Search / Social / Referrals</div>
+              </div>
+              <span class="chip" data-ai="sources">AI explain</span>
+            </div>
+            <canvas id="srcCanvas" width="900" height="260"></canvas>
+            <div class="footerNote" style="margin-top:10px">Customize: seed a new source mix in /demo/seed (later).</div>
+          </div>
+        `;
+        drawSources();
+      }
+
+      else if(state.activeTab === "eng"){
+        panel.innerHTML = `
+          <div class="chartBox">
+            <div class="row" style="justify-content:space-between">
+              <div>
+                <b>Events over time</b>
+                <div class="footerNote">Leads / Purchases / CTA clicks (derived from events)</div>
+              </div>
+              <span class="chip" data-ai="events">AI anomalies</span>
+            </div>
+            <canvas id="evCanvas" width="900" height="260"></canvas>
+          </div>
+        `;
+        drawEvents();
+      }
+
+      else if(state.activeTab === "mon"){
+        panel.innerHTML = `
+          <div class="chartBox">
+            <div class="row" style="justify-content:space-between">
+              <div>
+                <b>Monetization snapshot</b>
+                <div class="footerNote">Conversion + revenue proxy</div>
+              </div>
+              <span class="chip" data-ai="monetization">AI explain</span>
+            </div>
+            <div class="row" style="margin-top:10px; gap:12px; flex-wrap:wrap">
+              <div class="card" style="flex:1"><h4>Lead rate</h4><div class="big">${((m.visits_range? (m.leads_range/m.visits_range):0)*100).toFixed(1)}%</div><div class="small">leads / visits</div></div>
+              <div class="card" style="flex:1"><h4>Purchase rate</h4><div class="big">${((m.visits_range? (m.purchases_range/m.visits_range):0)*100).toFixed(1)}%</div><div class="small">purchases / visits</div></div>
+              <div class="card" style="flex:1"><h4>Avg order (demo)</h4><div class="big">$${fmt(m.avg_order_value || 79)}</div><div class="small">assumption</div></div>
+            </div>
+            <div class="footerNote" style="margin-top:10px">Later: pull revenue from Stripe/Shopify and build real ROAS.</div>
+          </div>
+        `;
+      }
+
+      else if(state.activeTab === "explore"){
+        panel.innerHTML = `
+          <div class="chartBox">
+            <div class="row" style="justify-content:space-between">
+              <div>
+                <b>Explore</b>
+                <div class="footerNote">Ask advanced questions and get evidence-backed answers</div>
+              </div>
+              <span class="chip" data-ai="explore">AI explain</span>
+            </div>
+            <div class="mutedBox" style="margin-top:10px">
+              <b>Coming next:</b> segment builder, cohorts, and “one fix” suggestions tied to page + event evidence.
+            </div>
+          </div>
+        `;
+      }
+
+      else if(state.activeTab === "studio"){
+        panel.innerHTML = `
+          <div class="chartBox">
+            <div class="row" style="justify-content:space-between">
+              <div>
+                <b>AI Studio</b>
+                <div class="footerNote">Turn insights into tasks, copy edits, and experiments</div>
+              </div>
+              <span class="chip" data-ai="studio">AI explain</span>
+            </div>
+            <div class="mutedBox" style="margin-top:10px">
+              Add “AI helpers” beyond chat: one-click experiment generator, CTA rewrite, funnel diagnosis, and anomaly alerts.
+            </div>
+          </div>
+        `;
+      }
+
+      else if(state.activeTab === "cfg"){
+        panel.innerHTML = `
+          <div class="chartBox">
+            <div class="row" style="justify-content:space-between">
+              <div>
+                <b>Configure</b>
+                <div class="footerNote">Tracking, goals, and saved reports</div>
+              </div>
+              <span class="chip" data-ai="configure">AI explain</span>
+            </div>
+            <div class="mutedBox" style="margin-top:10px">
+              <div><b>Suggested checks</b></div>
+              <ul>
+                <li>Verify your lead event fires on form submit</li>
+                <li>Track purchase events on checkout complete</li>
+                <li>Define your top 3 CTAs and track click events</li>
+              </ul>
+            </div>
+          </div>
+        `;
+      }
+
+      // Delegated handlers inside panel
+      panel.addEventListener("click", async (e) => {
+        const chip = e.target.closest("[data-ai]");
+        if(chip){
+          const focus = chip.getAttribute("data-ai") || "";
+          const html = aiSummaryFor(state.metrics || {}, focus);
+          showModal("AI explain • " + focus, html);
+          return;
+        }
+        const sim = e.target.closest("button[data-sim]");
+        if(sim){
+          const name = sim.getAttribute("data-sim");
+          await simEvent(name);
+          await refreshMetrics(true);
+          return;
+        }
+      }, { once: true }); // rebind each renderPanel call
+    }
+
+    function clearCanvas(c){
+      const ctx = c.getContext("2d");
+      ctx.clearRect(0,0,c.width,c.height);
+    }
+
+    function drawLine(canvas, points){
+      if(!canvas) return;
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0,0,w,h);
+      // background
+      ctx.fillStyle = "rgba(237,233,254,.55)";
+      ctx.fillRect(0,0,w,h);
+      // axes line
+      ctx.strokeStyle = "rgba(124,58,237,.35)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(8,8,w-16,h-16);
+
+      if(!points || points.length < 2) return;
+
+      const max = Math.max(...points.map(p=>p.y), 1);
+      const min = Math.min(...points.map(p=>p.y), 0);
+      const span = Math.max(max-min, 1);
+
+      const pad = 14;
+      const ix = (i) => pad + (i*(w-2*pad))/(points.length-1);
+      const iy = (v) => h-pad - ((v-min)*(h-2*pad))/span;
+
+      ctx.beginPath();
+      ctx.strokeStyle = "rgba(124,58,237,.95)";
+      ctx.lineWidth = 3;
+      points.forEach((p,i)=>{
+        const x = ix(i), y = iy(p.y);
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      });
+      ctx.stroke();
+    }
+
+    function drawBars(canvas, items){
+      if(!canvas) return;
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0,0,w,h);
+      ctx.fillStyle = "rgba(237,233,254,.55)";
+      ctx.fillRect(0,0,w,h);
+      ctx.strokeStyle = "rgba(124,58,237,.35)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(8,8,w-16,h-16);
+
+      const vals = (items||[]).map(x=>x.v);
+      const max = Math.max(...vals, 1);
+      const pad = 18;
+      const bw = (w-2*pad) / Math.max(items.length,1);
+      items.forEach((it,i)=>{
+        const x = pad + i*bw + 10;
+        const barW = Math.max(bw-20, 12);
+        const bh = ((h-2*pad) * (it.v/max));
+        const y = h-pad - bh;
+        ctx.fillStyle = "rgba(124,58,237,.75)";
+        ctx.fillRect(x, y, barW, bh);
+        ctx.fillStyle = "rgba(19,17,37,.65)";
+        ctx.font = "12px ui-sans-serif";
+        ctx.fillText(it.k, x, h-6);
+      });
+    }
+
+    function drawTrend(){
+      const m = state.metrics || {};
+      const trend = (m.trend || []).map((v,i)=>({x:i,y:Number(v||0)}));
+      drawLine($("trendCanvas"), trend);
+    }
+
+    function drawSources(){
+      // demo: compute a stable mix derived from counts so it changes with seeding
+      const m = state.metrics || {};
+      const base = (m.visits_range || 0) + 10;
+      const items = [
+        {k:"Direct", v: Math.round(base*0.35)},
+        {k:"Search", v: Math.round(base*0.28)},
+        {k:"Social", v: Math.round(base*0.22)},
+        {k:"Ref", v: Math.round(base*0.15)},
+      ];
+      drawBars($("srcCanvas"), items);
+    }
+
+    function drawEvents(){
+      const m = state.metrics || {};
+      // derive 3 lines from trend
+      const t = (m.trend || []).map((v,i)=>Number(v||0));
+      const clicks = t.map(v=>Math.max(0, Math.round(v*0.6)));
+      const leads = t.map(v=>Math.max(0, Math.round(v*0.12)));
+      const purch = t.map(v=>Math.max(0, Math.round(v*0.04)));
+      // draw combined as simple line of sum; legend is in UI
+      const sum = t.map((_,i)=>clicks[i]+leads[i]+purch[i]);
+      drawLine($("evCanvas"), sum.map((v,i)=>({x:i,y:v})));
+    }
+
+    function drawFunnel(){
+      // funnel is chips; explain modal uses aiSummaryFor
+    }
+
+    async function simEvent(name){
+      // Fire a demo event through the public demo endpoint (safe for demo use)
+      // Uses /demo/fire-event if present; otherwise falls back to /events
+      const payload = { event_name: name, page: "/demo", lead_email: "", lead_name: "", lead_phone: "" };
+      try{
+        await api("/demo/fire-event", { method:"POST", body: JSON.stringify(payload) });
+      }catch(e){
+        // fallback to collector
+        await api("/events", { method:"POST", body: JSON.stringify(payload) });
+      }
+    }
+
+    async function refreshMetrics(silent){
+      if(state.busy) return;
+      state.busy = true;
+      if(!silent) setStatus(true, "Status: loading…");
+      try{
+        const m = await api("/metrics?days=" + encodeURIComponent(String(state.days)));
+        state.metrics = m || {};
+        setStatus(true, "Status: ready");
+        render();
+      }catch(e){
+        setStatus(false, "Status: error");
+        showModal("Error", "<div><b>Could not load metrics.</b></div><div style='margin-top:8px'>" + escapeHtml(e.message) + "</div>");
+      }finally{
+        state.busy = false;
+      }
+    }
+
+    async function seedDemo(){
+      if(state.busy) return;
+      state.busy = true;
+      setStatus(true, "Status: seeding…");
+      try{
+        await api("/demo/seed", { method:"POST", body: JSON.stringify({}) });
+        setStatus(true, "Status: seeded");
+        await refreshMetrics(true);
+      }catch(e){
+        setStatus(false, "Status: seed failed");
+        showModal("Seed failed", "<div><b>Could not seed demo data.</b></div><div style='margin-top:8px'>" + escapeHtml(e.message) + "</div><div class='footerNote'>Make sure ENABLE_DEMO_SEED=true on the backend.</div>");
+      }finally{
+        state.busy = false;
+      }
+    }
+
+    async function generateAIReport(){
+      if(state.busy) return;
+      state.busy = true;
+      setStatus(true, "Status: generating…");
+      try{
+        const out = await api("/generate-report?days=" + encodeURIComponent(String(state.days)), { method:"POST", body: JSON.stringify({}) });
+        // show report in modal
+        const text = (out && (out.report_text || out.text || out.report)) ? (out.report_text || out.text || out.report) : JSON.stringify(out, null, 2);
+        showModal("AI report", "<pre style='white-space:pre-wrap;margin:0'>" + escapeHtml(text) + "</pre><div class='footerNote'>Requires Full AI plan + OPENAI_API_KEY.</div>");
+        setStatus(true, "Status: ready");
+      }catch(e){
+        setStatus(false, "Status: report failed");
+        showModal("AI report failed", "<div><b>Could not generate AI report.</b></div><div style='margin-top:8px'>" + escapeHtml(e.message) + "</div><div class='footerNote'>If you see 403, upgrade the site plan to Full AI and add OPENAI_API_KEY.</div>");
+      }finally{
+        state.busy = false;
+      }
+    }
+
+    function wireTopBar(){
+      // tabs Analytics/CRM
+      $("tabAnalytics").addEventListener("click", () => {
+        $("tabAnalytics").classList.add("active");
+        $("tabCRM").classList.remove("active");
+        $("analyticsRoot").style.display = "";
+        $("crmRoot").style.display = "none";
+      });
+      $("tabCRM").addEventListener("click", () => {
+        $("tabCRM").classList.add("active");
+        $("tabAnalytics").classList.remove("active");
+        $("analyticsRoot").style.display = "none";
+        $("crmRoot").style.display = "";
+      });
+
+      // close modal
+      $("modalClose").addEventListener("click", hideModal);
+      $("modalBack").addEventListener("click", (e) => { if(e.target === $("modalBack")) hideModal(); });
+
+      // days
+      $("daysSel").addEventListener("change", () => {
+        state.days = Number($("daysSel").value || 7);
+        refreshMetrics(true);
+      });
+
+      // IMPORTANT: stop popup delegation on these toolbar buttons
+      $("seedBtn").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); seedDemo(); });
+      $("refreshBtn").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); refreshMetrics(false); });
+      $("aiBtn").addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); generateAIReport(); });
+      $("plansBtn").addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        showModal("Plans", \`
+          <div><b>Demo plans</b></div>
+          <ul>
+            <li><b>Free</b>: analytics dashboard + demo data</li>
+            <li><b>Pro</b>: scheduled reports + basic insights</li>
+            <li><b>Full AI</b>: AI report generation + assistants</li>
+          </ul>
+          <div class="footerNote">This button is UI-only in the demo.</div>
+        \`);
+      });
+      $("crmBtnTop").addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        $("tabCRM").click();
+      });
+    }
+
+    function init(){
+      try{
+        if(!$("analyticsRoot")) return;
+        // initial state from select
+        state.days = Number($("daysSel").value || 7);
+        wireTopBar();
+        refreshMetrics(false);
+
+        // gentle polling for realtime tab
+        setInterval(() => {
+          if(state.activeTab === "realtime") refreshMetrics(true);
+        }, 6000);
+      }catch(e){
+        console.error(e);
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", init);
+  })();`);
+});
 
 
 app.post("/jobs/run-daily", asyncHandler(async (req, res) => {
