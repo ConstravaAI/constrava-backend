@@ -17,10 +17,34 @@ window.copyToClipboard = function (text) {
 // If you later add a backend endpoint, replace MAILTO with a real POST.
 const form = document.getElementById("leadForm");
 const note = document.getElementById("formNote");
+
 if (form && note) {
-  form.addEventListener("submit", (e) => {
+  form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(form).entries());
+
+    note.textContent = "Sending…";
+
+    try {
+      const r = await fetch("/api/lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+
+      const out = await r.json().catch(() => ({}));
+      if (!r.ok || !out.ok) throw new Error(out.error || "Request failed");
+
+      note.textContent = "Sent! We’ll get back to you soon.";
+      form.reset();
+      setTimeout(() => (note.textContent = ""), 7000);
+    } catch (err) {
+      console.error(err);
+      note.textContent = "Couldn’t send right now. Please try again.";
+      setTimeout(() => (note.textContent = ""), 8000);
+    }
+  });
+}
 
     // Opens user's email client to send to constrava@constravaai.com
     const to = "constrava@constravaai.com";
