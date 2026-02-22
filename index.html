@@ -5,247 +5,44 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="description" content="Constrava — rapid custom app development. From idea to launch fast." />
   <title>Constrava | Rapid Custom App Development</title>
-
-  <style>
-:root{
-  --bg:#f6fff8;
-  --panel:rgba(255,255,255,.82);
-  --panel2:rgba(255,255,255,.92);
-  --text:#062014;
-  --muted:rgba(6,32,20,.72);
-  --border:rgba(6,32,20,.14);
-
-  --accent:#16a34a;      /* green */
-  --accent2:#22c55e;     /* lighter green */
-
-  --shadow:0 18px 60px rgba(0,0,0,.12);
-  --radius:18px;
-  --max:1100px;
-}
-    *{box-sizing:border-box}
-    html,body{height:100%}
-body{
-  margin:0;
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-  background:
-    radial-gradient(900px 500px at 10% 10%, rgba(34,197,94,.18), transparent 60%),
-    radial-gradient(900px 500px at 90% 20%, rgba(22,163,74,.14), transparent 60%),
-    radial-gradient(700px 400px at 40% 100%, rgba(34,197,94,.10), transparent 60%),
-    var(--bg);
-  color:var(--text);
-  line-height:1.55;
-}
-    a{color:inherit}
-    .wrap{max-width:var(--max); margin:0 auto; padding:24px}
-    .nav{
-      display:flex; align-items:center; justify-content:space-between;
-      padding:14px 16px;
-      border:1px solid var(--border);
-      background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
-      border-radius:999px;
-      box-shadow: var(--shadow);
-      position:sticky; top:16px; backdrop-filter: blur(10px);
-      z-index:10;
-    }
-    .brand{display:flex; gap:10px; align-items:center; font-weight:700; letter-spacing:.2px}
-    .logo{
-      width:34px; height:34px; border-radius:12px;
-      background: conic-gradient(from 180deg, var(--accent), var(--accent2), var(--accent));
-      box-shadow: 0 10px 30px rgba(124,92,255,.25);
-      border:1px solid rgba(255,255,255,.18);
-    }
-    .navlinks{display:flex; gap:16px; align-items:center}
-    .navlinks a{
-      text-decoration:none; color:var(--muted);
-      padding:10px 12px; border-radius:999px;
-    }
-    .navlinks a:hover{background:rgba(255,255,255,.06); color:var(--text)}
-    .btn{
-      border:1px solid rgba(255,255,255,.20);
-      background:rgba(255,255,255,.06);
-      color:var(--text);
-      padding:10px 14px;
-      border-radius:999px;
-      text-decoration:none;
-      display:inline-flex; gap:8px; align-items:center; justify-content:center;
-      cursor:pointer;
-      transition: transform .12s ease, background .12s ease, border-color .12s ease;
-      user-select:none;
-    }
-    .btn:hover{transform: translateY(-1px); background:rgba(255,255,255,.10); border-color: rgba(255,255,255,.26)}
-    .btn.primary{
-      background: linear-gradient(135deg, rgba(124,92,255,.95), rgba(47,230,200,.70));
-      border-color: rgba(255,255,255,.20);
-      box-shadow: 0 14px 45px rgba(124,92,255,.22);
-      color:#071018;
-      font-weight:700;
-    }
-    .btn.primary:hover{filter:brightness(1.02)}
-    .hero{
-      padding:70px 0 24px;
-      display:grid;
-      grid-template-columns: 1.15fr .85fr;
-      gap:22px;
-      align-items:start;
-    }
-    .kicker{
-      display:inline-flex; gap:10px; align-items:center;
-      padding:8px 12px;
-      border-radius:999px;
-      border:1px solid var(--border);
-      background:rgba(255,255,255,.06);
-      color:var(--muted);
-      font-size:13px;
-    }
-    .dot{
-      width:10px; height:10px; border-radius:999px;
-      background: var(--accent2);
-      box-shadow: 0 0 0 6px rgba(47,230,200,.12);
-    }
-    h1{
-      margin:14px 0 10px;
-      font-size: clamp(36px, 4vw, 56px);
-      line-height:1.05;
-      letter-spacing:-.8px;
-    }
-    .sub{
-      color:var(--muted);
-      font-size: 17px;
-      max-width: 60ch;
-    }
-    .ctaRow{display:flex; gap:12px; flex-wrap:wrap; margin-top:18px}
-    .panel{
-      border:1px solid var(--border);
-      background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-    }
-    .side{
-      padding:18px;
-      position:relative;
-      overflow:hidden;
-    }
-    .side::before{
-      content:"";
-      position:absolute; inset:-120px -120px auto auto;
-      width:260px; height:260px;
-      background: radial-gradient(circle at 30% 30%, rgba(124,92,255,.55), transparent 60%);
-      filter: blur(6px);
-      transform: rotate(18deg);
-    }
-    .side h3{margin:0 0 8px; font-size:16px}
-    .side p{margin:0; color:var(--muted); font-size:14px}
-    .stack{display:grid; gap:12px}
-    .mini{
-      padding:14px;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,.12);
-      background: rgba(0,0,0,.18);
-    }
-    .mini strong{display:block; font-size:13px}
-    .mini span{display:block; color:var(--muted); font-size:13px; margin-top:4px}
-    .grid3{
-      display:grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap:14px;
-      margin: 24px 0 10px;
-    }
-    .card{padding:18px}
-    .card h3{margin:0 0 6px; font-size:16px}
-    .card p{margin:0; color:var(--muted); font-size:14px}
-    .section{
-      margin: 26px 0;
-      padding: 22px;
-    }
-    .section h2{margin:0 0 10px; font-size:20px}
-    .bullets{display:grid; gap:10px; margin-top:12px}
-    .bullet{
-      display:flex; gap:10px; align-items:flex-start;
-      padding:12px;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,.12);
-      background: rgba(0,0,0,.18);
-    }
-    .check{
-      width:22px; height:22px; border-radius:7px;
-      background: rgba(47,230,200,.18);
-      border:1px solid rgba(47,230,200,.35);
-      display:grid; place-items:center;
-      flex: 0 0 auto;
-      margin-top:1px;
-    }
-    .check svg{width:14px; height:14px}
-    .bullet strong{display:block; font-size:14px}
-    .bullet span{display:block; color:var(--muted); font-size:13px; margin-top:2px}
-    form{display:grid; gap:10px; margin-top:12px}
-    .row2{display:grid; grid-template-columns: 1fr 1fr; gap:10px}
-    input, textarea{
-      width:100%;
-      padding:12px 12px;
-      border-radius:14px;
-      border:1px solid rgba(255,255,255,.14);
-      background: rgba(0,0,0,.22);
-      color: var(--text);
-      outline:none;
-    }
-    input:focus, textarea:focus{border-color: rgba(124,92,255,.55); box-shadow: 0 0 0 4px rgba(124,92,255,.14)}
-    textarea{min-height:110px; resize:vertical}
-    .foot{
-      display:flex; justify-content:space-between; flex-wrap:wrap;
-      gap:10px;
-      padding: 18px 0 30px;
-      color: rgba(234,240,255,.55);
-      font-size:13px;
-    }
-    .pill{
-      display:inline-flex; gap:8px; align-items:center;
-      padding:10px 12px; border-radius:999px;
-      border:1px solid rgba(255,255,255,.12);
-      background: rgba(0,0,0,.18);
-      color: rgba(234,240,255,.70);
-      text-decoration:none;
-    }
-    .pill:hover{border-color: rgba(255,255,255,.20)}
-    @media (max-width: 880px){
-      .hero{grid-template-columns:1fr; padding-top:50px}
-      .grid3{grid-template-columns:1fr}
-      .row2{grid-template-columns:1fr}
-      .navlinks{display:none}
-    }
-  </style>
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 
 <body>
   <div class="wrap">
     <header class="nav">
-      <div class="brand">
-        <div class="logo" aria-hidden="true"></div>
-        <div>Constrava</div>
-      </div>
+      <a class="brand" href="/index.html">
+        <span class="logo" aria-hidden="true"></span>
+        <span>Constrava</span>
+      </a>
+
       <nav class="navlinks" aria-label="Primary">
-        <a href="#services">Services</a>
-        <a href="#process">Process</a>
-        <a href="#work">What we build</a>
-        <a href="#contact">Contact</a>
+        <a class="active" href="/index.html">Home</a>
+        <a href="/services.html">Services</a>
+        <a href="/process.html">Process</a>
+        <a href="/work.html">Work</a>
+        <a href="/contact.html">Contact</a>
       </nav>
-      <a class="btn primary" href="#contact">Book a build call →</a>
+
+      <a class="btn primary" href="/contact.html">Start a project →</a>
     </header>
 
     <main>
       <section class="hero">
         <div>
           <div class="kicker"><span class="dot"></span> Rapid custom app development — idea to launch fast</div>
+
           <h1>Build the app your business needs.<br/>Ship in weeks, not months.</h1>
+
           <p class="sub">
-            Constrava is a rapid custom app development firm. We design, build, and deploy
-            dashboards, internal tools, customer portals, and AI-assisted workflows — clean UX, scalable backend,
-            and production-ready hosting.
+            Constrava is a rapid custom app development firm. We design, build, and deploy dashboards,
+            internal tools, customer portals, and automation — with clean UX and production-ready hosting.
           </p>
 
           <div class="ctaRow">
-            <a class="btn primary" href="#contact">Start a project</a>
-            <a class="btn" href="#services">See services</a>
-            <a class="btn" href="#work">Examples</a>
+            <a class="btn primary" href="/contact.html">Start a project</a>
+            <a class="btn" href="/services.html">See services</a>
+            <a class="btn" href="/work.html">Examples</a>
           </div>
 
           <div class="grid3">
@@ -259,7 +56,7 @@ body{
             </div>
             <div class="panel card">
               <h3>Owner-ready</h3>
-              <p>Documentation, handoff, and maintainable code — no mystery box.</p>
+              <p>Documentation and maintainable code — no mystery box handoff.</p>
             </div>
           </div>
         </div>
@@ -268,26 +65,30 @@ body{
           <div class="stack">
             <div class="mini">
               <strong>Typical deliverables</strong>
-              <span>Clickable design → working build → hosted launch + analytics</span>
+              <span>Clickable design → working build → hosted launch</span>
             </div>
             <div class="mini">
               <strong>Best for</strong>
-              <span>SMBs, ecommerce, agencies, ops teams, founders needing speed</span>
+              <span>SMBs, ecommerce, ops teams, founders needing speed</span>
             </div>
             <div class="mini">
               <strong>Tech (example)</strong>
-              <span>Next.js / React • Node • Postgres • Render/VPS • APIs</span>
+              <span>React/Next.js • Node • Postgres • APIs • Render/VPS</span>
             </div>
             <div class="mini">
               <strong>Timeline</strong>
-              <span>Kickoff → prototype → build → QA → launch → support</span>
+              <span>Kickoff → prototype → build → QA → launch</span>
             </div>
           </div>
         </aside>
       </section>
 
-      <section id="services" class="panel section">
-        <h2>Services</h2>
+      <section class="panel section">
+        <h2>What we do</h2>
+        <p class="sub">
+          We turn messy business processes into simple, fast software — the kind your team actually wants to use.
+        </p>
+
         <div class="bullets">
           <div class="bullet">
             <div class="check" aria-hidden="true">
@@ -296,8 +97,8 @@ body{
               </svg>
             </div>
             <div>
-              <strong>Custom web apps</strong>
-              <span>Customer portals, admin panels, dashboards, internal tools.</span>
+              <strong>Dashboards & admin panels</strong>
+              <span>Real-time views, metrics, workflows, permissions, audit trails.</span>
             </div>
           </div>
 
@@ -308,8 +109,8 @@ body{
               </svg>
             </div>
             <div>
-              <strong>Automation + integrations</strong>
-              <span>Connect Stripe, Shopify, CRMs, spreadsheets, email, APIs, webhooks.</span>
+              <strong>Automations & integrations</strong>
+              <span>Stripe, Shopify, CRMs, email, webhooks, internal APIs.</span>
             </div>
           </div>
 
@@ -320,125 +121,25 @@ body{
               </svg>
             </div>
             <div>
-              <strong>AI-assisted workflows</strong>
-              <span>Summaries, classification, support assistants, internal copilots (optional).</span>
-            </div>
-          </div>
-
-          <div class="bullet">
-            <div class="check" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M20 7L10 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
-            <div>
-              <strong>Deployment + performance</strong>
-              <span>Secure auth, logs, monitoring, backups, and production hosting setup.</span>
+              <strong>Custom portals</strong>
+              <span>Client login, requests, documents, invoices, status updates.</span>
             </div>
           </div>
         </div>
-      </section>
 
-      <section id="process" class="panel section">
-        <h2>How it works</h2>
-        <div class="grid3">
-          <div class="card">
-            <h3>1) Sprint kickoff</h3>
-            <p>We map requirements, users, and success metrics. You get a scope + timeline.</p>
-          </div>
-          <div class="card">
-            <h3>2) Prototype fast</h3>
-            <p>Clickable UI + core flows so you can approve direction early.</p>
-          </div>
-          <div class="card">
-            <h3>3) Build + ship</h3>
-            <p>Weekly iterations, QA, and a production launch with docs and handoff.</p>
-          </div>
-        </div>
-      </section>
-
-      <section id="work" class="panel section">
-        <h2>What we build</h2>
-        <div class="grid3">
-          <div class="card">
-            <h3>Ops dashboards</h3>
-            <p>KPIs, order tracking, inventory signals, team performance views.</p>
-          </div>
-          <div class="card">
-            <h3>Client portals</h3>
-            <p>Secure logins, invoices, project status, documents, messaging.</p>
-          </div>
-          <div class="card">
-            <h3>Internal tools</h3>
-            <p>Forms, approvals, automations, data cleanup, admin consoles.</p>
-          </div>
-        </div>
-      </section>
-
-      <section id="contact" class="panel section">
-        <h2>Start a project</h2>
-        <p class="sub" style="margin:0 0 6px">
-          Fill this out and we’ll reply with next steps. (This form can email you once you connect an endpoint.)
-        </p>
-
-        <form id="leadForm">
-          <div class="row2">
-            <input name="name" placeholder="Your name" required />
-            <input name="email" placeholder="Email" type="email" required />
-          </div>
-          <input name="company" placeholder="Company / project (optional)" />
-          <textarea name="message" placeholder="What do you want to build? Timeline, features, and any links…"></textarea>
-          <button class="btn primary" type="submit">Send request →</button>
-          <div id="formNote" style="color:rgba(234,240,255,.7); font-size:13px"></div>
-        </form>
-
-        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px">
-        <a class="pill" href="#"
-   onclick="copyToClipboard('constrava@constravaai.com'); return false;">
-  Copy email: constrava@constravaai.com
-</a>
-          <a class="pill" href="#services">View services</a>
-          <a class="pill" href="#process">View process</a>
+        <div class="ctaRow" style="margin-top:16px">
+          <a class="btn primary" href="/contact.html">Request a quote →</a>
+          <a class="btn" href="/process.html">See our process</a>
         </div>
       </section>
 
       <footer class="foot">
         <div>© <span id="year"></span> Constrava. Rapid custom app development.</div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap">
-          <span style="opacity:.75">Built for speed • shipped with care</span>
-        </div>
+        <div>Green, clean, and built for speed.</div>
       </footer>
     </main>
   </div>
 
-  <script>
-    // tiny helpers
-    document.getElementById("year").textContent = new Date().getFullYear();
-
-    function copyToClipboard(text){
-      navigator.clipboard?.writeText(text).then(() => {
-        alert("Copied: " + text);
-      }).catch(() => {
-        prompt("Copy this:", text);
-      });
-    }
-
-    // Demo-only form behavior (no backend). Replace with a real POST when ready.
-    const form = document.getElementById("leadForm");
-    const note = document.getElementById("formNote");
-
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const data = Object.fromEntries(new FormData(form).entries());
-
-      // TODO: hook to your backend endpoint
-      // await fetch("/api/lead", { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify(data) });
-
-      note.textContent = "Saved (demo). To make it real, connect this form to an endpoint (I can wire that up).";
-      form.reset();
-      setTimeout(() => (note.textContent = ""), 6000);
-      console.log("Lead submission:", data);
-    });
-  </script>
+  <script src="/main.js"></script>
 </body>
 </html>
