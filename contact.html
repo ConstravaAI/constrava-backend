@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="description" content="Contact Constrava — request a quote for rapid custom app development." />
+  <title>Constrava | Contact</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body>
+  <div class="wrap">
+    <header class="nav">
+      <a class="brand" href="/index.html">
+        <span class="logo" aria-hidden="true"></span>
+        <span>Constrava</span>
+      </a>
+
+      <nav class="navlinks" aria-label="Primary">
+        <a href="/index.html">Home</a>
+        <a href="/services.html">Services</a>
+        <a href="/process.html">Process</a>
+        <a href="/work.html">Work</a>
+        <a class="active" href="/contact.html">Contact</a>
+      </nav>
+
+      <a class="btn primary" href="/contact.html">Start a project →</a>
+    </header>
+
+    <main>
+      <section class="panel section">
+        <h1 style="margin:0 0 8px">Contact</h1>
+        <p class="sub">
+          Tell us what you want to build and we’ll respond with next steps.
+        </p>
+
+        <form id="leadForm">
+          <div class="row2">
+            <input name="name" placeholder="Your name" required />
+            <input name="email" placeholder="Email" type="email" required />
+          </div>
+          <input name="company" placeholder="Company / project (optional)" />
+          <textarea name="message" placeholder="What do you want to build? Timeline, features, any links…"></textarea>
+          <button class="btn primary" type="submit">Send request →</button>
+          <div id="formNote" class="smallnote"></div>
+        </form>
+
+        <div class="pills">
+          <a class="pill" href="#"
+             onclick="copyToClipboard('constrava@constravaai.com'); return false;">
+            Copy email: constrava@constravaai.com
+          </a>
+          <a class="pill" href="mailto:constrava@constravaai.com">Open email</a>
+        </div>
+      </section>
+
+      <footer class="foot">
+        <div>© <span id="year"></span> Constrava</div>
+        <div>constrava@constravaai.com</div>
+      </footer>
+    </main>
+  </div>
+
+  <script src="/main.js"></script>
+</body>
+</html>
