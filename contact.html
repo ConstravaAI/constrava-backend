@@ -10,13 +10,15 @@
 
 <body>
   <div class="wrap">
+
+    <!-- NAVIGATION -->
     <header class="nav">
       <a class="brand" href="/index.html">
-        <span class="logo" aria-hidden="true"></span>
+        <span class="logo"></span>
         <span>Constrava</span>
       </a>
 
-      <nav class="navlinks" aria-label="Primary">
+      <nav class="navlinks">
         <a href="/index.html">Home</a>
         <a href="/services.html">Services</a>
         <a href="/process.html">Process</a>
@@ -27,40 +29,58 @@
       <a class="btn primary" href="/contact.html">Start a project →</a>
     </header>
 
+    <!-- CONTACT SECTION -->
     <main>
       <section class="panel section">
-        <h1 style="margin:0 0 8px">Contact</h1>
+        <h1 style="margin:0 0 8px">Start a Project</h1>
         <p class="sub">
-          Tell us what you want to build and we’ll respond with next steps.
+          Tell us what you want to build and we’ll respond quickly.
         </p>
 
         <form id="leadForm">
           <div class="row2">
             <input name="name" placeholder="Your name" required />
-            <input name="email" placeholder="Email" type="email" required />
+            <input name="email" placeholder="Email address" type="email" required />
           </div>
-          <input name="company" placeholder="Company / project (optional)" />
-          <textarea name="message" placeholder="What do you want to build? Timeline, features, any links…"></textarea>
-          <button class="btn primary" type="submit">Send request →</button>
+
+          <input name="company" placeholder="Company / Project name (optional)" />
+
+          <textarea 
+            name="message" 
+            placeholder="What do you want to build? Timeline, features, budget range, etc."
+            required
+          ></textarea>
+
+          <button class="btn primary" type="submit">
+            Send request →
+          </button>
+
           <div id="formNote" class="smallnote"></div>
         </form>
 
-        <div class="pills">
-          <a class="pill" href="#"
-             onclick="copyToClipboard('constrava@constravaai.com'); return false;">
-            Copy email: constrava@constravaai.com
+        <div class="pills" style="margin-top:16px">
+          <a class="pill" href="mailto:constrava@constravaai.com">
+            constrava@constravaai.com
           </a>
-          <a class="pill" href="mailto:constrava@constravaai.com">Open email</a>
         </div>
       </section>
 
       <footer class="foot">
         <div>© <span id="year"></span> Constrava</div>
-        <div>constrava@constravaai.com</div>
+        <div>Rapid custom app development</div>
       </footer>
     </main>
+
   </div>
 
+  <!-- Script MUST be here -->
   <script src="/main.js"></script>
+
+  <!-- Minimal fallback JS (in case main.js doesn't load) -->
+  <script>
+    if (!window.fetch) {
+      console.log("Fetch not supported");
+    }
+  </script>
 </body>
 </html>
