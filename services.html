@@ -3,107 +3,40 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="description" content="Constrava services — custom web apps, automation, integrations." />
   <title>Constrava | Services</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
-
 <body>
   <div class="wrap">
     <header class="nav">
-      <a class="brand" href="/index.html">
-        <span class="logo" aria-hidden="true"></span>
-        <span>Constrava</span>
-      </a>
-
-      <nav class="navlinks" aria-label="Primary">
-        <a href="/index.html">Home</a>
-        <a class="active" href="/services.html">Services</a>
-        <a href="/process.html">Process</a>
-        <a href="/work.html">Work</a>
-        <a href="/contact.html">Contact</a>
+      <a class="brand" href="/"><span class="logo"></span>Constrava</a>
+      <nav class="navlinks">
+        <a href="/">Home</a>
+        <a class="active" href="/services">Services</a>
+        <a href="/process">Process</a>
+        <a href="/work">Work</a>
+        <a href="/contact">Contact</a>
       </nav>
-
-      <a class="btn primary" href="/contact.html">Start a project →</a>
+      <a class="btn primary" href="/contact">Start a project →</a>
     </header>
 
-    <main>
-      <section class="panel section">
-        <h1 style="margin:0 0 8px">Services</h1>
-        <p class="sub">
-          Rapid builds, clean UX, production-ready deployments. Pick a lane or combine them — we scope fast and ship fast.
-        </p>
-
-        <div class="grid3">
-          <div class="panel card">
-            <h3>Custom web apps</h3>
-            <p>Dashboards, admin panels, portals, internal tools, data entry systems.</p>
-          </div>
-          <div class="panel card">
-            <h3>Automation + integrations</h3>
-            <p>Stripe, Shopify, CRMs, email tools, spreadsheets, webhooks, APIs.</p>
-          </div>
-          <div class="panel card">
-            <h3>AI-assisted workflows (optional)</h3>
-            <p>Summaries, classification, routing, helpdesk copilots, internal knowledge tools.</p>
-          </div>
+    <section class="card">
+      <h1>Services</h1>
+      <div class="grid grid3">
+        <div class="card">
+          <b>Custom web apps</b>
+          <p>Dashboards, portals, internal tools, admin panels.</p>
         </div>
-      </section>
-
-      <section class="panel section">
-        <h2>Common packages</h2>
-
-        <div class="bullets">
-          <div class="bullet">
-            <div class="check" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M20 7L10 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
-            <div>
-              <strong>MVP Sprint</strong>
-              <span>Design + core flows + deploy a usable first version in 1–3 weeks.</span>
-            </div>
-          </div>
-
-          <div class="bullet">
-            <div class="check" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M20 7L10 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
-            <div>
-              <strong>Ops Dashboard</strong>
-              <span>KPIs + filters + exports + roles/permissions + hosted deployment.</span>
-            </div>
-          </div>
-
-          <div class="bullet">
-            <div class="check" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none">
-                <path d="M20 7L10 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </div>
-            <div>
-              <strong>Integration Build</strong>
-              <span>Automate data flow between tools: Stripe/Shopify/CRM/email/reporting.</span>
-            </div>
-          </div>
+        <div class="card">
+          <b>Automation + integrations</b>
+          <p>Stripe, Shopify, CRMs, webhooks, APIs.</p>
         </div>
-
-        <div class="ctaRow" style="margin-top:16px">
-          <a class="btn primary" href="/contact.html">Get a quote →</a>
-          <a class="btn" href="/work.html">See examples</a>
+        <div class="card">
+          <b>Deployment</b>
+          <p>Production hosting, SSL, logging, monitoring basics.</p>
         </div>
-      </section>
-
-      <footer class="foot">
-        <div>© <span id="year"></span> Constrava</div>
-        <div>Services built for speed.</div>
-      </footer>
-    </main>
+      </div>
+    </section>
   </div>
-
-  <script src="/main.js"></script>
 </body>
 </html>
