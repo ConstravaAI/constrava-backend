@@ -3,84 +3,44 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="description" content="Contact Constrava — request a quote for rapid custom app development." />
   <title>Constrava | Contact</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
-
 <body>
   <div class="wrap">
-
-    <!-- NAVIGATION -->
     <header class="nav">
-      <a class="brand" href="/index.html">
-        <span class="logo"></span>
-        <span>Constrava</span>
-      </a>
-
+      <a class="brand" href="/"><span class="logo"></span>Constrava</a>
       <nav class="navlinks">
-        <a href="/index.html">Home</a>
-        <a href="/services.html">Services</a>
-        <a href="/process.html">Process</a>
-        <a href="/work.html">Work</a>
-        <a class="active" href="/contact.html">Contact</a>
+        <a href="/">Home</a>
+        <a href="/services">Services</a>
+        <a href="/process">Process</a>
+        <a href="/work">Work</a>
+        <a class="active" href="/contact">Contact</a>
       </nav>
-
-      <a class="btn primary" href="/contact.html">Start a project →</a>
+      <a class="btn primary" href="/contact">Start a project →</a>
     </header>
 
-    <!-- CONTACT SECTION -->
-    <main>
-      <section class="panel section">
-        <h1 style="margin:0 0 8px">Start a Project</h1>
-        <p class="sub">
-          Tell us what you want to build and we’ll respond quickly.
-        </p>
+    <section class="card">
+      <h1>Contact</h1>
+      <p>Requests go to <b>constrava@constravaai.com</b>.</p>
 
-        <form id="leadForm">
-          <div class="row2">
-            <input name="name" placeholder="Your name" required />
-            <input name="email" placeholder="Email address" type="email" required />
-          </div>
-
-          <input name="company" placeholder="Company / Project name (optional)" />
-
-          <textarea 
-            name="message" 
-            placeholder="What do you want to build? Timeline, features, budget range, etc."
-            required
-          ></textarea>
-
-          <button class="btn primary" type="submit">
-            Send request →
-          </button>
-
-          <div id="formNote" class="smallnote"></div>
-        </form>
-
-        <div class="pills" style="margin-top:16px">
-          <a class="pill" href="mailto:constrava@constravaai.com">
-            constrava@constravaai.com
-          </a>
+      <form id="leadForm" class="grid">
+        <div class="row2">
+          <input name="name" placeholder="Your name" required />
+          <input name="email" type="email" placeholder="Email" required />
         </div>
-      </section>
+        <input name="company" placeholder="Company (optional)" />
+        <textarea name="message" placeholder="What do you want to build?" required></textarea>
+        <button class="btn primary" type="submit">Send →</button>
 
-      <footer class="foot">
-        <div>© <span id="year"></span> Constrava</div>
-        <div>Rapid custom app development</div>
-      </footer>
-    </main>
+        <!-- This ALWAYS exists, so messages will show -->
+        <div id="formNote" class="note"></div>
+      </form>
 
+      <div class="footer">Or email directly: constrava@constravaai.com</div>
+    </section>
   </div>
 
-  <!-- Script MUST be here -->
   <script src="/main.js"></script>
-
-  <!-- Minimal fallback JS (in case main.js doesn't load) -->
-  <script>
-    if (!window.fetch) {
-      console.log("Fetch not supported");
-    }
-  </script>
 </body>
 </html>
