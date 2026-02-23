@@ -7,18 +7,23 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+// Parse JSON body
 app.use(express.json({ limit: "200kb" }));
 
-// Serve your static files (index.html, services.html, styles.css, main.js, etc.)
+// Serve all files in this folder (index.html, styles.css, main.js, etc.)
 app.use(express.static(__dirname));
 
-// Email sender
+// Health check (quick test in browser)
+app.get("/health", (req, res) => res.status(200).send("ok"));
+
+// Resend setup
 const resend = new Resend(process.env.RESEND_API_KEY);
 const TO_EMAIL = "constrava@constravaai.com";
-const FROM_EMAIL = process.env.FROM_EMAIL; // must be verified in Resend
+const FROM_EMAIL = process.env.FROM_EMAIL;
 
-function escapeHtml(str) {
-  return String(str || "")
+function esc(s) {
+  return String(s || "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -26,25 +31,31 @@ function escapeHtml(str) {
     .replaceAll("'", "&#039;");
 }
 
-// Contact form endpoint
+// Form endpoint
 app.post("/api/lead", async (req, res) => {
   try {
     const { name, email, company, message } = req.body || {};
-
     if (!name || !email) {
       return res.status(400).json({ ok: false, error: "Name and email are required." });
+    }
+
+    if (!process.env.RESEND_API_KEY) {
+      return res.status(500).json({ ok: false, error: "Missing RESEND_API_KEY env var." });
+    }
+    if (!FROM_EMAIL) {
+      return res.status(500).json({ ok: false, error: "Missing FROM_EMAIL env var." });
     }
 
     const subject = `New Constrava Request — ${name}${company ? ` (${company})` : ""}`;
 
     const html = `
-      <div style="font-family:Arial,sans-serif; line-height:1.5">
+      <div style="font-family:Arial,sans-serif;line-height:1.5">
         <h2>New Constrava Project Request</h2>
-        <p><strong>Name:</strong> ${escapeHtml(name)}</p>
-        <p><strong>Email:</strong> ${escapeHtml(email)}</p>
-        <p><strong>Company/Project:</strong> ${escapeHtml(company || "")}</p>
-        <p><strong>Message:</strong></p>
-        <pre style="white-space:pre-wrap;background:#f4f4f4;padding:12px;border-radius:10px">${escapeHtml(message || "")}</pre>
+        <p><b>Name:</b> ${esc(name)}</p>
+        <p><b>Email:</b> ${esc(email)}</p>
+        <p><b>Company/Project:</b> ${esc(company || "")}</p>
+        <p><b>Message:</b></p>
+        <pre style="white-space:pre-wrap;background:#f4f4f4;padding:12px;border-radius:10px">${esc(message || "")}</pre>
       </div>
     `;
 
@@ -56,21 +67,19 @@ app.post("/api/lead", async (req, res) => {
       html,
     });
 
-    res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ ok: false, error: "Email send failed." });
+    console.error("EMAIL ERROR:", err);
+    return res.status(500).json({ ok: false, error: "Email send failed (see logs)." });
   }
 });
 
-// Nice URLs (optional): /services -> services.html, etc.
-app.get("/services", (req, res) => res.sendFile(path.join(__dirname, "services.html")));
-app.get("/process", (req, res) => res.sendFile(path.join(__dirname, "process.html")));
-app.get("/work", (req, res) => res.sendFile(path.join(__dirname, "work.html")));
-app.get("/contact", (req, res) => res.sendFile(path.join(__dirname, "contact.html")));
-
-// Default to homepage
-app.get("/", (req, res) => res.sendFile(path.join(__dirname, "index.html")));
+// Make sure homepage always works
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
+});
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log("Constrava site running on", port));
+app.listen(port, () => {
+  console.log("Constrava web service listening on port", port);
+});
