@@ -32,16 +32,20 @@ if (form && note) {
         body: JSON.stringify(data),
       });
 
-      const out = await r.json().catch(() => ({}));
-      if (!r.ok || !out.ok) throw new Error(out.error || "Request failed");
+      const text = await r.text(); // read raw text first
+      let out = {};
+      try { out = JSON.parse(text); } catch {}
+
+      if (!r.ok || !out.ok) {
+        throw new Error(out.error || `Request failed: ${r.status} ${text}`);
+      }
 
       note.textContent = "Sent! We’ll get back to you soon.";
       form.reset();
       setTimeout(() => (note.textContent = ""), 7000);
     } catch (err) {
-      console.error(err);
-      note.textContent = "Couldn’t send right now. Please try again.";
-      setTimeout(() => (note.textContent = ""), 8000);
+      note.textContent = "Error: " + err.message;
+      setTimeout(() => (note.textContent = ""), 12000);
     }
   });
 }
