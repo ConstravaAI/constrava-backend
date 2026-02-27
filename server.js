@@ -21,6 +21,7 @@ const subject = `Constrava Request — ${name} (${type || "Project"})`;
 const html = `
   <div style="font-family:Arial,sans-serif;line-height:1.5">
     <h2>New Constrava Project Request</h2>
+    <p><b>Member Code:</b> ${esc(memberCode || "None")}</p>
     <p><b>Name:</b> ${esc(name)}</p>
     <p><b>Email:</b> ${esc(email)}</p>
     <p><b>Company:</b> ${esc(company || "")}</p>
