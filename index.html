@@ -3,115 +3,75 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Constrava | Request a Build</title>
-  <meta name="description" content="AI-accelerated custom software development. Submit your build request to Constrava." />
+  <title>Constrava | AI-Accelerated Custom Software</title>
+  <meta name="description" content="Constrava builds AI-accelerated, human-engineered custom software systems." />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div class="wrap">
 
-    <!-- Minimal Nav -->
     <header class="nav">
       <a class="brand" href="/"><span class="logo"></span>Constrava</a>
       <nav class="navlinks">
-        <a href="/process">How it works</a>
-        <a href="/work">Examples</a>
+        <a href="/">Home</a>
         <a href="/services">Services</a>
+        <a href="/process">Process</a>
+        <a href="/work">Work</a>
+        <a href="/contact">Contact</a>
       </nav>
-      <a class="btn primary" href="#request">Start →</a>
+      <a class="btn primary" href="/contact">Start a project →</a>
     </header>
 
-    <!-- Form-first hero -->
-    <section class="card" id="request">
-      <h1>Request Custom Software</h1>
+    <section class="card">
+      <h1>Custom Software, Built Around Your Workflow</h1>
       <p>
-        AI-accelerated. Human-built. Tell us what you want to build and we’ll reply with a plan + quote.
+        Constrava is an AI-accelerated custom app development firm.
+        We build dashboards, portals, automation systems, and internal tools
+        designed specifically for how your business operates.
       </p>
 
-      <form id="leadForm" class="grid" style="margin-top:16px">
-
-        <div class="row2">
-          <input name="name" placeholder="Your name" required />
-          <input name="email" type="email" placeholder="Email" required />
-        </div>
-
-        <div class="row2">
-          <input name="company" placeholder="Company / project name (optional)" />
-          <input name="role" placeholder="Your role (optional)" />
-        </div>
-
-        <div class="row2">
-          <select name="type" required>
-            <option value="" disabled selected>What are you building?</option>
-            <option>Dashboard / Admin panel</option>
-            <option>Customer portal</option>
-            <option>Automation / Integration</option>
-            <option>Internal tool</option>
-            <option>Other</option>
-          </select>
-
-          <select name="timeline" required>
-            <option value="" disabled selected>Timeline</option>
-            <option>ASAP (1–2 weeks)</option>
-            <option>2–4 weeks</option>
-            <option>1–2 months</option>
-            <option>Flexible</option>
-          </select>
-        </div>
-
-        <div class="row2">
-          <select name="budget" required>
-            <option value="" disabled selected>Budget range</option>
-            <option>$500–$2,000</option>
-            <option>$2,000–$5,000</option>
-            <option>$5,000–$10,000</option>
-            <option>$10,000+</option>
-          </select>
-
-          <input name="memberCode" placeholder="Member code (optional)" />
-        </div>
-
-        <input name="links" placeholder="Links (docs/examples/current site) (optional)" />
-
-        <textarea
-          name="message"
-          placeholder="Describe the workflow. Who uses it? What inputs/outputs? What tools does it connect to?"
-          required
-        ></textarea>
-
-        <!-- Honeypot (spam trap) -->
-        <input name="website" autocomplete="off" tabindex="-1" style="display:none" />
-
-        <button class="btn primary" type="submit">Send request →</button>
-        <div id="formNote" class="note"></div>
-      </form>
-
-      <div class="footer" style="margin-top:12px">
-        Prefer email? <a href="mailto:constrava@constravaai.com"><b>constrava@constravaai.com</b></a>
+      <div style="margin-top:14px">
+        <a class="btn primary" href="/contact">Start a project →</a>
+        <a class="btn" href="/process">See how we build</a>
       </div>
     </section>
 
-    <!-- What happens next -->
     <section class="card" style="margin-top:14px">
-      <h2 style="margin:0 0 10px">What happens next</h2>
-      <div class="grid grid3" style="margin-top:12px">
+      <h2 style="margin:0 0 10px">What we build</h2>
+
+      <div class="grid grid3">
         <div class="card">
-          <b>1) Human review</b>
-          <p>We read your request and confirm feasibility.</p>
+          <b>Operational Dashboards</b>
+          <p>Live data, revenue tracking, internal KPIs, and admin panels.</p>
         </div>
+
         <div class="card">
-          <b>2) Plan + quote</b>
-          <p>We reply with scope, timeline, and pricing.</p>
+          <b>Client Portals</b>
+          <p>Secure logins, structured requests, file uploads, tracking systems.</p>
         </div>
+
         <div class="card">
-          <b>3) Build + deliver</b>
-          <p>AI-accelerated development, tested and shipped.</p>
+          <b>Automation & Integrations</b>
+          <p>Stripe, Shopify, CRMs, APIs, databases — connected cleanly.</p>
         </div>
       </div>
     </section>
+
+    <section class="card" style="margin-top:14px">
+      <h2 style="margin:0 0 10px">AI-Accelerated. Human-Built.</h2>
+      <p>
+        We use modern AI tools to move faster —
+        but every system is architected, reviewed, and engineered by people.
+      </p>
+      <div style="margin-top:12px">
+        <a class="btn primary" href="/contact">Discuss your build →</a>
+      </div>
+    </section>
+
+    <footer class="footer">
+      © 2026 Constrava. All rights reserved.
+    </footer>
 
   </div>
-
-  <script src="/main.js"></script>
 </body>
 </html>
