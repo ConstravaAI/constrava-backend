@@ -83,3 +83,32 @@ textarea{min-height:120px;resize:vertical}
 
 .note{margin-top:10px;font-size:14px;color:#0b1f14}
 .footer{margin-top:18px;color:rgba(11,31,20,.55);font-size:13px}
+/* Style select dropdowns to match inputs */
+select {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,.08);
+  background: rgba(255,255,255,.7);
+  font-size: 15px;
+  font-family: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  transition: border .2s ease, box-shadow .2s ease;
+}
+
+/* Focus state */
+select:focus {
+  outline: none;
+  border-color: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22,163,74,.15);
+}
+
+/* Custom dropdown arrow */
+select {
+  background-image: url("data:image/svg+xml;utf8,<svg fill='%2316a34a' height='20' viewBox='0 0 24 24' width='20' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 16px;
+}
