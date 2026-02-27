@@ -9,6 +9,12 @@ if (form && note) {
 
     const data = Object.fromEntries(new FormData(form).entries());
 
+    // Honeypot: if bots fill this, silently succeed (no spam email)
+    if (data.website && data.website.trim() !== "") {
+      form.reset();
+      note.textContent = "Sent!";
+      return;
+    }
 
     note.textContent = "Sending…";
 
