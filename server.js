@@ -1,4 +1,16 @@
-const { name, email, company, role, type, timeline, budget, links, message, website } = req.body || {};
+const { 
+  name, 
+  email, 
+  company, 
+  role, 
+  type, 
+  timeline, 
+  budget, 
+  links, 
+  memberCode,
+  message, 
+  website 
+} = req.body || {};
 
 if (website && website.trim() !== "") {
   return res.json({ ok: true }); // honeypot bot
