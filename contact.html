@@ -24,14 +24,63 @@
       <h1>Contact</h1>
       <p>Requests go to <b>constrava@constravaai.com</b>.</p>
 
-      <form id="leadForm" class="grid">
-        <div class="row2">
-          <input name="name" placeholder="Your name" required />
-          <input name="email" type="email" placeholder="Email" required />
-        </div>
-        <input name="company" placeholder="Company (optional)" />
-        <textarea name="message" placeholder="What do you want to build?" required></textarea>
-        <button class="btn primary" type="submit">Send →</button>
+<form id="leadForm" class="grid" style="margin-top:16px">
+
+  <div class="row2">
+    <input name="name" placeholder="Your name" required />
+    <input name="email" type="email" placeholder="Email" required />
+  </div>
+
+  <div class="row2">
+    <input name="company" placeholder="Company / project name (optional)" />
+    <input name="role" placeholder="Your role (optional)" />
+  </div>
+
+  <div class="row2">
+    <select name="type" required>
+      <option value="" disabled selected>What are you building?</option>
+      <option>Dashboard / Admin panel</option>
+      <option>Customer portal</option>
+      <option>Automation / Integration</option>
+      <option>Internal tool</option>
+      <option>Other</option>
+    </select>
+
+    <select name="timeline" required>
+      <option value="" disabled selected>Timeline</option>
+      <option>ASAP (1–2 weeks)</option>
+      <option>2–4 weeks</option>
+      <option>1–2 months</option>
+      <option>Flexible</option>
+    </select>
+  </div>
+
+  <div class="row2">
+    <select name="budget" required>
+      <option value="" disabled selected>Budget range</option>
+      <option>$500–$2,000</option>
+      <option>$2,000–$5,000</option>
+      <option>$5,000–$10,000</option>
+      <option>$10,000+</option>
+    </select>
+
+    <input name="memberCode" placeholder="Member code (optional)" />
+  </div>
+
+  <input name="links" placeholder="Links (docs/examples/current site) (optional)" />
+
+  <textarea
+    name="message"
+    placeholder="Describe the workflow. Who uses it? What inputs/outputs? What tools does it connect to?"
+    required
+  ></textarea>
+
+  <!-- Honeypot (spam trap) -->
+  <input name="website" autocomplete="off" tabindex="-1" style="display:none" />
+
+  <button class="btn primary" type="submit">Send request →</button>
+  <div id="formNote" class="note"></div>
+</form>
 
         <!-- This ALWAYS exists, so messages will show -->
         <div id="formNote" class="note"></div>
