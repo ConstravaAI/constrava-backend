@@ -4,13 +4,14 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Constrava | Contact</title>
+  <meta name="description" content="Contact Constrava to discuss a custom software build, dashboard, portal, automation, or integration." />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div class="wrap">
     <header class="nav">
-      <a class="brand" href="/"><span class="logo"></span>Constrava</a>
-      <nav class="navlinks">
+      <a class="brand" href="/"><span class="logo" aria-hidden="true"></span>Constrava</a>
+      <nav class="navlinks" aria-label="Main navigation">
         <a href="/">Home</a>
         <a href="/services">Services</a>
         <a href="/process">Process</a>
@@ -20,75 +21,97 @@
       <a class="btn primary" href="/contact">Start a project →</a>
     </header>
 
-    <section class="card">
-      <h1>Contact</h1>
-      <p>Requests go to <b>constrava@constravaai.com</b>.</p>
-
-<form id="leadForm" class="grid" style="margin-top:16px">
-
-  <div class="row2">
-    <input name="name" placeholder="Your name" required />
-    <input name="email" type="email" placeholder="Email" required />
-  </div>
-
-  <div class="row2">
-    <input name="company" placeholder="Company / project name (optional)" />
-    <input name="role" placeholder="Your role (optional)" />
-  </div>
-
-  <div class="row2">
-    <select name="type" required>
-      <option value="" disabled selected>What are you building?</option>
-      <option>Dashboard / Admin panel</option>
-      <option>Customer portal</option>
-      <option>Automation / Integration</option>
-      <option>Internal tool</option>
-      <option>Other</option>
-    </select>
-
-    <select name="timeline" required>
-      <option value="" disabled selected>Timeline</option>
-      <option>ASAP (1–2 weeks)</option>
-      <option>2–4 weeks</option>
-      <option>1–2 months</option>
-      <option>Flexible</option>
-    </select>
-  </div>
-
-  <div class="row2">
-    <select name="budget" required>
-      <option value="" disabled selected>Budget range</option>
-      <option>$500–$2,000</option>
-      <option>$2,000–$5,000</option>
-      <option>$5,000–$10,000</option>
-      <option>$10,000+</option>
-    </select>
-
-    <input name="memberCode" placeholder="Member code (optional)" />
-  </div>
-
-  <input name="links" placeholder="Links (docs/examples/current site) (optional)" />
-
-  <textarea
-    name="message"
-    placeholder="Describe the workflow. Who uses it? What inputs/outputs? What tools does it connect to?"
-    required
-  ></textarea>
-
-  <!-- Honeypot (spam trap) -->
-  <input name="website" autocomplete="off" tabindex="-1" style="display:none" />
-
-  <button class="btn primary" type="submit">Send request →</button>
-  <div id="formNote" class="note"></div>
-</form>
-
-        <!-- This ALWAYS exists, so messages will show -->
-        <div id="formNote" class="note"></div>
-      </form>
-
-      <div class="footer">Or email directly: constrava@constravaai.com</div>
+    <section class="page-hero narrow">
+      <span class="eyebrow">Start a project</span>
+      <h1>Tell us what you want to build.</h1>
+      <p>Share the workflow, tools, timeline, and problem you want solved. The clearer the request, the easier it is to scope a realistic plan.</p>
     </section>
   </div>
+
+  <main>
+    <section class="section tight">
+      <div class="wrap form-shell">
+        <aside class="contact-aside">
+          <span class="section-label">Project intake</span>
+          <h2>Start with the workflow.</h2>
+          <p style="margin-top:16px">You do not need a perfect technical spec. Describe what happens today, who uses the system, and what should be easier after the build.</p>
+          <div class="contact-method">
+            <h3>Email</h3>
+            <p>Requests are sent to <strong>constrava@constravaai.com</strong>.</p>
+          </div>
+          <ul class="check-list">
+            <li>What users need to do.</li>
+            <li>What data needs to be stored or displayed.</li>
+            <li>What tools or APIs should connect.</li>
+            <li>What timeline and budget range you have in mind.</li>
+          </ul>
+        </aside>
+
+        <form id="leadForm" class="form-card form-grid">
+          <div class="row2">
+            <div class="field"><label for="name">Name</label><input id="name" name="name" placeholder="Your name" autocomplete="name" required /></div>
+            <div class="field"><label for="email">Email</label><input id="email" name="email" type="email" placeholder="you@example.com" autocomplete="email" required /></div>
+          </div>
+
+          <div class="row2">
+            <div class="field"><label for="company">Company / project</label><input id="company" name="company" placeholder="Optional" /></div>
+            <div class="field"><label for="role">Your role</label><input id="role" name="role" placeholder="Optional" /></div>
+          </div>
+
+          <div class="row2">
+            <div class="field">
+              <label for="type">What are you building?</label>
+              <select id="type" name="type" required>
+                <option value="" disabled selected>Select one</option>
+                <option>Dashboard / Admin panel</option>
+                <option>Customer portal</option>
+                <option>Automation / Integration</option>
+                <option>Internal tool</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="timeline">Timeline</label>
+              <select id="timeline" name="timeline" required>
+                <option value="" disabled selected>Select one</option>
+                <option>ASAP (1–2 weeks)</option>
+                <option>2–4 weeks</option>
+                <option>1–2 months</option>
+                <option>Flexible</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="row2">
+            <div class="field">
+              <label for="budget">Budget range</label>
+              <select id="budget" name="budget" required>
+                <option value="" disabled selected>Select one</option>
+                <option>$500–$2,000</option>
+                <option>$2,000–$5,000</option>
+                <option>$5,000–$10,000</option>
+                <option>$10,000+</option>
+              </select>
+            </div>
+            <div class="field"><label for="memberCode">Member code</label><input id="memberCode" name="memberCode" placeholder="Optional" /></div>
+          </div>
+
+          <div class="field"><label for="links">Links</label><input id="links" name="links" placeholder="Docs, current site, examples, or references" /></div>
+          <div class="field"><label for="message">Project details</label><textarea id="message" name="message" placeholder="Describe the workflow. Who uses it? What inputs and outputs are involved? What should happen automatically?" required></textarea></div>
+
+          <div class="hidden-field" aria-hidden="true"><label for="website">Website</label><input id="website" name="website" autocomplete="off" tabindex="-1" /></div>
+
+          <button class="btn primary" type="submit">Send request →</button>
+          <div id="formNote" class="note" role="status" aria-live="polite"></div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap footer">
+    <span>© 2026 Constrava. Custom software systems.</span>
+    <div class="footer-links"><a href="/services">Services</a><a href="/process">Process</a><a href="/work">Work</a><a href="/contact">Contact</a></div>
+  </footer>
 
   <script src="/main.js"></script>
 </body>
