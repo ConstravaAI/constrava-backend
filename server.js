@@ -105,14 +105,7 @@ const pool = process.env.DATABASE_URL
     })
   : null;
 
-function esc(s) {
-  return String(s || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
+
 
 function requireDb() {
   if (!pool) {
