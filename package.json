@@ -5,7 +5,7 @@
   "type": "module",
   "engines": { "node": ">=18" },
   "scripts": {
-    "start": "node prestart.js && node ai-explain-real-data.js && node crm-real-upgrade.js && node crm-syntax-fix.js && node crm-ui-rebuild.js && node server.js"
+    "start": "node prestart.js && node ai-explain-real-data.js && node crm-real-upgrade.js && node crm-syntax-fix.js && node crm-ui-rebuild.js && node crm-search-fix.js && node server.js"
   },
   "dependencies": {
     "express": "^4.19.2",
