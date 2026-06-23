@@ -147,7 +147,7 @@ function valueFrom(row, names, fallback = "") {
 }
 
 function eventType(event) {
-  return String(valueFrom(event, ["event_type", "type", "name", "event", "action"], "event"));
+  return String(valueFrom(event, ["event_name", "event_type", "type", "name", "event", "action"], "event"));
 }
 
 function eventPath(event) {
@@ -469,7 +469,7 @@ async function insertEvent(siteId, type, options = {}) {
   const c = cols(info);
 
   const siteCol = firstExisting(c, ["site_id", "site", "client_site_id", "project_id"]);
-  const typeCol = firstExisting(c, ["event_type", "type", "name", "event", "action"]);
+  const typeCol = firstExisting(c, ["event_name", "event_type", "type", "name", "event", "action"]);
   const pathCol = firstExisting(c, ["path", "url", "page", "pathname", "href", "route"]);
   const timeCol = firstExisting(c, ["created_at", "timestamp", "time", "event_time", "received_at", "inserted_at"]);
   const payloadCol = firstExisting(c, ["payload", "metadata", "data", "properties"]);
