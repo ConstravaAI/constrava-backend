@@ -1,0 +1,100 @@
+(function(){
+  const STORE_KEY = 'constravaCrmDemoAdds';
+  const flowDefs = {
+    import: ['Import CSV','Upload or paste CRM rows and import them into the CRM.'],
+    website: ['Connect Website Form','Generate a form connection and test a real lead capture flow.'],
+    email: ['Sync Email','Log email activity into the CRM from pasted email details.'],
+    call: ['Log Call','Record call notes, outcome, and follow-up details.'],
+    task: ['Create Task','Create a follow-up task tied to a CRM record.'],
+    api: ['Connect API','Create a webhook/API payload and send it into the CRM locally.'],
+    automation: ['Run Automation','Run CRM automation rules on the current records.']
+  };
+  let activeFlow = 'import';
+
+  const style = document.createElement('style');
+  style.textContent = `
+    .cx-workflow-bar{display:flex;gap:9px;flex-wrap:wrap;margin:0 0 15px}.cx-workflow-btn{border:1px solid #dbe8e4;border-radius:999px;background:white;color:#073d32;font-size:12px;font-weight:950;padding:10px 12px;box-shadow:0 8px 20px rgba(15,23,42,.06);cursor:pointer}.cx-workflow-btn:hover{background:#ecfdf5;border-color:#10b981;transform:translateY(-1px)}
+    .cx-modal{position:fixed;inset:0;z-index:1200;display:none;place-items:center;background:rgba(2,18,14,.64);backdrop-filter:blur(10px);padding:20px}.cx-modal.open{display:grid}.cx-box{width:min(1040px,100%);max-height:92vh;overflow:auto;background:white;border-radius:24px;box-shadow:0 36px 120px rgba(0,0,0,.34);border:1px solid rgba(16,185,129,.18)}.cx-head{padding:22px 24px;border-bottom:1px solid #dbe8e4;background:radial-gradient(circle at 18% 0,rgba(16,185,129,.2),transparent 35%),linear-gradient(135deg,#f8fffc,#ecfdf5)}.cx-head h2{margin:0;color:#022c22}.cx-head p{margin:8px 0 0;color:#475569;line-height:1.5}.cx-body{padding:22px 24px}.cx-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.cx-field label{display:block;margin-bottom:6px;font-size:12px;font-weight:950;letter-spacing:.08em;text-transform:uppercase;color:#047857}.cx-field input,.cx-field select,.cx-field textarea{width:100%;border:1px solid #dbe8e4;border-radius:12px;padding:12px 13px;background:#f8fafc;color:#0f172a;font:inherit}.cx-field textarea{min-height:120px;resize:vertical}.cx-wide{grid-column:1/-1}.cx-preview{margin-top:16px;border:1px dashed rgba(16,185,129,.45);border-radius:16px;background:#f8fffc;padding:14px;color:#334155;line-height:1.5;overflow:auto}.cx-code{font-family:ui-monospace,Menlo,Consolas,monospace;background:#022c22;color:#d1fae5;border-radius:12px;padding:12px;overflow:auto;font-size:12px;line-height:1.5;white-space:pre-wrap}.cx-foot{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:18px 24px;border-top:1px solid #dbe8e4;background:#f8fffc}.cx-btn{border:1px solid #dbe8e4;border-radius:13px;min-height:46px;padding:0 15px;background:#fff;color:#073d32;font-weight:900;cursor:pointer}.cx-primary{background:#10b981;border-color:#10b981;color:#022c22}.cx-danger{background:#fff7ed;border-color:#fed7aa;color:#9a3412}.cx-small{font-size:12px;color:#64748b;line-height:1.45}.cx-table{width:100%;border-collapse:collapse;font-size:12px}.cx-table th,.cx-table td{border-bottom:1px solid #e5e7eb;text-align:left;padding:8px}.cx-tag{display:inline-flex;border-radius:999px;background:#ecfdf5;color:#047857;font-weight:950;font-size:11px;padding:5px 8px;margin:0 6px 6px 0}@media(max-width:820px){.cx-grid{grid-template-columns:1fr}.cx-wide{grid-column:auto}}
+  `;
+  document.head.appendChild(style);
+
+  const modal = document.createElement('div');
+  modal.className = 'cx-modal';
+  modal.innerHTML = `<div class="cx-box"><div class="cx-head"><h2 id="cxTitle">CRM Workflow</h2><p id="cxDesc">Choose a workflow.</p></div><div class="cx-body"><div id="cxFields" class="cx-grid"></div><div id="cxPreview" class="cx-preview"></div></div><div class="cx-foot"><button id="cxClose" class="cx-btn" type="button">Cancel</button><div><button id="cxReset" class="cx-btn cx-danger" type="button">Clear session workflow data</button> <button id="cxRun" class="cx-btn cx-primary" type="button">Run workflow</button></div></div></div>`;
+  document.body.appendChild(modal);
+
+  function money(n){ return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(Number(n||0)); }
+  function toast(msg){ const t=document.getElementById('toast'); if(t){t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);} else alert(msg); }
+  function dash(){ try{ if(typeof data !== 'undefined' && data) return data; }catch(e){} window.data=window.data||{leads:[]}; return window.data; }
+  function saved(){ try{return JSON.parse(sessionStorage.getItem(STORE_KEY)||'[]');}catch(e){return[];} }
+  function saveAll(list){ sessionStorage.setItem(STORE_KEY, JSON.stringify(list.slice(0,80))); }
+  function activeModule(){ const a=document.querySelector('.crm-top [data-crm].active')||document.querySelector('.crm-left [data-crm].active')||document.querySelector('[data-crm].active'); return (a&&a.getAttribute('data-crm')) || 'leads'; }
+  function addRecord(record){ const d=dash(); d.leads=Array.isArray(d.leads)?d.leads:[]; d.leads.unshift(record); const list=saved(); list.unshift(record); saveAll(list); }
+  function addMany(records){ records.forEach(addRecord); rerender(); }
+  function rerender(){ const mod=activeModule(); if(typeof renderCRM==='function') renderCRM(mod); else if(window.renderCRM) window.renderCRM(mod); setTimeout(ensureWorkflowBar,80); }
+  function id(){ return 'CX-' + Math.floor(100000 + Math.random()*900000); }
+  function today(){ return new Date().toISOString().slice(0,10); }
+  function record(kind, label, extra={}){ const value=Number(extra.value||0); const probability=Number(extra.probability||40); return Object.assign({lead_id:id(),record_type:kind,module:extra.module||activeModule(),name:extra.name||label,first_name:extra.first_name||label,last_name:extra.last_name||'Record',email:extra.email||kind+'@crm-workflow.example',phone:extra.phone||'',company:extra.company||'Workflow Demo Company',title:extra.title||'CRM Contact',source:extra.source||'CRM Workflow',owner:'Constrava Demo Team',status:extra.status||'New',priority:extra.priority||'Medium',deal_name:extra.deal_name||label,value,probability,expected_revenue:Math.round(value*probability/100),close_date:extra.close_date||today(),next_step:extra.next_step||'Review workflow output.',created_at:today(),last_contacted:today(),tags:['workflow',kind],notes:extra.notes||'Created by a working CRM workflow.'}, extra); }
+
+  function parseCsv(text){
+    const rows=[]; let row=[], cell='', quote=false;
+    for(let i=0;i<text.length;i++){ const ch=text[i], next=text[i+1];
+      if(ch==='"' && quote && next==='"'){ cell+='"'; i++; }
+      else if(ch==='"'){ quote=!quote; }
+      else if(ch===',' && !quote){ row.push(cell.trim()); cell=''; }
+      else if((ch==='\n'||ch==='\r') && !quote){ if(cell || row.length){ row.push(cell.trim()); rows.push(row); row=[]; cell=''; } if(ch==='\r'&&next==='\n') i++; }
+      else cell+=ch;
+    }
+    if(cell || row.length){ row.push(cell.trim()); rows.push(row); }
+    return rows.filter(r=>r.some(Boolean));
+  }
+  function recordsFromCsv(text){ const rows=parseCsv(text); if(rows.length<2) return []; const headers=rows[0].map(h=>h.toLowerCase().replace(/\s+/g,'_')); return rows.slice(1).map(r=>{ const obj={}; headers.forEach((h,i)=>obj[h]=r[i]||''); const full=obj.name || [obj.first_name,obj.last_name].filter(Boolean).join(' ') || 'Imported Lead'; return record('csv_import', full, {module:'leads',name:full,email:obj.email||'',company:obj.company||'Imported Company',status:obj.status||'New',source:obj.source||'CSV Import',deal_name:obj.deal_name||'Imported Opportunity',value:Number(obj.value||obj.deal_value||0),notes:'Imported from CSV workflow.'}); }); }
+  function previewCsv(){ const text=document.getElementById('cxCsvText')?.value||''; const recs=recordsFromCsv(text); const html = recs.length ? `<b>${recs.length} records ready to import.</b><table class="cx-table"><tr><th>Name</th><th>Email</th><th>Company</th><th>Value</th></tr>${recs.slice(0,8).map(r=>`<tr><td>${r.name}</td><td>${r.email}</td><td>${r.company}</td><td>${money(r.value)}</td></tr>`).join('')}</table>` : 'Paste CSV with headers like name,email,company,status,value.'; document.getElementById('cxPreview').innerHTML=html; }
+
+  function fields(type){
+    if(type==='import') return `<div class="cx-field cx-wide"><label>Paste CSV</label><textarea id="cxCsvText">name,email,company,status,value,source\nAvery Demo,avery@northstar.example,Northstar Studio,New,4800,CSV Import\nJordan Demo,jordan@lee.example,Lee Manufacturing,Qualified,9200,CSV Import\nMia Demo,mia@carter.example,Carter Design,Proposal,15800,CSV Import</textarea></div>`;
+    if(type==='website') return `<div class="cx-field"><label>Form name</label><input id="cxFormName" value="Website Contact Form"></div><div class="cx-field"><label>Target page</label><input id="cxFormPage" value="/contact"></div><div class="cx-field"><label>Test lead name</label><input id="cxWebName" value="Website Visitor"></div><div class="cx-field"><label>Test email</label><input id="cxWebEmail" value="visitor@example.com"></div><div class="cx-field cx-wide"><label>Generated embed code</label><textarea readonly id="cxEmbed"><script src="https://constrava-backend.onrender.com/tracker.js" data-crm-form="contact"></script></textarea></div>`;
+    if(type==='email') return `<div class="cx-field"><label>From</label><input id="cxEmailFrom" value="client@example.com"></div><div class="cx-field"><label>Subject</label><input id="cxEmailSubject" value="Request for CRM dashboard proposal"></div><div class="cx-field"><label>Company</label><input id="cxEmailCompany" value="Email Sync Client"></div><div class="cx-field"><label>Outcome</label><select id="cxEmailStatus"><option>New</option><option selected>Qualified</option><option>Proposal</option></select></div><div class="cx-field cx-wide"><label>Email body / notes</label><textarea id="cxEmailBody">The client asked for pricing, a dashboard demo, and a follow-up call.</textarea></div>`;
+    if(type==='call') return `<div class="cx-field"><label>Contact</label><input id="cxCallName" value="Call Contact"></div><div class="cx-field"><label>Outcome</label><select id="cxCallOutcome"><option>Discovery completed</option><option>Left voicemail</option><option>Proposal requested</option><option>Not interested</option></select></div><div class="cx-field"><label>Duration minutes</label><input id="cxCallDuration" type="number" value="18"></div><div class="cx-field"><label>Follow-up date</label><input id="cxCallDate" type="date"></div><div class="cx-field cx-wide"><label>Call notes</label><textarea id="cxCallNotes">Discussed CRM workflow, website form capture, and automation needs.</textarea></div>`;
+    if(type==='task') return `<div class="cx-field"><label>Task name</label><input id="cxTaskName" value="Follow up with qualified lead"></div><div class="cx-field"><label>Priority</label><select id="cxTaskPriority"><option>Low</option><option selected>High</option><option>Critical</option></select></div><div class="cx-field"><label>Due date</label><input id="cxTaskDate" type="date"></div><div class="cx-field"><label>Related company</label><input id="cxTaskCompany" value="Workflow Demo Company"></div><div class="cx-field cx-wide"><label>Task details</label><textarea id="cxTaskNotes">Send proposal and schedule a technical walkthrough.</textarea></div>`;
+    if(type==='api') return `<div class="cx-field"><label>Endpoint</label><input readonly value="POST /api/private/crm/events"></div><div class="cx-field"><label>Local demo API key</label><input readonly value="cx_local_demo_key_12345"></div><div class="cx-field cx-wide"><label>Payload JSON</label><textarea id="cxApiPayload">{"name":"API Lead","email":"api.lead@example.com","company":"API Client Co","value":7300,"status":"New","source":"API"}</textarea></div>`;
+    if(type==='automation') return `<div class="cx-field"><label>Rule</label><select id="cxRule"><option value="score">Score open leads</option><option value="tasks">Create follow-up tasks</option><option value="advance">Advance qualified deals</option></select></div><div class="cx-field"><label>Apply to</label><select id="cxApply"><option>Visible CRM records</option><option>All CRM records</option></select></div><div class="cx-field cx-wide"><label>Automation notes</label><textarea id="cxAutoNotes">Rules run locally in the UI and update demo CRM records.</textarea></div>`;
+    return '';
+  }
+  function preview(type){
+    if(type==='import') return 'CSV import is ready. Edit the spreadsheet rows, then click Import CSV.';
+    if(type==='website') return '<b>Website form connection:</b> copy the embed code into a site page. In this UI, Run workflow submits the test lead into the CRM.';
+    if(type==='email') return 'Email sync logs the pasted email as a CRM activity and creates a follow-up record.';
+    if(type==='call') return 'Call logging creates an activity record with notes, outcome, duration, and follow-up date.';
+    if(type==='task') return 'Task creation adds a CRM task record and keeps it visible in the session.';
+    if(type==='api') return '<div class="cx-code">curl -X POST /api/private/crm/events -H "Authorization: Bearer cx_local_demo_key_12345" -d @payload.json</div>';
+    if(type==='automation') return 'Automation will update CRM records locally and add an automation report record.';
+  }
+  function openFlow(type){ activeFlow=type; document.getElementById('cxTitle').textContent=flowDefs[type][0]; document.getElementById('cxDesc').textContent=flowDefs[type][1]; document.getElementById('cxFields').innerHTML=fields(type); document.getElementById('cxPreview').innerHTML=preview(type); modal.classList.add('open'); if(type==='import'){document.getElementById('cxCsvText').addEventListener('input',previewCsv); previewCsv();} }
+  function closeFlow(){ modal.classList.remove('open'); }
+  function run(){
+    let recs=[];
+    if(activeFlow==='import') recs=recordsFromCsv(document.getElementById('cxCsvText').value);
+    if(activeFlow==='website') recs=[record('website_form_lead',document.getElementById('cxWebName').value,{module:'leads',name:document.getElementById('cxWebName').value,email:document.getElementById('cxWebEmail').value,source:'Website Form',company:'Website Lead',value:4500,status:'New',notes:'Captured by connected website form: '+document.getElementById('cxFormName').value})];
+    if(activeFlow==='email') recs=[record('email_activity',document.getElementById('cxEmailSubject').value,{module:'activities',name:document.getElementById('cxEmailSubject').value,email:document.getElementById('cxEmailFrom').value,company:document.getElementById('cxEmailCompany').value,source:'Email Sync',status:document.getElementById('cxEmailStatus').value,value:1800,notes:document.getElementById('cxEmailBody').value})];
+    if(activeFlow==='call') recs=[record('call_log',document.getElementById('cxCallOutcome').value,{module:'activities',name:document.getElementById('cxCallName').value,company:'Call Activity',source:'Call Log',value:Number(document.getElementById('cxCallDuration').value||0)*100,close_date:document.getElementById('cxCallDate').value||today(),status:'Qualified',notes:document.getElementById('cxCallNotes').value})];
+    if(activeFlow==='task') recs=[record('task',document.getElementById('cxTaskName').value,{module:'activities',company:document.getElementById('cxTaskCompany').value,priority:document.getElementById('cxTaskPriority').value,close_date:document.getElementById('cxTaskDate').value||today(),status:'New',value:500,notes:document.getElementById('cxTaskNotes').value})];
+    if(activeFlow==='api'){ try{ const p=JSON.parse(document.getElementById('cxApiPayload').value); recs=[record('api_payload',p.name||'API Record',{module:'leads',name:p.name||'API Record',email:p.email||'',company:p.company||'API Company',value:Number(p.value||0),status:p.status||'New',source:p.source||'API',notes:'Created from API payload workflow.'})]; }catch(e){toast('Invalid JSON payload.');return;} }
+    if(activeFlow==='automation'){ const d=dash(); const list=Array.isArray(d.leads)?d.leads:[]; const rule=document.getElementById('cxRule').value; let changed=0; list.forEach(x=>{ if(rule==='score'){x.score=Math.min(100,Math.round((Number(x.value||0)/200)+Number(x.probability||0))); changed++;} if(rule==='advance'&&x.status==='Qualified'){x.status='Proposal'; changed++;} }); if(rule==='tasks'){recs=list.slice(0,3).map(x=>record('automation_task','Follow up: '+(x.company||x.name),{module:'activities',company:x.company||'CRM Company',value:400,status:'New',notes:'Automation-created follow-up for '+(x.name||'record')}));} recs.push(record('automation_report','Automation Run Report',{module:'reports',value:changed,notes:'Automation rule completed. Records updated: '+changed+'. '+document.getElementById('cxAutoNotes').value})); }
+    if(!recs.length){ toast('No records were created. Check the workflow inputs.'); return; }
+    addMany(recs); closeFlow(); toast(flowDefs[activeFlow][0]+' completed. '+recs.length+' CRM record'+(recs.length===1?'':'s')+' added/updated.');
+  }
+  function ensureWorkflowBar(){
+    const hero=document.querySelector('.crm-hero'); if(!hero||!hero.parentElement) return;
+    let bar=document.getElementById('crmFlowBar'); if(!bar){ bar=document.createElement('div'); bar.id='crmFlowBar'; hero.insertAdjacentElement('afterend',bar); }
+    bar.className='cx-workflow-bar';
+    bar.innerHTML=Object.entries(flowDefs).map(([k,v])=>`<button type="button" class="cx-workflow-btn" data-cx-flow="${k}">${v[0]}</button>`).join('');
+    bar.querySelectorAll('[data-cx-flow]').forEach(b=>b.onclick=()=>openFlow(b.getAttribute('data-cx-flow')));
+  }
+  function bind(){ ensureWorkflowBar(); document.querySelectorAll('[data-crm]').forEach(b=>{ if(!b.dataset.cxWorkflowBound){ b.dataset.cxWorkflowBound='true'; b.addEventListener('click',()=>setTimeout(ensureWorkflowBar,120)); } }); }
+  document.getElementById('cxClose').onclick=closeFlow;
+  document.getElementById('cxReset').onclick=()=>{ sessionStorage.removeItem(STORE_KEY); toast('Session workflow records cleared. Refresh to reset the visible CRM view.'); };
+  document.getElementById('cxRun').onclick=run;
+  modal.onclick=e=>{ if(e.target===modal) closeFlow(); };
+  bind(); setInterval(bind,1000);
+})();
