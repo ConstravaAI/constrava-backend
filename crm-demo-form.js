@@ -17,7 +17,7 @@
       </div>
       <form id="crmDemoForm" class="crm-demo-body">
         <div class="crm-demo-grid">
-          <div class="crm-demo-field"><label>Lead owner</label><input name="owner" value="Blake Jernegan" readonly></div>
+          <div class="crm-demo-field"><label>Lead owner</label><input name="owner" value="Constrava Demo Team" readonly></div>
           <div class="crm-demo-field"><label>Lead status</label><select name="status"><option>New</option><option selected>Qualified</option><option>Needs Analysis</option><option>Proposal</option><option>Negotiation</option></select></div>
           <div class="crm-demo-field"><label>First name</label><input name="first_name" placeholder="Example: Taylor"></div>
           <div class="crm-demo-field"><label>Last name</label><input name="last_name" placeholder="Example: Brooks"></div>
@@ -87,7 +87,7 @@
       website: 'https://demo-company.example',
       location: 'Lehigh Valley, PA',
       source: data.source || 'Contact form',
-      owner: data.owner || 'Blake Jernegan',
+      owner: data.owner || 'Constrava Demo Team',
       status: data.status || 'Qualified',
       priority: 'High',
       deal_name: data.deal_name || 'Custom CRM Dashboard Build',
