@@ -48,6 +48,21 @@
     if(t){ t.textContent = message; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2600); }
     else alert(message);
   }
+  function removeExtraZohoTab(){
+    const navTitles = Array.from(document.querySelectorAll('.navtitle'));
+    navTitles.forEach(title => {
+      if(title.textContent.trim().toLowerCase() === 'crm'){
+        const next = title.nextElementSibling;
+        if(next && next.textContent.trim().toLowerCase().includes('zoho-style crm')){
+          title.remove();
+          next.remove();
+        }
+      }
+    });
+    Array.from(document.querySelectorAll('button')).forEach(btn => {
+      if(btn.textContent.trim().toLowerCase() === 'zoho-style crm') btn.remove();
+    });
+  }
   function openForm(){ modal.classList.add('open'); }
   function closeForm(){ modal.classList.remove('open'); }
   function demoLead(){
@@ -97,6 +112,7 @@
     toast('Demo CRM data added. Live entry stayed disabled.');
   }
   function bind(){
+    removeExtraZohoTab();
     const add = document.getElementById('crmAdd');
     if(add && !add.dataset.demoFormBound){
       add.dataset.demoFormBound = 'true';
