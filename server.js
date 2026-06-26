@@ -193,9 +193,10 @@ app.get("/dashboard", (req, res) => {
   try {
     const filePath = path.join(__dirname, "dashboard.html");
     let html = fs.readFileSync(filePath, "utf8");
-    const injection = '<script src="/crm-demo-form.js"></script><script src="/crm-full-workflows.js"></script>';
+    const injection = '<script src="/crm-demo-form.js"></script><script src="/crm-full-workflows.js"></script><script src="/crm-form-integrations.js"></script>';
     if (!html.includes('/crm-demo-form.js')) html = html.replace("</body>", `${injection}\n</body>`);
     if (html.includes('/crm-demo-form.js') && !html.includes('/crm-full-workflows.js')) html = html.replace('<script src="/crm-demo-form.js"></script>', injection);
+    if (html.includes('/crm-full-workflows.js') && !html.includes('/crm-form-integrations.js')) html = html.replace('<script src="/crm-full-workflows.js"></script>', '<script src="/crm-full-workflows.js"></script><script src="/crm-form-integrations.js"></script>');
     html = removeVendorReferences(html);
     res.type("html").send(html);
   } catch (err) { res.status(200).send("<h1>Constrava Dashboard</h1><p>dashboard.html is missing.</p>"); }
