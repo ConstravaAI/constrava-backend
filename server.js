@@ -181,6 +181,11 @@ async function insertEvent(siteId, type, options = {}) {
 }
 function reportText(summary) { return `Constrava AI Report\n\nTraffic: ${summary.visits} visits, ${summary.leads} leads, ${summary.purchases} purchases.\nLead conversion: ${summary.visits ? ((summary.leads / summary.visits) * 100).toFixed(2) : "0.00"}%.\nRecommendation: follow up with qualified and proposal-stage CRM leads first.`; }
 function servePage(fileName, fallbackHtml) { return (req, res) => res.sendFile(path.join(__dirname, fileName), (err) => { if (err) res.status(200).send(fallbackHtml); }); }
+function removeVendorReferences(html) {
+  return String(html || "")
+    .replace(/Zoho[-\s]*style\s*/gi, "custom ")
+    .replace(/\bZoho\b/gi, "CRM");
+}
 
 app.get("/health", (req, res) => res.status(200).send("ok"));
 app.get("/db-test", async (req, res) => { try { if (!hasDb()) return res.status(500).json({ ok: false, error: "DATABASE_URL is not set." }); const result = await db().query("SELECT NOW() AS now"); res.json({ ok: true, now: result.rows[0].now }); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });
@@ -191,10 +196,17 @@ app.get("/dashboard", (req, res) => {
     const injection = '<script src="/crm-demo-form.js"></script><script src="/crm-full-workflows.js"></script>';
     if (!html.includes('/crm-demo-form.js')) html = html.replace("</body>", `${injection}\n</body>`);
     if (html.includes('/crm-demo-form.js') && !html.includes('/crm-full-workflows.js')) html = html.replace('<script src="/crm-demo-form.js"></script>', injection);
+    html = removeVendorReferences(html);
     res.type("html").send(html);
   } catch (err) { res.status(200).send("<h1>Constrava Dashboard</h1><p>dashboard.html is missing.</p>"); }
 });
-app.get("/crm", servePage("crm.html", "<h1>Constrava CRM</h1><p>crm.html is missing.</p>"));
+app.get("/crm", (req, res) => {
+  const filePath = path.join(__dirname, "crm.html");
+  fs.readFile(filePath, "utf8", (err, html) => {
+    if (err) return res.status(200).send("<h1>Constrava CRM</h1><p>crm.html is missing.</p>");
+    res.type("html").send(removeVendorReferences(html));
+  });
+});
 app.get("/dashboard/data", async (req, res) => { try { const payload = await getDashboardPayload(String(req.query.token || "demo")); res.json(payload); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });
 app.get("/api/dashboard", async (req, res) => { try { res.json(await getDashboardPayload(String(req.query.token || "demo"))); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });
 app.post("/dashboard/simulate", async (req, res) => { try { const token = String(req.query.token || req.body?.token || "demo"); const type = String(req.query.type || req.body?.type || "page_view"); const site = await findSiteByToken(token); const siteId = String(valueFrom(site || virtualSite(token), ["site_id", "id"], token)); if (hasDb()) await insertEvent(siteId, type, { source: "dashboard" }); res.json({ ok: true, type, site_id: siteId, stored: hasDb() }); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });
