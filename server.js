@@ -29,9 +29,6 @@ const GOOGLE_FORM_SCOPES = [
   "openid",
   "email",
   "profile",
-  "https://www.googleapis.com/auth/drive.metadata.readonly",
-  "https://www.googleapis.com/auth/forms.body.readonly",
-  "https://www.googleapis.com/auth/forms.responses.readonly"
 ];
 
 function hasDb() { return Boolean(pool); }
