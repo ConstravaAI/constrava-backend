@@ -9,6 +9,7 @@ import { Resend } from "resend";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
+app.set("trust proxy", true);
 const PORT = process.env.PORT || 3000;
 const TO_EMAIL = process.env.TO_EMAIL || "constrava@constravaai.com";
 const FROM_EMAIL = process.env.FROM_EMAIL || "";
@@ -23,6 +24,15 @@ const pool = process.env.DATABASE_URL
   : null;
 const columnCache = new Map();
 const intakeLeads = [];
+const googleConnections = new Map();
+const GOOGLE_FORM_SCOPES = [
+  "openid",
+  "email",
+  "profile",
+  "https://www.googleapis.com/auth/drive.metadata.readonly",
+  "https://www.googleapis.com/auth/forms.body.readonly",
+  "https://www.googleapis.com/auth/forms.responses.readonly"
+];
 
 function hasDb() { return Boolean(pool); }
 function db() { if (!pool) throw new Error("DATABASE_URL is not set."); return pool; }
@@ -206,32 +216,7 @@ function normalizeFormLead(body, siteSlug, formSlug, req) {
   const value = Number(pick("value", "budget", "deal_value", "amount", "estimated_value") || 0);
   const now = new Date().toISOString();
   return {
-    lead_id: "FORM-" + randomBytes(5).toString("hex").toUpperCase(),
-    record_type: "external_form_lead",
-    module: "leads",
-    site_id: siteSlug,
-    site_slug: siteSlug,
-    form_slug: formSlug,
-    dashboard_token: String(pick("dashboard_token", "token") || siteSlug),
-    name: String(combinedName || email || "External Form Lead"),
-    email: String(email || ""),
-    phone: String(pick("phone", "Phone", "phone_number", "mobile") || ""),
-    company: String(company),
-    title: String(pick("title", "role", "job_title") || "External Form Lead"),
-    source: String(pick("source", "platform", "provider", "utm_source") || req.get("x-form-provider") || "External Form"),
-    owner: String(pick("owner") || "Constrava Demo Team"),
-    status: String(pick("status", "stage") || "New"),
-    priority: String(pick("priority") || "High"),
-    deal_name: String(pick("deal_name", "project", "service") || `${company} form inquiry`),
-    value: Number.isFinite(value) ? value : 0,
-    probability: 35,
-    expected_revenue: Number.isFinite(value) ? Math.round(value * 0.35) : 0,
-    close_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-    created_at: now,
-    last_contacted: now.slice(0, 10),
-    tags: ["external-form", String(siteSlug), String(formSlug)],
-    notes: String(message || "Submitted through external form intake."),
-    raw_submission: payload
+    lead_id: "FORM-" + randomBytes(5).toString("hex").toUpperCase(), record_type: "external_form_lead", module: "leads", site_id: siteSlug, site_slug: siteSlug, form_slug: formSlug, dashboard_token: String(pick("dashboard_token", "token") || siteSlug), name: String(combinedName || email || "External Form Lead"), email: String(email || ""), phone: String(pick("phone", "Phone", "phone_number", "mobile") || ""), company: String(company), title: String(pick("title", "role", "job_title") || "External Form Lead"), source: String(pick("source", "platform", "provider", "utm_source") || req.get("x-form-provider") || "External Form"), owner: String(pick("owner") || "Constrava Demo Team"), status: String(pick("status", "stage") || "New"), priority: String(pick("priority") || "High"), deal_name: String(pick("deal_name", "project", "service") || `${company} form inquiry`), value: Number.isFinite(value) ? value : 0, probability: 35, expected_revenue: Number.isFinite(value) ? Math.round(value * 0.35) : 0, close_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10), created_at: now, last_contacted: now.slice(0, 10), tags: ["external-form", String(siteSlug), String(formSlug)], notes: String(message || "Submitted through external form intake."), raw_submission: payload
   };
 }
 async function insertCrmLead(siteId, lead) {
@@ -260,55 +245,113 @@ async function insertCrmLead(siteId, lead) {
 }
 function reportText(summary) { return `Constrava AI Report\n\nTraffic: ${summary.visits} visits, ${summary.leads} leads, ${summary.purchases} purchases.\nLead conversion: ${summary.visits ? ((summary.leads / summary.visits) * 100).toFixed(2) : "0.00"}%.\nRecommendation: follow up with qualified and proposal-stage CRM leads first.`; }
 function servePage(fileName, fallbackHtml) { return (req, res) => res.sendFile(path.join(__dirname, fileName), (err) => { if (err) res.status(200).send(fallbackHtml); }); }
-function removeVendorReferences(html) {
-  return String(html || "")
-    .replace(/Zoho[-\s]*style\s*/gi, "custom ")
-    .replace(/\bZoho\b/gi, "CRM");
+function removeVendorReferences(html) { return String(html || "").replace(/Zoho[-\s]*style\s*/gi, "custom ").replace(/\bZoho\b/gi, "CRM"); }
+function cors(res) { res.setHeader("Access-Control-Allow-Origin", "*"); res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS"); res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-constrava-key, x-form-provider"); }
+function isPrivateRequest(req) { return String(req.query.private || "") === "1" || String(req.get("x-constrava-private") || "") === "1"; }
+function requirePrivate(req, res) { if (!isPrivateRequest(req)) { res.status(403).json({ ok: false, error: "This Google Forms connector is blocked on the public demo. Open the private site." }); return false; } return true; }
+function appBase(req) { return `${req.protocol}://${req.get("host")}`; }
+function safeReturnTo(value) { const clean = String(value || "/app/"); return clean.startsWith("/") ? clean : "/app/"; }
+function encodeState(obj) { return Buffer.from(JSON.stringify(obj)).toString("base64url"); }
+function decodeState(value) { try { return JSON.parse(Buffer.from(String(value || ""), "base64url").toString("utf8")); } catch { return {}; } }
+function googleRedirectUri(req) { return `${appBase(req)}/auth/google/forms/callback`; }
+async function refreshGoogleConnection(conn) {
+  if (!conn) throw new Error("Google Forms connection not found.");
+  if (conn.expires_at && Date.now() < conn.expires_at - 60000) return conn.access_token;
+  if (!conn.refresh_token) return conn.access_token;
+  const result = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID || "", client_secret: process.env.GOOGLE_CLIENT_SECRET || "", refresh_token: conn.refresh_token, grant_type: "refresh_token" }) });
+  const json = await result.json();
+  if (!result.ok) throw new Error(json.error_description || json.error || "Google token refresh failed.");
+  conn.access_token = json.access_token || conn.access_token;
+  conn.expires_at = Date.now() + Number(json.expires_in || 3600) * 1000;
+  return conn.access_token;
 }
-function cors(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-constrava-key, x-form-provider");
+function googleAppsScript(siteSlug, formSlug, endpoint, key) {
+  return `const CONSTRAVA_ENDPOINT = "${endpoint}";
+const CONSTRAVA_KEY = "${key}";
+
+function onFormSubmit(e) {
+  const data = {};
+  if (e && e.namedValues) {
+    Object.keys(e.namedValues).forEach(function(fieldName) {
+      const value = e.namedValues[fieldName];
+      data[fieldName] = Array.isArray(value) ? value.join(", ") : value;
+    });
+  }
+  data.provider = "Google Forms";
+  data.source = "Google Forms";
+  data.site_slug = "${siteSlug}";
+  data.form_slug = "${formSlug}";
+
+  UrlFetchApp.fetch(CONSTRAVA_ENDPOINT, {
+    method: "post",
+    contentType: "application/json",
+    muteHttpExceptions: true,
+    headers: {
+      "x-constrava-key": CONSTRAVA_KEY,
+      "x-form-provider": "Google Forms"
+    },
+    payload: JSON.stringify(data)
+  });
+}
+
+// In Apps Script: Triggers → Add Trigger → choose onFormSubmit → event type: On form submit.`;
 }
 
 app.get("/health", (req, res) => res.status(200).send("ok"));
 app.get("/db-test", async (req, res) => { try { if (!hasDb()) return res.status(500).json({ ok: false, error: "DATABASE_URL is not set." }); const result = await db().query("SELECT NOW() AS now"); res.json({ ok: true, now: result.rows[0].now }); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });
-app.get("/dashboard", (req, res) => {
-  try {
-    const filePath = path.join(__dirname, "dashboard.html");
-    let html = fs.readFileSync(filePath, "utf8");
-    const injection = '<script src="/crm-demo-form.js"></script><script src="/crm-full-workflows.js"></script><script src="/crm-form-integrations.js"></script>';
-    if (!html.includes('/crm-demo-form.js')) html = html.replace("</body>", `${injection}\n</body>`);
-    if (html.includes('/crm-demo-form.js') && !html.includes('/crm-full-workflows.js')) html = html.replace('<script src="/crm-demo-form.js"></script>', injection);
-    if (html.includes('/crm-full-workflows.js') && !html.includes('/crm-form-integrations.js')) html = html.replace('<script src="/crm-full-workflows.js"></script>', '<script src="/crm-full-workflows.js"></script><script src="/crm-form-integrations.js"></script>');
-    html = removeVendorReferences(html);
-    res.type("html").send(html);
-  } catch (err) { res.status(200).send("<h1>Constrava Dashboard</h1><p>dashboard.html is missing.</p>"); }
-});
-app.get("/crm", (req, res) => {
-  const filePath = path.join(__dirname, "crm.html");
-  fs.readFile(filePath, "utf8", (err, html) => {
-    if (err) return res.status(200).send("<h1>Constrava CRM</h1><p>crm.html is missing.</p>");
-    res.type("html").send(removeVendorReferences(html));
-  });
-});
+app.get("/dashboard", (req, res) => { try { const filePath = path.join(__dirname, "dashboard.html"); let html = fs.readFileSync(filePath, "utf8"); const injection = '<script src="/crm-demo-form.js"></script><script src="/crm-full-workflows.js"></script><script src="/crm-form-integrations.js"></script>'; if (!html.includes('/crm-demo-form.js')) html = html.replace("</body>", `${injection}\n</body>`); if (html.includes('/crm-demo-form.js') && !html.includes('/crm-full-workflows.js')) html = html.replace('<script src="/crm-demo-form.js"></script>', injection); if (html.includes('/crm-full-workflows.js') && !html.includes('/crm-form-integrations.js')) html = html.replace('<script src="/crm-full-workflows.js"></script>', '<script src="/crm-full-workflows.js"></script><script src="/crm-form-integrations.js"></script>'); html = removeVendorReferences(html); res.type("html").send(html); } catch (err) { res.status(200).send("<h1>Constrava Dashboard</h1><p>dashboard.html is missing.</p>"); } });
+app.get("/crm", (req, res) => { const filePath = path.join(__dirname, "crm.html"); fs.readFile(filePath, "utf8", (err, html) => { if (err) return res.status(200).send("<h1>Constrava CRM</h1><p>crm.html is missing.</p>"); res.type("html").send(removeVendorReferences(html)); }); });
 app.get("/dashboard/data", async (req, res) => { try { const payload = await getDashboardPayload(String(req.query.token || "demo")); res.json(payload); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });
 app.get("/api/dashboard", async (req, res) => { try { res.json(await getDashboardPayload(String(req.query.token || "demo"))); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });
-app.options("/api/forms/intake/:siteSlug/:formSlug", (req, res) => { cors(res); res.status(204).end(); });
-app.post("/api/forms/intake/:siteSlug/:formSlug", async (req, res) => {
-  cors(res);
-  try {
-    const siteSlug = String(req.params.siteSlug || "external-site");
-    const formSlug = String(req.params.formSlug || "external-form");
-    const lead = normalizeFormLead(req.body || {}, siteSlug, formSlug, req);
-    intakeLeads.unshift(lead);
-    while (intakeLeads.length > 250) intakeLeads.pop();
-    let crmStored = false, eventStored = false;
-    try { crmStored = await insertCrmLead(siteSlug, lead); } catch (err) { crmStored = false; }
-    try { eventStored = await insertEvent(siteSlug, "form_lead", { source: lead.source, path: `/forms/${formSlug}`, amount: lead.value, lead }); } catch (err) { eventStored = false; }
-    res.json({ ok: true, message: "Form submission received and converted into a CRM lead.", lead_id: lead.lead_id, crm_stored: crmStored, event_stored: eventStored, session_stored: true, lead });
-  } catch (err) { res.status(500).json({ ok: false, error: err.message || "Form intake failed." }); }
+app.get("/auth/google/forms/start", (req, res) => {
+  if (!requirePrivate(req, res)) return;
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) return res.status(501).type("html").send("<h1>Google Forms OAuth is not configured</h1><p>Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in Render, then add this callback URL in Google Cloud:</p><pre>" + esc(googleRedirectUri(req)) + "</pre>");
+  const state = encodeState({ siteSlug: req.query.siteSlug || "google-forms-site", formSlug: req.query.formSlug || "google-form", token: req.query.token || "demo", returnTo: safeReturnTo(req.query.returnTo), nonce: makeToken("state") });
+  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+  url.searchParams.set("client_id", process.env.GOOGLE_CLIENT_ID);
+  url.searchParams.set("redirect_uri", googleRedirectUri(req));
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("access_type", "offline");
+  url.searchParams.set("prompt", "consent");
+  url.searchParams.set("scope", GOOGLE_FORM_SCOPES.join(" "));
+  url.searchParams.set("state", state);
+  res.redirect(url.toString());
 });
+app.get("/auth/google/forms/callback", async (req, res) => {
+  try {
+    const state = decodeState(req.query.state);
+    const code = String(req.query.code || "");
+    if (!code) return res.status(400).send("Missing Google authorization code.");
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ code, client_id: process.env.GOOGLE_CLIENT_ID || "", client_secret: process.env.GOOGLE_CLIENT_SECRET || "", redirect_uri: googleRedirectUri(req), grant_type: "authorization_code" }) });
+    const tokens = await tokenResponse.json();
+    if (!tokenResponse.ok) return res.status(400).json({ ok: false, error: tokens.error_description || tokens.error || "Google OAuth token exchange failed." });
+    let account = "Google account";
+    try { const me = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", { headers: { Authorization: `Bearer ${tokens.access_token}` } }); const user = await me.json(); account = user.email || user.name || account; } catch {}
+    const connectionId = makeToken("gforms");
+    googleConnections.set(connectionId, { connection_id: connectionId, site_slug: String(state.siteSlug || "google-forms-site"), form_slug: String(state.formSlug || "google-form"), dashboard_token: String(state.token || "demo"), account, access_token: tokens.access_token, refresh_token: tokens.refresh_token, expires_at: Date.now() + Number(tokens.expires_in || 3600) * 1000, scope: tokens.scope || GOOGLE_FORM_SCOPES.join(" "), connected_at: new Date().toISOString() });
+    const returnTo = safeReturnTo(state.returnTo);
+    const sep = returnTo.includes("?") ? "&" : "?";
+    res.redirect(`${returnTo}${sep}googleFormsConnected=1&connectionId=${encodeURIComponent(connectionId)}`);
+  } catch (err) { res.status(500).json({ ok: false, error: err.message || "Google Forms OAuth failed." }); }
+});
+app.get("/api/google/forms/status", (req, res) => { if (!requirePrivate(req, res)) return; const conn = googleConnections.get(String(req.query.connectionId || "")); if (!conn) return res.status(404).json({ ok: false, error: "Google Forms connection not found." }); res.json({ ok: true, connection: { connection_id: conn.connection_id, account: conn.account, site_slug: conn.site_slug, form_slug: conn.form_slug, connected_at: conn.connected_at } }); });
+app.get("/api/google/forms/list", async (req, res) => {
+  if (!requirePrivate(req, res)) return;
+  try {
+    const conn = googleConnections.get(String(req.query.connectionId || ""));
+    if (!conn) return res.status(404).json({ ok: false, error: "Google Forms connection not found. Sign in with Google first." });
+    const accessToken = await refreshGoogleConnection(conn);
+    const qValue = "mimeType='application/vnd.google-apps.form' and trashed=false";
+    const url = "https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent(qValue) + "&spaces=drive&pageSize=50&fields=" + encodeURIComponent("files(id,name,webViewLink,createdTime,modifiedTime)");
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const json = await response.json();
+    if (!response.ok) return res.status(response.status).json({ ok: false, error: json.error?.message || "Could not list Google Forms." });
+    res.json({ ok: true, forms: json.files || [], connection: { connection_id: conn.connection_id, account: conn.account } });
+  } catch (err) { res.status(500).json({ ok: false, error: err.message || "Google Forms list failed." }); }
+});
+app.get("/api/google/forms/apps-script", (req, res) => { if (!requirePrivate(req, res)) return; const siteSlug = String(req.query.siteSlug || "google-forms-site"); const formSlug = String(req.query.formSlug || "google-form"); const endpoint = `${appBase(req)}/api/forms/intake/${encodeURIComponent(siteSlug)}/${encodeURIComponent(formSlug)}`; const key = String(req.query.key || `cx_${siteSlug.replace(/[^a-z0-9]+/gi, "_")}_${formSlug.replace(/[^a-z0-9]+/gi, "_")}_google`); res.type("text/plain").send(googleAppsScript(siteSlug, formSlug, endpoint, key)); });
+app.options("/api/forms/intake/:siteSlug/:formSlug", (req, res) => { cors(res); res.status(204).end(); });
+app.post("/api/forms/intake/:siteSlug/:formSlug", async (req, res) => { cors(res); try { const siteSlug = String(req.params.siteSlug || "external-site"); const formSlug = String(req.params.formSlug || "external-form"); const lead = normalizeFormLead(req.body || {}, siteSlug, formSlug, req); intakeLeads.unshift(lead); while (intakeLeads.length > 250) intakeLeads.pop(); let crmStored = false, eventStored = false; try { crmStored = await insertCrmLead(siteSlug, lead); } catch { crmStored = false; } try { eventStored = await insertEvent(siteSlug, "form_lead", { source: lead.source, path: `/forms/${formSlug}`, amount: lead.value, lead }); } catch { eventStored = false; } res.json({ ok: true, message: "Form submission received and converted into a CRM lead.", lead_id: lead.lead_id, crm_stored: crmStored, event_stored: eventStored, session_stored: true, lead }); } catch (err) { res.status(500).json({ ok: false, error: err.message || "Form intake failed." }); } });
 app.post("/dashboard/simulate", async (req, res) => { try { const token = String(req.query.token || req.body?.token || "demo"); const type = String(req.query.type || req.body?.type || "page_view"); const site = await findSiteByToken(token); const siteId = String(valueFrom(site || virtualSite(token), ["site_id", "id"], token)); if (hasDb()) await insertEvent(siteId, type, { source: "dashboard" }); res.json({ ok: true, type, site_id: siteId, stored: hasDb() }); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });
 app.post("/dashboard/seed", async (req, res) => { try { const token = String(req.query.token || req.body?.token || "demo"); const site = await findSiteByToken(token); const siteId = String(valueFrom(site || virtualSite(token), ["site_id", "id"], token)); let inserted = 0; if (hasDb()) { for (const type of ["page_view", "cta_click", "lead", "purchase", "page_view", "lead"]) { await insertEvent(siteId, type, { source: "seed" }); inserted++; } } res.json({ ok: true, inserted, message: hasDb() ? "Demo data seeded." : "Demo preview already includes sample data." }); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });
 app.post("/dashboard/report", async (req, res) => { try { const payload = await getDashboardPayload(String(req.query.token || req.body?.token || "demo")); res.json({ ok: true, report: reportText(payload.summary), stored: false }); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });
