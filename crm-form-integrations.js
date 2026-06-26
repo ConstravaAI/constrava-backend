@@ -4,7 +4,8 @@
 
   const params = new URLSearchParams(window.location.search);
   const isPrivate = params.get('mode') === 'private' || window.location.pathname.startsWith('/app') || window.top !== window.self;
-  const baseUrl = window.location.origin || 'https://constrava-backend.onrender.com';
+  const canonicalOrigin = 'https://constravaai.com';
+  const baseUrl = canonicalOrigin;
   const token = params.get('token') || 'demo';
   const STORE_KEY = 'constravaCrmDemoAdds';
   const CONNECTION_KEY = 'constravaGoogleFormsConnectionId';
@@ -65,7 +66,7 @@ function onFormSubmit(e) {
   function signIn(){
     if(!isPrivate){toast('Google sign-in is blocked on the public demo.');return;}
     const returnTo=window.location.pathname+window.location.search;
-    const url=`/auth/google/forms/start?private=1&siteSlug=${encodeURIComponent(siteSlug())}&formSlug=${encodeURIComponent(formSlug())}&token=${encodeURIComponent(token)}&returnTo=${encodeURIComponent(returnTo)}`;
+    const url=`${baseUrl}/auth/google/forms/start?private=1&siteSlug=${encodeURIComponent(siteSlug())}&formSlug=${encodeURIComponent(formSlug())}&token=${encodeURIComponent(token)}&returnTo=${encodeURIComponent(returnTo)}`;
     window.location.href=url;
   }
   async function loadForms(){
