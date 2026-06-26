@@ -14,14 +14,15 @@ const TO_EMAIL = process.env.TO_EMAIL || "constrava@constravaai.com";
 const FROM_EMAIL = process.env.FROM_EMAIL || "";
 const resend = new Resend(process.env.RESEND_API_KEY || "missing-key");
 
-app.use(express.json({ limit: "400kb" }));
-app.use(express.urlencoded({ extended: true, limit: "400kb" }));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(express.static(__dirname));
 
 const pool = process.env.DATABASE_URL
   ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.PGSSLMODE === "disable" ? false : { rejectUnauthorized: false } })
   : null;
 const columnCache = new Map();
+const intakeLeads = [];
 
 function hasDb() { return Boolean(pool); }
 function db() { if (!pool) throw new Error("DATABASE_URL is not set."); return pool; }
@@ -148,17 +149,24 @@ function summarize(events) {
 function mapLead(lead, i) {
   return { name: String(valueFrom(lead, ["name", "full_name", "lead_name", "contact_name"], "Demo Lead")), email: String(valueFrom(lead, ["email", "lead_email", "contact_email"], "lead@example.com")), company: String(valueFrom(lead, ["company", "organization"], "—")), status: String(valueFrom(lead, ["status", "stage", "lead_status"], "New")), source: String(valueFrom(lead, ["source", "channel", "campaign"], "Website")), created_at: String(valueFrom(lead, ["created_at", "timestamp", "received_at"], "")), value: Number(valueFrom(lead, ["value", "deal_value", "amount", "budget"], 2200 + i * 700)) || 2200 + i * 700, notes: String(valueFrom(lead, ["notes", "message", "body"], "")) };
 }
+function memoryLeadsFor(siteId) {
+  return intakeLeads.filter((lead) => !siteId || lead.site_id === siteId || lead.site_slug === siteId || lead.dashboard_token === siteId).slice(0, 60);
+}
 async function getDashboardPayload(token) {
   const demo = demoPayload();
-  if (!hasDb()) return demo;
+  if (!hasDb()) {
+    const memory = memoryLeadsFor(String(token || "demo"));
+    return { ...demo, leads: [...memory, ...(demo.leads || [])], recentEvents: [...memory.map((lead) => ({ type: "form_lead", path: `/forms/${lead.form_slug || "intake"}`, time: lead.created_at, amount: lead.value || 0 })), ...(demo.recentEvents || [])] };
+  }
   const site = await findSiteByToken(token);
   if (!site) return demo;
   const siteId = String(valueFrom(site, ["site_id", "id"], token));
+  const memory = memoryLeadsFor(siteId);
   const [events, reports, rawLeads] = await Promise.all([getEvents(siteId), getReports(siteId), getCrmLeads(siteId)]);
-  if (!events.length && !rawLeads.length) return demo;
+  if (!events.length && !rawLeads.length && !memory.length) return demo;
   const summary = events.length ? summarize(events) : demo.summary;
-  const leads = rawLeads.length ? rawLeads.map(mapLead) : demo.leads;
-  return { ...demo, usingFallback: !events.length, dbConnected: hasDb(), site: { ...demo.site, site_id: siteId }, summary, leads, reports: reports.length ? reports : demo.reports, recentEvents: events.slice(0, 40).map((event) => ({ type: eventType(event), path: eventPath(event), time: eventTime(event), amount: eventAmount(event) })) };
+  const leads = [...memory, ...(rawLeads.length ? rawLeads.map(mapLead) : demo.leads)];
+  return { ...demo, usingFallback: !events.length, dbConnected: hasDb(), site: { ...demo.site, site_id: siteId }, summary, leads, reports: reports.length ? reports : demo.reports, recentEvents: [...memory.map((lead) => ({ type: "form_lead", path: `/forms/${lead.form_slug || "intake"}`, time: lead.created_at, amount: lead.value || 0 })), ...events.slice(0, 40).map((event) => ({ type: eventType(event), path: eventPath(event), time: eventTime(event), amount: eventAmount(event) }))] };
 }
 async function insertEvent(siteId, type, options = {}) {
   if (!hasDb()) return false;
@@ -172,11 +180,82 @@ async function insertEvent(siteId, type, options = {}) {
   const payloadCol = firstExisting(c, ["payload", "metadata", "data", "properties"]);
   const amountCol = firstExisting(c, ["amount", "revenue", "value", "price", "total"]);
   const pathName = options.path || (type === "lead" ? "/contact" : type === "purchase" ? "/checkout" : type === "cta_click" ? "/services" : "/");
-  const payload = { demo: true, source: options.source || "dashboard", event_type: type, type, path: pathName, amount: type === "purchase" ? 129 : 0 };
+  const payload = { demo: true, source: options.source || "dashboard", event_type: type, type, path: pathName, amount: Number(options.amount || (type === "purchase" ? 129 : 0)), lead: options.lead || null };
   const insertCols = [], values = [];
   const add = (col, value) => { if (col && !insertCols.includes(col)) { insertCols.push(col); values.push(value); } };
   add(siteCol, String(siteId)); add(typeCol, type); add(pathCol, pathName); add(timeCol, options.time || new Date()); add(amountCol, payload.amount); if (payloadCol) add(payloadCol, isJsonColumn(info, payloadCol) ? payload : JSON.stringify(payload));
   await db().query(`INSERT INTO events_raw (${insertCols.map(q).join(", ")}) VALUES (${values.map((_, i) => `$${i + 1}`).join(", ")})`, values);
+  return true;
+}
+function normalizeFormLead(body, siteSlug, formSlug, req) {
+  const payload = body && typeof body === "object" ? body : {};
+  const nested = payload.form_response || payload.response || payload.data || payload.submission || payload.answers || payload.fields || {};
+  const pick = (...names) => {
+    for (const name of names) {
+      if (payload[name] !== undefined && payload[name] !== null && payload[name] !== "") return payload[name];
+      if (nested[name] !== undefined && nested[name] !== null && nested[name] !== "") return nested[name];
+    }
+    return "";
+  };
+  const firstName = pick("first_name", "firstName", "firstname", "First Name");
+  const lastName = pick("last_name", "lastName", "lastname", "Last Name");
+  const combinedName = pick("name", "full_name", "fullName", "lead_name", "contact_name", "Name") || [firstName, lastName].filter(Boolean).join(" ");
+  const email = pick("email", "Email", "email_address", "emailAddress", "contact_email");
+  const company = pick("company", "Company", "organization", "business", "business_name") || "External Form Lead";
+  const message = pick("message", "Message", "notes", "Notes", "body", "comments", "description");
+  const value = Number(pick("value", "budget", "deal_value", "amount", "estimated_value") || 0);
+  const now = new Date().toISOString();
+  return {
+    lead_id: "FORM-" + randomBytes(5).toString("hex").toUpperCase(),
+    record_type: "external_form_lead",
+    module: "leads",
+    site_id: siteSlug,
+    site_slug: siteSlug,
+    form_slug: formSlug,
+    dashboard_token: String(pick("dashboard_token", "token") || siteSlug),
+    name: String(combinedName || email || "External Form Lead"),
+    email: String(email || ""),
+    phone: String(pick("phone", "Phone", "phone_number", "mobile") || ""),
+    company: String(company),
+    title: String(pick("title", "role", "job_title") || "External Form Lead"),
+    source: String(pick("source", "platform", "provider", "utm_source") || req.get("x-form-provider") || "External Form"),
+    owner: String(pick("owner") || "Constrava Demo Team"),
+    status: String(pick("status", "stage") || "New"),
+    priority: String(pick("priority") || "High"),
+    deal_name: String(pick("deal_name", "project", "service") || `${company} form inquiry`),
+    value: Number.isFinite(value) ? value : 0,
+    probability: 35,
+    expected_revenue: Number.isFinite(value) ? Math.round(value * 0.35) : 0,
+    close_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    created_at: now,
+    last_contacted: now.slice(0, 10),
+    tags: ["external-form", String(siteSlug), String(formSlug)],
+    notes: String(message || "Submitted through external form intake."),
+    raw_submission: payload
+  };
+}
+async function insertCrmLead(siteId, lead) {
+  if (!hasDb()) return false;
+  const info = await tableInfo("crm_leads");
+  const c = cols(info);
+  if (!c.length) return false;
+  const insertCols = [], values = [];
+  const add = (col, value) => { if (col && c.includes(col) && !insertCols.includes(col)) { insertCols.push(col); values.push(value); } };
+  add(firstExisting(c, ["site_id", "site", "client_site_id", "project_id"]), siteId);
+  add(firstExisting(c, ["lead_id", "id"]), lead.lead_id);
+  add(firstExisting(c, ["name", "full_name", "lead_name", "contact_name"]), lead.name);
+  add(firstExisting(c, ["email", "lead_email", "contact_email"]), lead.email);
+  add(firstExisting(c, ["phone", "phone_number", "mobile"]), lead.phone);
+  add(firstExisting(c, ["company", "organization"]), lead.company);
+  add(firstExisting(c, ["status", "stage", "lead_status"]), lead.status);
+  add(firstExisting(c, ["source", "channel", "campaign"]), lead.source);
+  add(firstExisting(c, ["notes", "message", "body"]), lead.notes);
+  add(firstExisting(c, ["value", "deal_value", "amount", "budget"]), lead.value);
+  add(firstExisting(c, ["created_at", "timestamp", "received_at", "inserted_at"]), new Date(lead.created_at));
+  const payloadCol = firstExisting(c, ["payload", "metadata", "data", "properties", "raw_submission"]);
+  if (payloadCol) add(payloadCol, isJsonColumn(info, payloadCol) ? lead : JSON.stringify(lead));
+  if (!insertCols.length) return false;
+  await db().query(`INSERT INTO crm_leads (${insertCols.map(q).join(", ")}) VALUES (${values.map((_, i) => `$${i + 1}`).join(", ")})`, values);
   return true;
 }
 function reportText(summary) { return `Constrava AI Report\n\nTraffic: ${summary.visits} visits, ${summary.leads} leads, ${summary.purchases} purchases.\nLead conversion: ${summary.visits ? ((summary.leads / summary.visits) * 100).toFixed(2) : "0.00"}%.\nRecommendation: follow up with qualified and proposal-stage CRM leads first.`; }
@@ -185,6 +264,11 @@ function removeVendorReferences(html) {
   return String(html || "")
     .replace(/Zoho[-\s]*style\s*/gi, "custom ")
     .replace(/\bZoho\b/gi, "CRM");
+}
+function cors(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-constrava-key, x-form-provider");
 }
 
 app.get("/health", (req, res) => res.status(200).send("ok"));
@@ -210,6 +294,21 @@ app.get("/crm", (req, res) => {
 });
 app.get("/dashboard/data", async (req, res) => { try { const payload = await getDashboardPayload(String(req.query.token || "demo")); res.json(payload); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });
 app.get("/api/dashboard", async (req, res) => { try { res.json(await getDashboardPayload(String(req.query.token || "demo"))); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });
+app.options("/api/forms/intake/:siteSlug/:formSlug", (req, res) => { cors(res); res.status(204).end(); });
+app.post("/api/forms/intake/:siteSlug/:formSlug", async (req, res) => {
+  cors(res);
+  try {
+    const siteSlug = String(req.params.siteSlug || "external-site");
+    const formSlug = String(req.params.formSlug || "external-form");
+    const lead = normalizeFormLead(req.body || {}, siteSlug, formSlug, req);
+    intakeLeads.unshift(lead);
+    while (intakeLeads.length > 250) intakeLeads.pop();
+    let crmStored = false, eventStored = false;
+    try { crmStored = await insertCrmLead(siteSlug, lead); } catch (err) { crmStored = false; }
+    try { eventStored = await insertEvent(siteSlug, "form_lead", { source: lead.source, path: `/forms/${formSlug}`, amount: lead.value, lead }); } catch (err) { eventStored = false; }
+    res.json({ ok: true, message: "Form submission received and converted into a CRM lead.", lead_id: lead.lead_id, crm_stored: crmStored, event_stored: eventStored, session_stored: true, lead });
+  } catch (err) { res.status(500).json({ ok: false, error: err.message || "Form intake failed." }); }
+});
 app.post("/dashboard/simulate", async (req, res) => { try { const token = String(req.query.token || req.body?.token || "demo"); const type = String(req.query.type || req.body?.type || "page_view"); const site = await findSiteByToken(token); const siteId = String(valueFrom(site || virtualSite(token), ["site_id", "id"], token)); if (hasDb()) await insertEvent(siteId, type, { source: "dashboard" }); res.json({ ok: true, type, site_id: siteId, stored: hasDb() }); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });
 app.post("/dashboard/seed", async (req, res) => { try { const token = String(req.query.token || req.body?.token || "demo"); const site = await findSiteByToken(token); const siteId = String(valueFrom(site || virtualSite(token), ["site_id", "id"], token)); let inserted = 0; if (hasDb()) { for (const type of ["page_view", "cta_click", "lead", "purchase", "page_view", "lead"]) { await insertEvent(siteId, type, { source: "seed" }); inserted++; } } res.json({ ok: true, inserted, message: hasDb() ? "Demo data seeded." : "Demo preview already includes sample data." }); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });
 app.post("/dashboard/report", async (req, res) => { try { const payload = await getDashboardPayload(String(req.query.token || req.body?.token || "demo")); res.json({ ok: true, report: reportText(payload.summary), stored: false }); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });
