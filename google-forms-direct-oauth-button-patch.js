@@ -1,16 +1,22 @@
 import fs from "fs";
 
+async function runCrmFormPatches() {
+  await import("./crm-ai-form-intake-patch.js");
+  await import("./crm-universal-ai-form-router-patch.js");
+  await import("./crm-demo-lead-shape-patch.js");
+}
+
 const file = "crm-form-integrations.js";
 if (!fs.existsSync(file)) {
   console.warn("[google-forms-direct-oauth-button-patch] crm-form-integrations.js not found.");
-  await import("./crm-universal-ai-form-router-patch.js");
+  await runCrmFormPatches();
   process.exit(0);
 }
 
 let source = fs.readFileSync(file, "utf8");
 if (source.includes("/debug/google-oauth?private=1") && source.includes("oauth_url")) {
   console.log("Google Forms direct OAuth button patch already applied.");
-  await import("./crm-universal-ai-form-router-patch.js");
+  await runCrmFormPatches();
   process.exit(0);
 }
 
@@ -35,11 +41,11 @@ const newFn = "async function signIn(){\n" +
 
 if (!source.includes(oldFn)) {
   console.warn("[google-forms-direct-oauth-button-patch] Could not find signIn function; leaving file unchanged.");
-  await import("./crm-universal-ai-form-router-patch.js");
+  await runCrmFormPatches();
   process.exit(0);
 }
 
 source = source.replace(oldFn, newFn);
 fs.writeFileSync(file, source);
 console.log("Google Forms button now uses the working OAuth URL generator.");
-await import("./crm-universal-ai-form-router-patch.js");
+await runCrmFormPatches();
