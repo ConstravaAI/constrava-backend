@@ -4,6 +4,7 @@ async function runCrmFormPatches() {
   await import("./crm-ai-form-intake-patch.js");
   await import("./crm-universal-ai-form-router-patch.js");
   await import("./crm-demo-lead-shape-patch.js");
+  await import("./crm-unified-lead-list-patch.js");
 }
 
 const file = "crm-form-integrations.js";
