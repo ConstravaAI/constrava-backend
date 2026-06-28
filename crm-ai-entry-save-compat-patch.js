@@ -49,3 +49,4 @@ if (changed) {
 }
 
 await import("./crm-ai-fallback-list-merge-patch.js");
+await import("./crm-entry-type-field-patch.js");
