@@ -1,12 +1,13 @@
 import fs from "fs";
 
 async function runCrmFormPatches() {
-  // crm-ai-form-intake-patch.js already runs earlier in npm start.
-  // Do not import it here because older patch files can call process.exit when already applied.
+  // This must run before the router and AI entry routes because they call normalizeFormLeadSmart.
+  await import("./crm-ai-form-intake-patch.js");
   await import("./crm-universal-ai-form-router-patch.js");
   await import("./crm-demo-lead-shape-patch.js");
   await import("./crm-unified-lead-list-patch.js");
   await import("./crm-entry-system-patch.js");
+  await import("./crm-entry-system-hotfix-patch.js");
 }
 
 const file = "crm-form-integrations.js";
