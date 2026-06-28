@@ -29,3 +29,4 @@ if (source !== before) {
 }
 
 await import("./crm-layout-cleanup-patch.js");
+await import("./crm-distinct-tabs-patch.js");
