@@ -47,3 +47,5 @@ if (changed) {
 } else {
   console.log("AI CRM entry save compatibility patch already applied or no anchor found.");
 }
+
+await import("./crm-ai-fallback-list-merge-patch.js");
