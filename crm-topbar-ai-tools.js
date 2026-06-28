@@ -6,7 +6,60 @@
   const token = params.get('token') || 'demo';
 
   const style = document.createElement('style');
-  style.textContent = `.cx-top-ai-modal{position:fixed;inset:0;z-index:2000;display:none;place-items:center;background:rgba(2,18,14,.64);backdrop-filter:blur(9px);padding:20px}.cx-top-ai-modal.open{display:grid}.cx-top-ai-box{width:min(760px,100%);background:#fff;border:1px solid rgba(16,185,129,.22);border-radius:24px;box-shadow:0 36px 120px rgba(0,0,0,.35);overflow:hidden}.cx-top-ai-head{padding:20px 22px;background:linear-gradient(135deg,#f8fffc,#ecfdf5);border-bottom:1px solid #dbe8e4}.cx-top-ai-head h2{margin:0;color:#022c22}.cx-top-ai-head p{margin:7px 0 0;color:#64748b;line-height:1.45}.cx-top-ai-body{padding:20px 22px}.cx-top-ai-body textarea{width:100%;min-height:160px;border:1px solid #d8e0e7;border-radius:14px;background:#f8fafc;padding:13px;color:#0f172a;font:inherit;resize:vertical}.cx-top-ai-body textarea:focus{outline:0;border-color:#10b981;box-shadow:0 0 0 4px rgba(16,185,129,.12)}.cx-top-ai-foot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:16px 22px;border-top:1px solid #dbe8e4;background:#f8fffc}.cx-top-ai-foot button{border:1px solid #d8e0e7;border-radius:12px;background:#fff;color:#073d32;font-weight:900;padding:10px 12px;cursor:pointer}.cx-top-ai-foot button.primary{background:#10b981;border-color:#10b981;color:#022c22}.cx-top-ai-result{margin-top:12px;border:1px solid #dbe8e4;border-radius:12px;background:#f8fafc;padding:11px 12px;color:#334155;font-size:13px;line-height:1.45}.cx-top-ai-result.ok{background:#ecfdf5;color:#047857;border-color:rgba(16,185,129,.35)}.cx-top-ai-result.warn{background:#fffbeb;color:#92400e;border-color:rgba(245,158,11,.35)}.cx-info-list{margin:12px 0 0;padding-left:18px;color:#475569;line-height:1.55}.cx-info-list li{margin:6px 0}.cx-info-example{border:1px dashed #9bd9c3;background:#f8fffc;border-radius:13px;padding:11px 12px;margin-top:12px;color:#073d32;font-size:13px;line-height:1.45}.cx-ai-info{width:32px!important;height:32px!important;min-width:32px!important;border-radius:999px!important;padding:0!important;display:inline-grid!important;place-items:center!important;background:#d1fae5!important;color:#064e3b!important;border:2px solid #10b981!important;font-weight:1000!important;font-size:16px!important;line-height:1!important;box-shadow:0 0 0 3px rgba(16,185,129,.18)!important;cursor:pointer!important}.cx-ai-info:hover{background:#a7f3d0!important;transform:translateY(-1px)}.cx-top-ai .cx-ai-info{order:3}.cx-top-ai #cxTopAiRun{order:4}.cx-top-ai #cxTopAiOpen{order:5}.cx-top-ai #cxTopAiStatus{order:6}.cx-top-ai #cxTopAiInput{order:2}.cx-top-ai .cx-ai-helper{order:1}.crm-top.cx-dcrm-titlebar .cx-top-ai button{display:inline-flex!important}.crm-top.cx-dcrm-titlebar .cx-top-ai button.cx-ai-info{display:inline-grid!important}.crm-top.cx-dcrm-titlebar #cxTopAiRun,.crm-top.cx-dcrm-titlebar #cxTopAiOpen{display:inline-flex!important}`;
+  style.textContent = `
+    .crm-top.cx-dcrm-titlebar #cxTopAiTools.cx-top-ai{
+      display:grid!important;
+      grid-template-columns:max-content minmax(320px,1fr) 34px max-content max-content max-content!important;
+      align-items:center!important;
+      gap:8px!important;
+      min-width:min(780px,62vw)!important;
+      max-width:880px!important;
+      margin-left:auto!important;
+    }
+    .crm-top.cx-dcrm-titlebar #cxTopAiTools .cx-ai-helper{grid-column:1!important;white-space:nowrap!important;color:#d1fae5!important;font-size:12px!important;font-weight:950!important;display:inline-flex!important;align-items:center!important}
+    .crm-top.cx-dcrm-titlebar #cxTopAiInput{
+      grid-column:2!important;
+      width:100%!important;
+      min-width:0!important;
+      box-sizing:border-box!important;
+      border:1px solid rgba(209,250,229,.22)!important;
+      border-radius:12px!important;
+      background:rgba(15,23,42,.28)!important;
+      color:#fff!important;
+      padding:10px 12px!important;
+      font:inherit!important;
+      outline:0!important;
+      height:45px!important;
+      display:block!important;
+    }
+    .crm-top.cx-dcrm-titlebar #cxTopAiInput::placeholder{color:rgba(226,232,240,.68)!important}
+    .crm-top.cx-dcrm-titlebar #cxTopAiInput:focus{border-color:rgba(16,185,129,.82)!important;box-shadow:0 0 0 4px rgba(16,185,129,.16)!important}
+    .crm-top.cx-dcrm-titlebar #cxTopAiInfo.cx-ai-info{
+      grid-column:3!important;
+      width:32px!important;
+      height:32px!important;
+      min-width:32px!important;
+      border-radius:999px!important;
+      padding:0!important;
+      display:inline-grid!important;
+      place-items:center!important;
+      background:#d1fae5!important;
+      color:#064e3b!important;
+      border:2px solid #10b981!important;
+      font-weight:1000!important;
+      font-size:16px!important;
+      line-height:1!important;
+      box-shadow:0 0 0 3px rgba(16,185,129,.18)!important;
+      cursor:pointer!important;
+    }
+    .crm-top.cx-dcrm-titlebar #cxTopAiInfo:hover{background:#a7f3d0!important;transform:translateY(-1px)}
+    .crm-top.cx-dcrm-titlebar #cxTopAiRun{grid-column:4!important;display:inline-flex!important;background:#10b981!important;color:#022c22!important;border:1px solid #10b981!important;border-radius:12px!important;font-weight:950!important;padding:10px 12px!important;height:40px!important;align-items:center!important;white-space:nowrap!important;cursor:pointer!important}
+    .crm-top.cx-dcrm-titlebar #cxTopAiOpen{grid-column:5!important;display:inline-flex!important;background:rgba(255,255,255,.08)!important;color:#d1fae5!important;border:1px solid rgba(209,250,229,.25)!important;border-radius:12px!important;font-weight:950!important;padding:10px 12px!important;height:40px!important;align-items:center!important;white-space:nowrap!important;cursor:pointer!important}
+    .crm-top.cx-dcrm-titlebar #cxTopAiStatus{grid-column:6!important;color:rgba(226,232,240,.78)!important;font-size:11px!important;white-space:nowrap!important;display:inline-block!important;max-width:90px!important;overflow:hidden!important;text-overflow:ellipsis!important}
+    .cx-top-ai-modal{position:fixed;inset:0;z-index:2000;display:none;place-items:center;background:rgba(2,18,14,.64);backdrop-filter:blur(9px);padding:20px}.cx-top-ai-modal.open{display:grid}.cx-top-ai-box{width:min(760px,100%);background:#fff;border:1px solid rgba(16,185,129,.22);border-radius:24px;box-shadow:0 36px 120px rgba(0,0,0,.35);overflow:hidden}.cx-top-ai-head{padding:20px 22px;background:linear-gradient(135deg,#f8fffc,#ecfdf5);border-bottom:1px solid #dbe8e4}.cx-top-ai-head h2{margin:0;color:#022c22}.cx-top-ai-head p{margin:7px 0 0;color:#64748b;line-height:1.45}.cx-top-ai-body{padding:20px 22px}.cx-top-ai-body textarea{width:100%;min-height:160px;border:1px solid #d8e0e7;border-radius:14px;background:#f8fafc;padding:13px;color:#0f172a;font:inherit;resize:vertical}.cx-top-ai-body textarea:focus{outline:0;border-color:#10b981;box-shadow:0 0 0 4px rgba(16,185,129,.12)}.cx-top-ai-foot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:16px 22px;border-top:1px solid #dbe8e4;background:#f8fffc}.cx-top-ai-foot button{border:1px solid #d8e0e7;border-radius:12px;background:#fff;color:#073d32;font-weight:900;padding:10px 12px;cursor:pointer}.cx-top-ai-foot button.primary{background:#10b981;border-color:#10b981;color:#022c22}.cx-top-ai-result{margin-top:12px;border:1px solid #dbe8e4;border-radius:12px;background:#f8fafc;padding:11px 12px;color:#334155;font-size:13px;line-height:1.45}.cx-top-ai-result.ok{background:#ecfdf5;color:#047857;border-color:rgba(16,185,129,.35)}.cx-top-ai-result.warn{background:#fffbeb;color:#92400e;border-color:rgba(245,158,11,.35)}.cx-info-list{margin:12px 0 0;padding-left:18px;color:#475569;line-height:1.55}.cx-info-list li{margin:6px 0}.cx-info-example{border:1px dashed #9bd9c3;background:#f8fffc;border-radius:13px;padding:11px 12px;margin-top:12px;color:#073d32;font-size:13px;line-height:1.45}
+    @media(max-width:1100px){.crm-top.cx-dcrm-titlebar #cxTopAiTools.cx-top-ai{grid-template-columns:max-content 1fr 34px max-content max-content!important;min-width:0!important;max-width:none!important;width:100%!important;margin-top:12px!important}.crm-top.cx-dcrm-titlebar #cxTopAiStatus{display:none!important}}
+    @media(max-width:700px){.crm-top.cx-dcrm-titlebar #cxTopAiTools.cx-top-ai{grid-template-columns:1fr 34px max-content!important}.crm-top.cx-dcrm-titlebar #cxTopAiTools .cx-ai-helper{grid-column:1/-1!important}.crm-top.cx-dcrm-titlebar #cxTopAiInput{grid-column:1!important}.crm-top.cx-dcrm-titlebar #cxTopAiInfo{grid-column:2!important}.crm-top.cx-dcrm-titlebar #cxTopAiRun{grid-column:3!important}.crm-top.cx-dcrm-titlebar #cxTopAiOpen{display:none!important}}
+  `;
   document.head.appendChild(style);
 
   function toast(msg){ const t=document.getElementById('toast'); if(t){t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);} }
@@ -20,22 +73,30 @@
     const el = input();
     const tools = document.getElementById('cxTopAiTools');
     if(!el || !tools) return;
+
+    let helper = tools.querySelector('.cx-ai-helper');
+    if(!helper){
+      helper = document.createElement('span');
+      helper.className = 'cx-ai-helper';
+      helper.textContent = 'Add updates here →';
+      tools.insertBefore(helper, tools.firstChild);
+    }
+
     let btn = document.getElementById('cxTopAiInfo');
     if(!btn){
       btn = document.createElement('button');
       btn.id = 'cxTopAiInfo';
-      btn.className = 'cx-ai-info';
       btn.type = 'button';
       btn.textContent = '?';
-      btn.setAttribute('aria-label','Explain AI update box');
-      btn.title = 'Explain AI update box';
-    } else {
-      btn.textContent = '?';
-      btn.className = 'cx-ai-info';
-      btn.type = 'button';
       btn.setAttribute('aria-label','Explain AI update box');
       btn.title = 'Explain AI update box';
     }
+    btn.className = 'cx-ai-info';
+    btn.textContent = '?';
+    btn.type = 'button';
+    btn.setAttribute('aria-label','Explain AI update box');
+    btn.title = 'Explain AI update box';
+
     if(el.nextElementSibling !== btn){
       el.insertAdjacentElement('afterend', btn);
     }
