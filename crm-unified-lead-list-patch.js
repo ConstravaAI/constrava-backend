@@ -9,13 +9,13 @@ if (!fs.existsSync(file)) {
 let source = fs.readFileSync(file, "utf8");
 let changed = false;
 
-if (!source.includes("__crmUnifiedLeadListPatch_v1")) {
+if (!source.includes("__crmUnifiedLeadListPatch_v2")) {
   const start = source.indexOf("async function getDashboardPayload(token) {");
   const end = source.indexOf("function reportText(summary)", start);
   if (start === -1 || end === -1) {
     console.warn("[crm-unified-lead-list-patch] Could not find getDashboardPayload block.");
   } else {
-    const block = `// __crmUnifiedLeadListPatch_v1
+    const block = `// __crmUnifiedLeadListPatch_v2
 function leadIdentityKey(lead) {
   const email = String(lead.email || "").trim().toLowerCase();
   if (email) return "email:" + email;
@@ -72,31 +72,28 @@ function crmListSummary(leads) {
   };
 }
 async function getUnifiedCrmLeadList(siteId, token) {
-  const demo = demoPayload();
   const rawStored = await getCrmLeads(siteId);
   const storedLeads = (rawStored || []).map((lead, i) => mapLead(lead, i));
-  const demoLeads = (demo.leads || []).map((lead, i) => mapLead(lead, storedLeads.length + i));
-  return uniqueCrmLeads([...storedLeads, ...demoLeads]).sort(sortCrmLeadsNewestFirst);
+  return uniqueCrmLeads(storedLeads).sort(sortCrmLeadsNewestFirst);
 }
 async function getDashboardPayload(token) {
-  const demo = demoPayload();
+  const emptyBase = demoPayload();
   const site = await findSiteByToken(token);
   const siteId = String(valueFrom(site || virtualSite(token), ["site_id", "id"], token || "demo"));
   const [events, reports, leads] = await Promise.all([getEvents(siteId), getReports(siteId), getUnifiedCrmLeadList(siteId, token)]);
-  const hasRealDashboardData = events.length || reports.length || leads.some((lead) => String(lead.lead_id || "").startsWith("FORM-"));
-  const summary = events.length ? summarize(events) : demo.summary;
-  summary.leads = Math.max(Number(summary.leads || 0), leads.length);
+  const summary = events.length ? summarize(events) : { total: 0, visits: 0, leads: 0, purchases: 0, clicks: 0, revenue: 0, sessions: 0, avgDurationSeconds: 0, bounceRate: 0, days: [], typeCounts: [], pageCounts: [], sources: [], devices: [] };
+  summary.leads = leads.length;
   const crm = { leads, summary: crmListSummary(leads), source: "unified_crm_lead_list" };
   return {
-    ...demo,
-    usingFallback: !hasRealDashboardData,
+    ...emptyBase,
+    usingFallback: false,
     dbConnected: hasDb(),
-    site: { ...demo.site, site_id: siteId, token },
+    site: { ...emptyBase.site, site_id: siteId, token },
     summary,
     crm,
     leads,
-    reports: reports.length ? reports : demo.reports,
-    recentEvents: events.length ? events.slice(0, 80).map((event) => ({ type: eventType(event), path: cleanPath(eventPath(event)), time: eventTime(event) || new Date().toISOString(), amount: eventAmount(event), source: valueFrom(event, ["source"], "Direct"), device: valueFrom(event, ["device"], "Desktop") })) : demo.recentEvents
+    reports,
+    recentEvents: events.slice(0, 80).map((event) => ({ type: eventType(event), path: cleanPath(eventPath(event)), time: eventTime(event) || new Date().toISOString(), amount: eventAmount(event), source: valueFrom(event, ["source"], "Direct"), device: valueFrom(event, ["device"], "Desktop") }))
   };
 }
 `;
@@ -118,7 +115,7 @@ if (!source.includes('app.get("/api/crm/leads"')) {
 
 if (changed) {
   fs.writeFileSync(file, source);
-  console.log("Unified CRM lead list patch applied.");
+  console.log("Unified CRM lead list patch applied without demo data.");
 } else {
   console.log("Unified CRM lead list patch already applied or no changes needed.");
 }
