@@ -28,6 +28,7 @@ if (source !== before) {
 
 await import("./crm-ai-entry-normalizer-hotfix-patch.js");
 await import("./crm-ai-entry-route-hard-replace-patch.js");
+await import("./crm-ai-entry-save-compat-patch.js");
 await import("./crm-layout-cleanup-patch.js");
 await import("./crm-distinct-tabs-patch.js");
 await import("./crm-distinct-tabs-stabilize-patch.js");
