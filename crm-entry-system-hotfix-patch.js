@@ -31,4 +31,5 @@ if (source !== before) {
 await import("./crm-layout-cleanup-patch.js");
 await import("./crm-distinct-tabs-patch.js");
 await import("./crm-distinct-tabs-stabilize-patch.js");
+await import("./crm-distinct-tabs-nojump-patch.js");
 await import("./crm-topbar-ai-tools-patch.js");
