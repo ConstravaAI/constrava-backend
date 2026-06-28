@@ -28,6 +28,7 @@ if (source !== before) {
   console.log("CRM entry system newline syntax already valid.");
 }
 
+await import("./crm-ai-entry-normalizer-hotfix-patch.js");
 await import("./crm-layout-cleanup-patch.js");
 await import("./crm-distinct-tabs-patch.js");
 await import("./crm-distinct-tabs-stabilize-patch.js");
