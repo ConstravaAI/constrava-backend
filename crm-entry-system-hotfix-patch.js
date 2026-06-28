@@ -27,3 +27,5 @@ if (source !== before) {
 } else {
   console.log("CRM entry system newline syntax already valid.");
 }
+
+await import("./crm-layout-cleanup-patch.js");
