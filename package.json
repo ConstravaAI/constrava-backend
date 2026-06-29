@@ -5,7 +5,7 @@
   "type": "module",
   "engines": { "node": ">=18" },
   "scripts": {
-    "start": "node prestart.js && node ai-explain-real-data.js && node crm-real-upgrade.js && node crm-syntax-fix.js && node crm-ui-rebuild.js && node crm-search-fix.js && echo crm-emergency-stabilize skipped && node crm-modern-reset.js && node google-forms-server-patch.js && node google-forms-ui-patch.js && node google-forms-remove-old-signin-patch.js && node google-forms-account-picker-patch.js && node google-oauth-debug-patch.js && node google-forms-direct-oauth-button-patch.js && node crm-ai-form-intake-patch.js && node server.js"
+    "start": "node prestart.js && node ai-explain-real-data.js && (node crm-real-upgrade.js || echo crm-real-upgrade skipped) && node crm-syntax-fix.js && node crm-ui-rebuild.js && node crm-search-fix.js && echo crm-emergency-stabilize skipped && node crm-modern-reset.js && node google-forms-server-patch.js && node google-forms-ui-patch.js && node google-forms-remove-old-signin-patch.js && node google-forms-account-picker-patch.js && node google-oauth-debug-patch.js && node google-forms-direct-oauth-button-patch.js && node crm-ai-form-intake-patch.js && node server.js"
   },
   "dependencies": {
     "express": "^4.19.2",
