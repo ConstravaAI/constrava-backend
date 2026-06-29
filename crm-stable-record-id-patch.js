@@ -39,17 +39,6 @@ if (fs.existsSync(serverFile)) {
   );
   if (source !== beforeIncomplete) changed = true;
 
-  const beforeComplete = source;
-  source = source.replace(
-    /raw_submission: src\.raw_submission \|\| \{ plain_text: text, interpreted_entry: src \}\s*\};\s*}\s*function mergeEntryUpdate/g,
-    "raw_submission: src.raw_submission || { plain_text: text, interpreted_entry: src }\n  });\n}\nfunction mergeEntryUpdate"
-  );
-  source = source.replace(
-    /return \{\s*lead_id: entryCleanText\(src\.lead_id \|\| src\.id \|\| "CRM-" \+ randomBytes\(5\)\.toString\("hex"\)\.toUpperCase\(\)\),/g,
-    "return ensureCrmRecordId({\n    lead_id: entryCleanText(src.lead_id || src.id || src.record_id || \"\"),"
-  );
-  if (source !== beforeComplete) changed = true;
-
   const beforeList = source;
   source = source.replace(
     /normalizeIncompleteCrmEntry\(mapLead\(lead, i\), siteId, ''\)/g,
