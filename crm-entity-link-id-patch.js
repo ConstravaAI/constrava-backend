@@ -19,7 +19,11 @@ function crmEntityKey(entry) {
   const phone = String(src.phone || src.mobile || src.phone_number || "").replace(/\D/g, "");
   const name = String(src.name || src.full_name || src.contact_name || "").trim().toLowerCase().replace(/\s+/g, " ");
   const company = String(src.company || src.organization || "").trim().toLowerCase().replace(/\s+/g, " ");
-  const website = String(src.website || src.url || src.domain || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "");
+  let website = String(src.website || src.url || src.domain || "").trim().toLowerCase();
+  if (website.startsWith("https://")) website = website.slice(8);
+  if (website.startsWith("http://")) website = website.slice(7);
+  if (website.startsWith("www.")) website = website.slice(4);
+  while (website.endsWith("/")) website = website.slice(0, -1);
 
   if (email) return "email:" + email;
   if (phone) return "phone:" + phone;
@@ -68,7 +72,7 @@ if (fs.existsSync(serverFile)) {
 
   const beforeReturns = source;
   source = source.replaceAll("return ensureCrmRecordId(safe);", "return ensureCrmEntityLinkId(ensureCrmRecordId(safe));");
-  source = source.replaceAll("ensureCrmRecordId(normalizeIncompleteCrmEntry(mapLead(lead, i), siteId, ''))", "ensureCrmEntityLinkId(ensureCrmRecordId(normalizeIncompleteCrmEntry(mapLead(lead, i), siteId, '')))");
+  source = source.replaceAll("ensureCrmRecordId(normalizeIncompleteCrmEntry(mapLead(lead, i), siteId, ''))", "ensureCrmEntityLinkId(ensureCrmRecordId(normalizeIncompleteCrmEntry(mapLead(lead, i), siteId, '')))" );
   source = source.replaceAll("finalEntry = ensureCrmRecordId(finalEntry);", "finalEntry = ensureCrmEntityLinkId(ensureCrmRecordId(finalEntry));");
   if (source !== beforeReturns) changed = true;
 
@@ -98,7 +102,11 @@ const clientHelper = `  function clientEntityHash(value){
     const phone=String(e&&(e.phone||e.mobile)||'').replace(/\D/g,'');
     const name=String(e&&e.name||'').trim().toLowerCase().replace(/\s+/g,' ');
     const company=String(e&&e.company||'').trim().toLowerCase().replace(/\s+/g,' ');
-    const website=String(e&&(e.website||e.url||e.domain)||'').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/$/,'');
+    let website=String(e&&(e.website||e.url||e.domain)||'').trim().toLowerCase();
+    if(website.startsWith('https://')) website=website.slice(8);
+    if(website.startsWith('http://')) website=website.slice(7);
+    if(website.startsWith('www.')) website=website.slice(4);
+    while(website.endsWith('/')) website=website.slice(0,-1);
     if(email) return 'email:'+email;
     if(phone) return 'phone:'+phone;
     if(name&&company) return 'name-company:'+name+'|'+company;
