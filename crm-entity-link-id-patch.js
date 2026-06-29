@@ -152,3 +152,5 @@ if (fs.existsSync(tabsFile)) {
 }
 
 if (!changedAny) console.log("CRM entity-link ID patch made no changes.");
+
+await import("./crm-return-syntax-repair-patch.js");
