@@ -1,12 +1,17 @@
 import fs from "fs";
 
 const target = "server.js";
-let text = fs.readFileSync(target, "utf8");
+if (!fs.existsSync(target)) {
+  console.warn("[crm-syntax-fix] server.js not found; skipping.");
+  process.exit(0);
+}
 
-// crm-real-upgrade.js builds code with a template string. Without this cleanup,
-// the generated server can contain join("<actual newline>") which is invalid JS.
+let text = fs.readFileSync(target, "utf8");
 const before = text;
-text = text.replace(/\.filter\(Boolean\)\.join\("\r?\n"\)/g, '.filter(Boolean).join("\\n")');
+
+// crm-real-upgrade.js can generate code like join("<actual newline>"),
+// which is invalid JavaScript. Replace actual line-break join strings with "\\n".
+text = text.replace(/\.filter\(Boolean\)\.join\("[\r\n]+"\)/g, '.filter(Boolean).join("\\n")');
 
 if (text !== before) {
   fs.writeFileSync(target, text);
