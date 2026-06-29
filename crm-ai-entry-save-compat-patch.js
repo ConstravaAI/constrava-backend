@@ -53,4 +53,5 @@ await import("./crm-entry-type-field-patch.js");
 await import("./crm-distinct-tabs-resilient-loader-patch.js");
 await import("./crm-remove-demo-data-patch.js");
 await import("./crm-multi-type-data-points-patch.js");
+await import("./crm-multi-type-syntax-fix-patch.js");
 await import("./crm-incomplete-record-safety-patch.js");
