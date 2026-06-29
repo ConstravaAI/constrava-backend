@@ -68,8 +68,6 @@ if (fs.existsSync(serverFile)) {
 
   const beforeReturns = source;
   source = source.replaceAll("return ensureCrmRecordId(safe);", "return ensureCrmEntityLinkId(ensureCrmRecordId(safe));");
-  source = source.replaceAll("return ensureCrmRecordId({", "return ensureCrmEntityLinkId(ensureCrmRecordId({");
-  source = source.replaceAll("  });\n}\nfunction mergeEntryUpdate", "  }));\n}\nfunction mergeEntryUpdate");
   source = source.replaceAll("ensureCrmRecordId(normalizeIncompleteCrmEntry(mapLead(lead, i), siteId, ''))", "ensureCrmEntityLinkId(ensureCrmRecordId(normalizeIncompleteCrmEntry(mapLead(lead, i), siteId, '')))");
   source = source.replaceAll("finalEntry = ensureCrmRecordId(finalEntry);", "finalEntry = ensureCrmEntityLinkId(ensureCrmRecordId(finalEntry));");
   if (source !== beforeReturns) changed = true;
