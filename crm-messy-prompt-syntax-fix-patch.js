@@ -36,3 +36,5 @@ if (source !== before) {
 } else {
   console.log("Messy CRM prompt string syntax already safe or anchor not found.");
 }
+
+await import("./crm-messy-regex-syntax-fix-patch.js");
