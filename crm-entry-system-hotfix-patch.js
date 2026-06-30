@@ -39,3 +39,4 @@ await import("./crm-topbar-ai-tools-patch.js");
 await import("./crm-simple-record-tabs-patch.js");
 await import("./crm-hide-legacy-workflow-panels-patch.js");
 await import("./crm-workflow-tools-cards-patch.js");
+await import("./crm-collapsible-sidebar-groups-patch.js");
