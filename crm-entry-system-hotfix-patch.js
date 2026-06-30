@@ -40,3 +40,4 @@ await import("./crm-simple-record-tabs-patch.js");
 await import("./crm-hide-legacy-workflow-panels-patch.js");
 await import("./crm-workflow-tools-cards-patch.js");
 await import("./crm-collapsible-sidebar-groups-patch.js");
+await import("./dashboard-menu-rebuild-inject-patch.js");
