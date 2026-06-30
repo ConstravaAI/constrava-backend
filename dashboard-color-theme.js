@@ -22,13 +22,13 @@ body{
   background:radial-gradient(circle at 18% 0,rgba(20,184,166,.13),transparent 32%),linear-gradient(135deg,#f8fafc,#eef4f8 48%,#ffffff)!important;
 }
 .side,.side.cx-menu-rebuilt{
-  background:linear-gradient(180deg,#111827,#0f172a 58%,#020617)!important;
+  background:#111827!important;
   color:#e5f4f3!important;
-  box-shadow:20px 0 70px rgba(15,23,42,.24)!important;
+  box-shadow:20px 0 70px rgba(15,23,42,.22)!important;
 }
 .cx-menu-brand,.brand{color:#f8fafc!important;}
 .cx-menu-mark,.mark{
-  background:linear-gradient(135deg,#5eead4,#14b8a6)!important;
+  background:#14b8a6!important;
   color:#042f2e!important;
 }
 .cx-menu-label,.navtitle,.cx-menu-footer{color:rgba(226,232,240,.58)!important;}
@@ -43,7 +43,7 @@ body{
 .cx-menu-main-button.active,
 .navbtn.active,
 .navbtn:hover{
-  background:linear-gradient(90deg,rgba(20,184,166,.30),rgba(59,130,246,.10))!important;
+  background:rgba(20,184,166,.22)!important;
   color:#f8fafc!important;
   box-shadow:inset 3px 0 0 #5eead4!important;
 }
@@ -81,7 +81,7 @@ body{
   box-shadow:inset 0 -2px 0 #14b8a6,0 10px 24px rgba(20,184,166,.12)!important;
 }
 .fill,.crm-primary,.cx-workflow-btn,.cx-titlebar-ai-btn{
-  background:linear-gradient(135deg,#14b8a6,#0f766e)!important;
+  background:#14b8a6!important;
   color:#ecfeff!important;
   border-color:#14b8a6!important;
 }
@@ -93,7 +93,7 @@ body{
 .dot{stroke:#14b8a6!important;fill:#ecfeff!important;}
 .area{opacity:.72!important;}
 .crm-top.cx-simple-titlebar,.crm-top{
-  background:linear-gradient(135deg,#111827,#0f172a)!important;
+  background:#111827!important;
   color:#f8fafc!important;
 }
 .crm-left{
