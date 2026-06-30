@@ -1,7 +1,9 @@
 import fs from "fs";
 
 const file = "server.js";
-const script = '<script src="/dashboard-menu-rebuild.js"></script>';
+const menuScript = '<script src="/dashboard-menu-rebuild.js"></script>';
+const colorScript = '<script src="/dashboard-color-theme.js"></script>';
+const scripts = menuScript + colorScript;
 
 if (!fs.existsSync(file)) {
   console.warn("[dashboard-menu-rebuild-inject-patch] server.js not found.");
@@ -14,18 +16,22 @@ const before = source;
 if (!source.includes('/dashboard-menu-rebuild.js')) {
   source = source.replace(
     '<script src="/crm-demo-form.js"></script><script src="/crm-full-workflows.js"></script><script src="/crm-form-integrations.js"></script>',
-    '<script src="/crm-demo-form.js"></script><script src="/crm-full-workflows.js"></script><script src="/crm-form-integrations.js"></script>' + script
+    '<script src="/crm-demo-form.js"></script><script src="/crm-full-workflows.js"></script><script src="/crm-form-integrations.js"></script>' + scripts
   );
 
   source = source.replace(
     'const injection = \'<script src="/crm-demo-form.js"></script><script src="/crm-full-workflows.js"></script><script src="/crm-form-integrations.js"></script>\';',
-    'const injection = \'<script src="/crm-demo-form.js"></script><script src="/crm-full-workflows.js"></script><script src="/crm-form-integrations.js"></script><script src="/dashboard-menu-rebuild.js"></script>\';'
+    'const injection = \'<script src="/crm-demo-form.js"></script><script src="/crm-full-workflows.js"></script><script src="/crm-form-integrations.js"></script><script src="/dashboard-menu-rebuild.js"></script><script src="/dashboard-color-theme.js"></script>\';'
   );
+}
+
+if (source.includes('/dashboard-menu-rebuild.js') && !source.includes('/dashboard-color-theme.js')) {
+  source = source.replace('<script src="/dashboard-menu-rebuild.js"></script>', scripts);
 }
 
 if (source !== before) {
   fs.writeFileSync(file, source);
-  console.log("Rebuilt dashboard menu script injected.");
+  console.log("Rebuilt dashboard menu and color theme scripts injected.");
 } else {
-  console.log("Rebuilt dashboard menu script already injected or no target found.");
+  console.log("Rebuilt dashboard menu and color theme scripts already injected or no target found.");
 }
