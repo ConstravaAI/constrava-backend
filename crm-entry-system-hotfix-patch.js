@@ -43,3 +43,4 @@ await import("./crm-collapsible-sidebar-groups-patch.js");
 await import("./dashboard-menu-rebuild-inject-patch.js");
 await import("./crm-titlebar-ai-add-patch.js");
 await import("./crm-messy-ai-intake-pipeline-patch.js");
+await import("./crm-messy-prompt-syntax-fix-patch.js");
