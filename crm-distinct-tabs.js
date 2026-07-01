@@ -1,6 +1,6 @@
 (function(){
-  if (window.__constravaSimpleRecordTabsLoadedV2) return;
-  window.__constravaSimpleRecordTabsLoadedV2 = true;
+  if (window.__constravaCanonicalCrmTabsLoaded) return;
+  window.__constravaCanonicalCrmTabsLoaded = true;
 
   var params = new URLSearchParams(location.search);
   var token = params.get('token') || 'demo';
@@ -8,15 +8,15 @@
   var state = { active: 'all', entries: [], loading: false, query: '' };
 
   var tabs = [
-    { id:'all', icon:'📋', label:'All Records', types:[], action:'Review every CRM data point in one clean list.', search:'Search all records...' },
-    { id:'lead', icon:'🎯', label:'Leads', types:['lead','ai-text-lead','external-form-lead','website-form-lead','form-lead','intake'], action:'Track potential customers and follow up with them.', search:'Search leads...' },
-    { id:'person', icon:'👤', label:'People', types:['person','contact','client','customer'], action:'Store people, contacts, and customers.', search:'Search people...' },
-    { id:'company', icon:'🏢', label:'Companies', types:['company','organization','business','account'], action:'Track organizations connected to records.', search:'Search companies...' },
-    { id:'deal', icon:'💼', label:'Deals / Sales', types:['deal','sale','sales','purchase','opportunity'], action:'Track opportunities, purchases, and sales.', search:'Search deals and sales...' },
-    { id:'task', icon:'✅', label:'Tasks', types:['task','todo','followup','follow-up','follow-up-task','call-log','email-activity'], action:'Track next steps and follow-up work.', search:'Search tasks...' },
-    { id:'intake', icon:'📥', label:'Intake', types:['intake','form','submission','external-form-lead','website-form-lead','google-forms'], action:'Review new form submissions and messy incoming notes.', search:'Search intake records...' },
-    { id:'note', icon:'📝', label:'Notes', types:['note'], action:'Keep plain notes attached to CRM records.', search:'Search notes...' },
-    { id:'workflow', icon:'⚡', label:'Workflow Center', types:[], action:'Use AI to add, update, and route CRM records from one place.', search:'Search CRM context...' }
+    { id:'all', icon:'📋', label:'All Records', type:null, action:'Review every CRM data point in one clean list.', search:'Search all records...' },
+    { id:'lead', icon:'🎯', label:'Leads', type:'Lead', action:'Track potential customers and follow up with them.', search:'Search leads...' },
+    { id:'person', icon:'👤', label:'People', type:'Person', action:'Store people, contacts, and customers.', search:'Search people...' },
+    { id:'company', icon:'🏢', label:'Companies', type:'Company', action:'Track organizations connected to records.', search:'Search companies...' },
+    { id:'deal', icon:'💼', label:'Deals / Sales', type:'Deal', action:'Track opportunities, purchases, and sales.', search:'Search deals and sales...' },
+    { id:'task', icon:'✅', label:'Tasks', type:'Task', action:'Track next steps and follow-up work.', search:'Search tasks...' },
+    { id:'intake', icon:'📥', label:'Intake', type:'Intake', action:'Review new form submissions and messy incoming notes.', search:'Search intake records...' },
+    { id:'note', icon:'📝', label:'Notes', type:'Note', action:'Keep plain notes attached to CRM records.', search:'Search notes...' },
+    { id:'workflow', icon:'⚡', label:'Workflow Center', type:null, action:'Use AI to add, update, and route CRM records from one place.', search:'Search CRM context...' }
   ];
 
   var css = document.createElement('style');
@@ -32,12 +32,52 @@
   function addAll(target, list){ if(Array.isArray(list)) list.forEach(function(x){ if(x && typeof x === 'object') target.push(x); }); }
   function currentPageData(){ var out = []; try { if(window.dashboardData){ addAll(out, window.dashboardData.entries); addAll(out, window.dashboardData.records); addAll(out, window.dashboardData.leads); } } catch(e){} try { if(window.data){ addAll(out, window.data.entries); addAll(out, window.data.records); addAll(out, window.data.leads); } } catch(e){} addAll(out, readSession()); return out; }
   function dedupe(list){ var seen = {}; return list.filter(function(e, i){ var k = e.record_id || e.lead_id || e.id || (e.email ? e.email + '|' + (e.created_at || '') : '') || (e.name || '') + '|' + (e.company || '') + '|' + (e.deal_name || '') || ('row-' + i); if(seen[k]) return false; seen[k] = true; return true; }); }
-  function cleanType(v){ v = String(v || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); var map = { leads:'lead', contacts:'person', contact:'person', people:'person', customers:'person', clients:'person', companies:'company', organizations:'company', accounts:'company', account:'company', deals:'deal', opportunities:'deal', tasks:'task', todos:'task', followups:'follow-up', 'follow-up-task':'task', forms:'intake', submissions:'intake', 'ai-text-lead':'lead', 'external-form-lead':'lead', 'website-form-lead':'lead', 'form-lead':'lead', 'google-forms':'intake', 'email-activity':'task', 'call-log':'task' }; return map[v] || v; }
   function valueNum(e){ return Number(String(e.value || e.deal_value || e.amount || e.budget || 0).replace(/[$,]/g,'')) || 0; }
-  function recordTypes(e){ var out = []; function add(v){ v = cleanType(v); if(v && out.indexOf(v) === -1) out.push(v); } if(Array.isArray(e.types)) e.types.forEach(add); ['primary_type','type','record_type','module','category'].forEach(function(k){ add(e[k]); }); var text = [e.source,e.provider,e.record_type,e.module,e.notes,e.message,e.deal_name,e.tags].join(' ').toLowerCase(); if(e.name || e.email || e.phone || e.mobile) { add('person'); add('lead'); } if(e.company || e.organization || e.account_name) add('company'); if(e.deal_name || valueNum(e) > 0 || /deal|proposal|quote|budget|opportunity/.test(text)) add('deal'); if(e.next_step || /task|todo|follow|call|email/.test(text + ' ' + String(e.status || ''))) add('task'); if(/form|intake|submission|google|website/.test(text)) { add('intake'); add('lead'); } if(/note|notes/.test(text)) add('note'); if(!out.length) add('lead'); if(!e.record_type) e.record_type = out[0] || 'lead'; return out; }
-  function normalizeEntry(e, i){ e = e || {}; if(!e.record_type) e.record_type = recordTypes(e)[0] || 'lead'; if(!e.lead_id && !e.record_id && !e.id) e.lead_id = 'LOCAL-' + Date.now() + '-' + i; if(!e.status && !e.stage) e.status = 'New'; return e; }
+
+  function splitTypeValues(value){
+    if (Array.isArray(value)) return value.flatMap(splitTypeValues);
+    if (value && typeof value === 'object') return Object.values(value).flatMap(splitTypeValues);
+    return String(value || '').split(/[;,|/]+/).map(function(v){ return v.trim(); }).filter(Boolean);
+  }
+  function canonicalTypeValue(value){
+    var key = String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    if (!key) return [];
+    if (['lead','leads','ai-text-lead','form-lead'].includes(key)) return ['Lead'];
+    if (['person','people','contact','contacts','client','clients','customer','customers'].includes(key)) return ['Person'];
+    if (['company','companies','organization','organizations','business','businesses','account','accounts'].includes(key)) return ['Company'];
+    if (['deal','deals','sale','sales','purchase','purchases','opportunity','opportunities'].includes(key)) return ['Deal'];
+    if (['task','tasks','todo','todos','followup','followups','follow-up','follow-ups','follow-up-task','call-log','email-activity','activity','activities'].includes(key)) return ['Task'];
+    if (['intake','form','forms','submission','submissions','google-forms','external-form-lead','website-form-lead'].includes(key)) return ['Lead','Intake'];
+    if (['note','notes'].includes(key)) return ['Note'];
+    return [];
+  }
+  function uniqueTypes(list){ var out = []; list.forEach(function(type){ if(type && out.indexOf(type) === -1) out.push(type); }); return out; }
+  function canonicalTypesFromValues(values){ return uniqueTypes(values.flatMap(function(v){ return canonicalTypeValue(v); })); }
+  function guessTypes(e){
+    var module = String(e.module || e.crm_module || e.record_module || '').toLowerCase();
+    var sourceText = [e.source,e.provider,e.channel,e.notes,e.message,e.body,e.description,e.deal_name,e.next_step,e.raw_submission && e.raw_submission.text].join(' ').toLowerCase();
+    var guessed = [];
+    if (/intake|form|submission|google|website form/.test(module + ' ' + sourceText)) guessed.push('Lead','Intake');
+    else if (/task|todo|follow|call|meeting|email/.test(module + ' ' + sourceText)) guessed.push('Task');
+    else if (/deal|sale|purchase|opportunity|proposal|quote|contract/.test(module + ' ' + sourceText) || valueNum(e) > 0 && e.deal_name) guessed.push('Deal');
+    else if (/contact|person|people|client|customer/.test(module)) guessed.push('Person');
+    else if (/company|account|organization|business/.test(module)) guessed.push('Company');
+    else if (/note/.test(module + ' ' + sourceText)) guessed.push('Note');
+    else guessed.push('Lead');
+    return uniqueTypes(guessed);
+  }
+  function recordTypes(e){
+    var explicit = [];
+    addAll(explicit, e.record_types);
+    explicit = explicit.concat(splitTypeValues(e.record_type)).concat(splitTypeValues(e.types)).concat(splitTypeValues(e.primary_type)).concat(splitTypeValues(e.type));
+    var types = canonicalTypesFromValues(explicit);
+    if (!types.length) types = guessTypes(e);
+    e.record_type = types.length === 1 ? types[0] : types.slice();
+    return types;
+  }
+  function normalizeEntry(e, i){ e = e || {}; var types = recordTypes(e); if(!e.lead_id && !e.record_id && !e.id) e.lead_id = 'LOCAL-' + Date.now() + '-' + i; if(!e.status && !e.stage) e.status = 'New'; if(!e.record_type) e.record_type = types[0] || 'Lead'; return e; }
   function activeTab(){ return tabs.filter(function(t){ return t.id === state.active; })[0] || tabs[0]; }
-  function matchesTab(e, tab){ if(tab.id === 'workflow') return true; if(!tab.types.length) return true; var types = recordTypes(e); return tab.types.some(function(t){ return types.indexOf(cleanType(t)) !== -1; }); }
+  function matchesTab(e, tab){ if(tab.id === 'workflow') return true; if(!tab.type) return true; return recordTypes(e).indexOf(tab.type) !== -1; }
   function displayedEntries(){ var tab = activeTab(); var q = state.query.toLowerCase().trim(); return state.entries.filter(function(e){ if(!matchesTab(e, tab)) return false; if(!q) return true; return JSON.stringify(e).toLowerCase().indexOf(q) !== -1; }); }
   function titleFor(e){ return e.name || e.company || e.deal_name || e.title || e.email || 'Unnamed record'; }
   function subline(e){ return [e.company, e.email, e.phone || e.mobile].filter(Boolean).join(' • ') || e.source || 'No details yet'; }
@@ -56,13 +96,30 @@
     render();
   }
 
+  function guessTextTypes(text){
+    var t = String(text || '').toLowerCase();
+    var types = [];
+    var explicit = t.match(/record\s*type\s*:?\s*([a-z, /-]+)/i) || t.match(/type\s*:?\s*([a-z, /-]+)/i);
+    if (explicit) types = canonicalTypesFromValues(splitTypeValues(explicit[1]));
+    if (!types.length) {
+      if (/form submission|website form|google form|intake/.test(t)) types.push('Lead','Intake');
+      else if (/task|todo|follow-up task|follow up task/.test(t)) types.push('Task');
+      else if (/note only|new note|crm note/.test(t)) types.push('Note');
+      else if (/company record|account record|organization record|business record/.test(t)) types.push('Company');
+      else if (/person record|contact record|customer record|client record/.test(t)) types.push('Person');
+      else if (/deal record|sales record|opportunity record|purchase record|proposal record|contract record/.test(t)) types.push('Deal');
+      else types.push('Lead');
+    }
+    return uniqueTypes(types.length ? types : ['Lead']);
+  }
   function localRecordFromText(text, serverRecord){
     var email = (text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)||[''])[0];
     var phone = (text.match(/(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}/)||[''])[0];
     var valueMatch = text.replace(/,/g,'').match(/\$?\b(\d{3,7})\b/);
     var nameMatch = text.match(/(?:named|name is|lead is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/) || text.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s+from\s+/);
     var companyMatch = text.match(/from\s+([A-Z][A-Za-z0-9& .-]{2,60})(?:\s+(?:reached|wants|needs|is|and|with)|[.,]|$)/);
-    return Object.assign({ lead_id:'AI-' + Date.now(), record_type:'ai-text-lead', module:'leads', name:nameMatch ? nameMatch[1] : (email ? email.split('@')[0].replace(/[._-]/g,' ') : 'AI Text Lead'), email:email, phone:phone, company:companyMatch ? companyMatch[1].trim() : 'AI Added Lead', status:/qualified|ready|serious/i.test(text) ? 'Qualified' : 'New', priority:/urgent|soon|ready|high/i.test(text) ? 'High' : 'Normal', source:'AI Text Add', value:valueMatch ? Number(valueMatch[1]) : 0, notes:text, raw_submission:{ text:text } }, serverRecord || {});
+    var types = guessTextTypes(text);
+    return Object.assign({ lead_id:'AI-' + Date.now(), record_type: types.length === 1 ? types[0] : types, module:'leads', name:nameMatch ? nameMatch[1] : (email ? email.split('@')[0].replace(/[._-]/g,' ') : 'AI Text Record'), email:email, phone:phone, company:companyMatch ? companyMatch[1].trim() : 'AI Added Record', status:/qualified|ready|serious/i.test(text) ? 'Qualified' : 'New', priority:/urgent|soon|ready|high/i.test(text) ? 'High' : 'Normal', source:'AI Text Add', value:valueMatch ? Number(valueMatch[1]) : 0, notes:text, raw_submission:{ text:text } }, serverRecord || {});
   }
 
   async function aiAddFromWorkflow(){
@@ -91,10 +148,10 @@
   }
 
   function rebuildSide(){ var el = side(); if(!el) return; el.classList.add('cx-simple-owned'); el.innerHTML = '<div class="cx-simple-nav-title">CRM tabs</div>' + tabs.map(function(t){ return '<button class="cx-simple-side-btn" type="button" data-simple-tab="' + esc(t.id) + '"><span>' + t.icon + '</span><span><strong>' + esc(t.label) + '</strong><small>' + esc(t.action) + '</small></span></button>'; }).join(''); Array.prototype.forEach.call(el.querySelectorAll('[data-simple-tab]'), function(btn){ btn.onclick = function(){ state.active = btn.getAttribute('data-simple-tab'); state.query = ''; render(); }; }); }
-  function updateTop(){ var el = topbar(); if(!el) return; var tab = activeTab(); el.classList.add('cx-simple-titlebar'); el.innerHTML = '<div class="cx-simple-title"><strong>' + esc(tab.label) + '</strong><span>' + esc(tab.action) + '</span></div><div class="cx-simple-title-pill">Simple CRM</div>'; }
+  function updateTop(){ var el = topbar(); if(!el) return; var tab = activeTab(); el.classList.add('cx-simple-titlebar'); el.innerHTML = '<div class="cx-simple-title"><strong>' + esc(tab.label) + '</strong><span>' + esc(tab.action) + '</span></div><div class="cx-simple-title-pill">Canonical record types</div>'; }
   function ensurePanel(){ var r = root(); if(!r) return null; var panel = document.getElementById('cxSimpleCrmRoot'); if(!panel){ panel = document.createElement('div'); panel.id = 'cxSimpleCrmRoot'; panel.className = 'cx-simple'; r.insertBefore(panel, r.firstChild || null); } return panel; }
-  function renderList(list, limit){ var items = typeof limit === 'number' ? list.slice(0, limit) : list; if(state.loading) return '<div class="cx-simple-empty">Loading records...</div>'; if(!items.length) return '<div class="cx-simple-empty"><b>No matching records</b>Total loaded: ' + state.entries.length + '. This tab/search has no matches. Open All Records, clear the search, or add a workflow record.</div>'; return '<div class="cx-simple-list">' + items.map(function(e){ var types = recordTypes(e).map(function(t){ return '<span class="cx-simple-pill gray">' + esc(t) + '</span>'; }).join(''); return '<div class="cx-simple-row"><div class="cx-simple-row-top"><div><h4>' + esc(titleFor(e)) + '</h4><p>' + esc(subline(e)) + '</p></div><span class="cx-simple-pill">' + esc(e.status || e.data_quality || e.record_type || 'record') + '</span></div><p>' + esc(description(e)) + '</p><div class="cx-simple-meta">' + types + '</div></div>'; }).join('') + '</div>'; }
-  function renderWorkflow(panel){ var list = displayedEntries(); panel.innerHTML = '<div class="cx-workflow-grid"><div class="cx-simple-card"><h2>CRM Workflow Center</h2><p>Use this tab when you want the AI to create, update, classify, or connect CRM records from plain text.</p><textarea id="cxWorkflowAiInput" class="cx-workflow-textarea" placeholder="Example: Lidia from Price Home Renovations called. She wants a website quote and asked me to call back tomorrow."></textarea><div class="cx-workflow-actions"><button id="cxWorkflowAiBtn" class="cx-workflow-btn" type="button">AI Add / Update</button><button id="cxWorkflowReloadBtn" class="cx-workflow-btn secondary" type="button">Reload Records</button></div><p id="cxWorkflowStatus" class="cx-workflow-status"></p></div><div class="cx-simple-card"><h3>Workflow context</h3><p>Total records: <b>' + state.entries.length + '</b></p><p>Search below filters the context list only. It does not create or update records.</p><div class="cx-tab-search"><input id="cxTabSearch" class="cx-simple-input" placeholder="Search CRM context..." value="' + esc(state.query) + '"></div></div></div><div class="cx-simple-card"><div class="cx-simple-toolbar"><h3>Recent / matching CRM context</h3><div class="cx-simple-count">' + list.length + ' matching</div></div></div>' + renderList(list, 12); var aiBtn = document.getElementById('cxWorkflowAiBtn'); var reloadBtn = document.getElementById('cxWorkflowReloadBtn'); var search = document.getElementById('cxTabSearch'); if(aiBtn) aiBtn.onclick = aiAddFromWorkflow; if(reloadBtn) reloadBtn.onclick = loadEntries; if(search) search.oninput = function(){ state.query = search.value; render(); }; }
+  function renderList(list, limit){ var items = typeof limit === 'number' ? list.slice(0, limit) : list; if(state.loading) return '<div class="cx-simple-empty">Loading records...</div>'; if(!items.length) return '<div class="cx-simple-empty"><b>No matching records</b>Total loaded: ' + state.entries.length + '. This tab only shows records whose record_type includes this tab type. Open All Records, clear search, or change the record_type.</div>'; return '<div class="cx-simple-list">' + items.map(function(e){ var types = recordTypes(e).map(function(t){ return '<span class="cx-simple-pill gray">' + esc(t) + '</span>'; }).join(''); return '<div class="cx-simple-row"><div class="cx-simple-row-top"><div><h4>' + esc(titleFor(e)) + '</h4><p>' + esc(subline(e)) + '</p></div><span class="cx-simple-pill">' + esc(e.status || e.data_quality || 'record') + '</span></div><p>' + esc(description(e)) + '</p><div class="cx-simple-meta">' + types + '</div></div>'; }).join('') + '</div>'; }
+  function renderWorkflow(panel){ var list = displayedEntries(); panel.innerHTML = '<div class="cx-workflow-grid"><div class="cx-simple-card"><h2>CRM Workflow Center</h2><p>Use this tab when you want the AI to create, update, classify, or connect CRM records from plain text.</p><textarea id="cxWorkflowAiInput" class="cx-workflow-textarea" placeholder="Example: New lead named Lidia from Price Home Renovations. She wants a website quote and asked me to call back tomorrow."></textarea><div class="cx-workflow-actions"><button id="cxWorkflowAiBtn" class="cx-workflow-btn" type="button">AI Add / Update</button><button id="cxWorkflowReloadBtn" class="cx-workflow-btn secondary" type="button">Reload Records</button></div><p id="cxWorkflowStatus" class="cx-workflow-status"></p></div><div class="cx-simple-card"><h3>Workflow context</h3><p>Total records: <b>' + state.entries.length + '</b></p><p>Allowed record types: Lead, Person, Company, Deal, Task, Intake, Note. Multiple types are allowed.</p><div class="cx-tab-search"><input id="cxTabSearch" class="cx-simple-input" placeholder="Search CRM context..." value="' + esc(state.query) + '"></div></div></div><div class="cx-simple-card"><div class="cx-simple-toolbar"><h3>Recent / matching CRM context</h3><div class="cx-simple-count">' + list.length + ' matching</div></div></div>' + renderList(list, 12); var aiBtn = document.getElementById('cxWorkflowAiBtn'); var reloadBtn = document.getElementById('cxWorkflowReloadBtn'); var search = document.getElementById('cxTabSearch'); if(aiBtn) aiBtn.onclick = aiAddFromWorkflow; if(reloadBtn) reloadBtn.onclick = loadEntries; if(search) search.oninput = function(){ state.query = search.value; render(); }; }
   function render(){ rebuildSide(); updateTop(); var panel = ensurePanel(); if(!panel) return; var tab = activeTab(); Array.prototype.forEach.call(document.querySelectorAll('[data-simple-tab]'), function(btn){ btn.classList.toggle('active', btn.getAttribute('data-simple-tab') === state.active); }); if(tab.id === 'workflow') { renderWorkflow(panel); return; } var list = displayedEntries(); panel.innerHTML = '<div class="cx-simple-card"><h2>' + esc(tab.label) + '</h2><p><b>Basic function:</b> ' + esc(tab.action) + '</p><div class="cx-tab-search"><input id="cxTabSearch" class="cx-simple-input" placeholder="' + esc(tab.search) + '" value="' + esc(state.query) + '"></div></div><div class="cx-simple-card"><div class="cx-simple-toolbar"><h3>Matching records</h3><div class="cx-simple-count">' + list.length + ' shown / ' + state.entries.length + ' total</div></div></div>' + renderList(list); var search = document.getElementById('cxTabSearch'); if(search) search.oninput = function(){ state.query = search.value; render(); }; }
 
   window.addEventListener('cx-crm-ai-updated', loadEntries);
