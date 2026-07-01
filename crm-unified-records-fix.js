@@ -48,7 +48,7 @@ function defaultProbabilityForStatus(status) {
 }
 function inferRecordModule(recordType, lead) {
   const explicit = String(valueFrom(lead, ["module", "crm_module", "record_module"], "") || "").trim().toLowerCase();
-  if (explicit) return explicit.endsWith("s") ? explicit : `${explicit}s`;
+  if (explicit) return explicit.endsWith("s") ? explicit : explicit + "s";
   const type = String(recordType || "").toLowerCase();
   if (type.includes("contact")) return "contacts";
   if (type.includes("account") || type.includes("company")) return "accounts";
@@ -66,10 +66,10 @@ function mapLead(lead, i) {
   const tags = normalizeRecordTags(valueFrom(lead, ["tags", "labels", "categories"], []));
   const name = String(valueFrom(lead, ["name", "full_name", "lead_name", "contact_name"], "Demo Lead"));
   const company = String(valueFrom(lead, ["company", "organization", "account", "business", "business_name"], "—"));
-  const dealName = String(valueFrom(lead, ["deal_name", "opportunity", "project", "service"], company && company !== "—" ? `${company} opportunity` : `${name} opportunity`));
+  const dealName = String(valueFrom(lead, ["deal_name", "opportunity", "project", "service"], company && company !== "—" ? company + " opportunity" : name + " opportunity"));
   return {
-    id: String(valueFrom(lead, ["record_id", "lead_id", "id", "crm_id"], `REC-${i + 1}`)),
-    record_id: String(valueFrom(lead, ["record_id", "lead_id", "id", "crm_id"], `REC-${i + 1}`)),
+    id: String(valueFrom(lead, ["record_id", "lead_id", "id", "crm_id"], "REC-" + (i + 1))),
+    record_id: String(valueFrom(lead, ["record_id", "lead_id", "id", "crm_id"], "REC-" + (i + 1))),
     record_type: recordType,
     module: moduleName,
     name,
