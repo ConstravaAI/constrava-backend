@@ -119,6 +119,9 @@ body{
   border-color:#14b8a6!important;
   background:#f0fdfa!important;
 }
+.tabs:has(.tab[data-main]){
+  display:none!important;
+}
 `;
   document.head.appendChild(style);
 })();
