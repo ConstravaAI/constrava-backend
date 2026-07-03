@@ -1,5 +1,18 @@
 import fs from "fs";
 
+const publicFiles = ["index.html", "services.html", "process.html", "work.html", "contact.html"];
+const publicSigninLink = '        <a href="/signin">Sign in</a>';
+for (const publicFile of publicFiles) {
+  if (!fs.existsSync(publicFile)) continue;
+  let html = fs.readFileSync(publicFile, "utf8");
+  if (!html.includes('href="/signin"')) {
+    html = html.replace('        <a href="/contact">Contact</a>\n      </nav>', '        <a href="/contact">Contact</a>\n' + publicSigninLink + '\n      </nav>');
+    html = html.replace('        <a class="active" href="/contact">Contact</a>\n      </nav>', '        <a class="active" href="/contact">Contact</a>\n' + publicSigninLink + '\n      </nav>');
+    fs.writeFileSync(publicFile, html);
+    console.log(`[account-mini-patch] Added public sign in link to ${publicFile}.`);
+  }
+}
+
 const file = "server.js";
 const marker = "// === Constrava login key gate ===";
 if (!fs.existsSync(file)) process.exit(0);
