@@ -23,7 +23,7 @@
     </form>
   </main>
   <script>
-    const CANONICAL_PRIVATE_URL = 'https://constravaai.com/';
+    const CANONICAL_PRIVATE_URL = 'https://constravaai.com/dashboard?token=9f57ffbe-eba8-46ad-9573-c867aa4d1e66';
     const CANONICAL_ORIGIN = 'https://constravaai.com';
     const params = new URLSearchParams(location.search);
     const rawReturnTo = params.get('returnTo') || CANONICAL_PRIVATE_URL;
@@ -31,7 +31,11 @@
       try {
         const url = new URL(String(value || CANONICAL_PRIVATE_URL), CANONICAL_ORIGIN);
         if (url.hostname === 'constrava-backend.onrender.com') {
+          if (url.pathname === '/' || url.pathname === '/dashboard') return CANONICAL_PRIVATE_URL;
           return CANONICAL_ORIGIN + url.pathname + url.search + url.hash;
+        }
+        if ((url.hostname === 'constravaai.com' || url.hostname === 'www.constravaai.com') && (url.pathname === '/' || url.pathname === '/dashboard')) {
+          return CANONICAL_PRIVATE_URL;
         }
         if (url.hostname === 'constravaai.com' || url.hostname === 'www.constravaai.com') {
           return url.href;
