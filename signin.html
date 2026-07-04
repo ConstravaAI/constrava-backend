@@ -23,8 +23,25 @@
     </form>
   </main>
   <script>
+    const CANONICAL_PRIVATE_URL = 'https://constravaai.com/';
+    const CANONICAL_ORIGIN = 'https://constravaai.com';
     const params = new URLSearchParams(location.search);
-    const returnTo = params.get('returnTo') || '/dashboard';
+    const rawReturnTo = params.get('returnTo') || CANONICAL_PRIVATE_URL;
+    function canonicalReturnTo(value) {
+      try {
+        const url = new URL(String(value || CANONICAL_PRIVATE_URL), CANONICAL_ORIGIN);
+        if (url.hostname === 'constrava-backend.onrender.com') {
+          return CANONICAL_ORIGIN + url.pathname + url.search + url.hash;
+        }
+        if (url.hostname === 'constravaai.com' || url.hostname === 'www.constravaai.com') {
+          return url.href;
+        }
+        return CANONICAL_PRIVATE_URL;
+      } catch {
+        return CANONICAL_PRIVATE_URL;
+      }
+    }
+    const returnTo = canonicalReturnTo(rawReturnTo);
     const form = document.getElementById('loginForm');
     const errorBox = document.getElementById('errorBox');
     const successBox = document.getElementById('successBox');
@@ -40,7 +57,7 @@
         const data = await response.json();
         if (!response.ok || !data.ok) throw new Error(data.error || 'Sign in failed.');
         successBox.classList.add('show');
-        location.href = data.returnTo || returnTo || '/dashboard';
+        location.href = canonicalReturnTo(data.returnTo || returnTo);
       } catch (error) {
         errorBox.textContent = error.message || 'Sign in failed.';
         errorBox.classList.add('show');
