@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Constrava Private App</title>
+  <style>
+    :root{--green:#10b981;--dark:#022c22;--line:#dbe8e4;--mint:#d1fae5}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,Arial,sans-serif;background:#021813;color:#ecfdf5;min-height:100vh;overflow:hidden}
+    .private-shell{height:100vh;display:grid;grid-template-rows:64px 1fr}
+    .private-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 18px;background:linear-gradient(90deg,#022c22,#064e3b);border-bottom:1px solid rgba(209,250,229,.16);box-shadow:0 12px 32px rgba(0,0,0,.25);z-index:2}
+    .brand{display:flex;align-items:center;gap:12px;font-weight:950;letter-spacing:.18em;white-space:nowrap}.mark{width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,#00f59b,#10b981);color:#022c22;display:grid;place-items:center;transform:skew(-10deg);font-weight:1000}.private-status{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end;color:rgba(236,253,245,.86);font-size:13px;font-weight:850}.pill{border:1px solid rgba(167,243,208,.28);border-radius:999px;background:rgba(16,185,129,.12);padding:8px 11px}.warning{color:#fde68a}.open-demo{color:#d1fae5;text-decoration:none;border:1px solid rgba(209,250,229,.22);border-radius:999px;padding:8px 11px}.frame-wrap{position:relative;background:#f8fffc}.frame-wrap iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:white}@media(max-width:760px){.private-shell{grid-template-rows:96px 1fr}.private-bar{display:block;padding:12px 14px}.private-status{justify-content:flex-start;margin-top:8px}}
+  </style>
+</head>
+<body>
+  <div class="private-shell">
+    <header class="private-bar">
+      <div class="brand"><div class="mark">∕∕</div><div>CONSTRAVA APP</div></div>
+      <div class="private-status">
+        <span class="pill">Private workspace copy</span>
+        <span class="warning">Temporary: not login-protected yet</span>
+        <a class="open-demo" id="openDemo" href="/dashboard">Open raw demo</a>
+      </div>
+    </header>
+    <main class="frame-wrap">
+      <iframe id="appFrame" title="Constrava private app copy"></iframe>
+    </main>
+  </div>
+  <script>
+    const DEFAULT_TOKEN = '9f57ffbe-eba8-46ad-9573-c867aa4d1e66';
+    const params = new URLSearchParams(location.search);
+    const token = params.get('token') || DEFAULT_TOKEN;
+    const dashboardUrl = '/dashboard?token=' + encodeURIComponent(token) + '&mode=private';
+    document.getElementById('appFrame').src = dashboardUrl;
+    document.getElementById('openDemo').href = dashboardUrl;
+  </script>
+</body>
+</html>
