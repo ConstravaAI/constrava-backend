@@ -15,7 +15,7 @@
       <h1>Sign in</h1>
       <p>Open your private workspace.</p>
       <div class="msg error" id="errorBox"></div>
-      <div class="msg ok" id="successBox">Signed in. Opening dashboard…</div>
+      <div class="msg ok" id="successBox">Signed in. Opening workspace…</div>
       <div class="field"><label for="email">Email</label><input id="email" name="email" type="email" autocomplete="username" required placeholder="Email address" /></div>
       <div class="field"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Password" /></div>
       <button id="submitBtn" type="submit">Sign in</button>
@@ -24,7 +24,7 @@
   </main>
   <script>
     const params = new URLSearchParams(location.search);
-    const returnTo = params.get('returnTo') || '/dashboard';
+    const returnTo = params.get('returnTo') || '/app/';
     const form = document.getElementById('loginForm');
     const errorBox = document.getElementById('errorBox');
     const successBox = document.getElementById('successBox');
@@ -40,7 +40,7 @@
         const data = await response.json();
         if (!response.ok || !data.ok) throw new Error(data.error || 'Sign in failed.');
         successBox.classList.add('show');
-        location.href = data.returnTo || returnTo || '/dashboard';
+        location.href = data.returnTo || returnTo || '/app/';
       } catch (error) {
         errorBox.textContent = error.message || 'Sign in failed.';
         errorBox.classList.add('show');
