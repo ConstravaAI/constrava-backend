@@ -4,8 +4,10 @@
   const stages = ["New", "Needs Analysis", "Qualified", "Proposal", "Negotiation", "Closed Won", "Closed Lost"];
   const probability = { "New": 10, "Needs Analysis": 20, "Qualified": 40, "Proposal": 60, "Negotiation": 80, "Closed Won": 100, "Closed Lost": 0 };
   const colors = ["#2f80ed", "#38bdf8", "#f4b740", "#ff6b6b", "#8b5cf6", "#25d07f", "#14b8a6"];
-  let crmData = { leads: [], summary: {} };
+  let crmData = { leads: [], summary: {}, localRecords: [] };
   let activeCrm = "dashboards";
+  let activeAccount = null;
+  let customComponents = [];
 
   function esc(value) {
     return String(value ?? "")
@@ -26,11 +28,42 @@
 
   function toast(message) {
     const existing = $("toast");
-    if (existing) {
-      existing.textContent = message;
-      existing.classList.add("show");
-      clearTimeout(window.__legacyCrmToast);
-      window.__legacyCrmToast = setTimeout(() => existing.classList.remove("show"), 2200);
+    if (!existing) return;
+    existing.textContent = message;
+    existing.classList.add("show");
+    clearTimeout(window.__legacyCrmToast);
+    window.__legacyCrmToast = setTimeout(() => existing.classList.remove("show"), 2200);
+  }
+
+  function storageKey() {
+    return "constrava.crm.legacy.v2." + String(activeAccount?.email || activeAccount?.dashboard_token || "unknown").toLowerCase();
+  }
+
+  function loadCrmLocal() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey()) || "{}");
+      customComponents = Array.isArray(saved.components) ? saved.components : [];
+    } catch {
+      customComponents = [];
+    }
+  }
+
+  function saveCrmLocal() {
+    try {
+      localStorage.setItem(storageKey(), JSON.stringify({ components: customComponents, savedAt: new Date().toISOString() }));
+    } catch {}
+  }
+
+  function appStorageKey(account) {
+    return "constrava.private.v4." + String(account?.email || account?.dashboard_token || "unknown").toLowerCase();
+  }
+
+  function readLocalRecords(account) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(appStorageKey(account)) || "{}");
+      return Array.isArray(saved.records) ? saved.records : [];
+    } catch {
+      return [];
     }
   }
 
@@ -46,16 +79,6 @@
     if (raw.includes("contact")) return "Needs Analysis";
     if (raw.includes("new")) return "New";
     return stages.includes(stage) ? stage : "New";
-  }
-
-  function readLocalRecords(account) {
-    try {
-      const key = "constrava.private.v4." + String(account?.email || account?.dashboard_token || "unknown").toLowerCase();
-      const saved = JSON.parse(localStorage.getItem(key) || "{}");
-      return Array.isArray(saved.records) ? saved.records : [];
-    } catch {
-      return [];
-    }
   }
 
   function mapLead(lead, index) {
@@ -84,7 +107,13 @@
 
   function records() {
     const source = [...(crmData.leads || []), ...(crmData.localRecords || [])];
-    const mapped = source.map(mapLead);
+    const seen = new Set();
+    const mapped = source.map(mapLead).filter((record) => {
+      const key = String(record.email || record.name + record.company || record.id).toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     const query = String($("crmSearch")?.value || "").toLowerCase();
     const stage = $("stageFilter")?.value || "all";
     return mapped.filter((record) => {
@@ -160,7 +189,7 @@
     return `<div class="donut-wrap"><div class="donut"></div><div class="legend">${entries.map((entry, index) => `<div><i style="background:${colors[index % colors.length]}"></i>${esc(entry[0])} · ${entry[1]}</div>`).join("") || "No sources yet"}</div></div>`;
   }
 
-  function recordsTable(list, limit = 30) {
+  function recordsTable(list, limit = 80) {
     return `<div class="records"><table><thead><tr><th>Name</th><th>Company</th><th>Stage</th><th>Value</th><th>Probability</th><th>Source</th><th>Owner</th></tr></thead><tbody>${list.slice(0, limit).map((record) => `
       <tr><td><strong>${esc(record.name)}</strong><br><span>${esc(record.email)}</span></td><td>${esc(record.company)}</td><td><span class="crm-pill">${esc(record.stage)}</span></td><td>${money(record.value)}</td><td>${record.probability}%</td><td>${esc(record.source)}</td><td>${esc(record.owner)}</td></tr>
     `).join("") || '<tr><td colspan="7">No records found.</td></tr>'}</tbody></table></div>`;
@@ -178,6 +207,30 @@
     return `<div class="crm-activity-list">${rows}</div>`;
   }
 
+  function typeRows(list) {
+    const counts = new Map();
+    list.forEach((record) => counts.set(record.type || "Lead", (counts.get(record.type || "Lead") || 0) + 1));
+    const max = Math.max(...Array.from(counts.values()), 1);
+    return Array.from(counts.entries()).map(([type, count]) => `
+      <div class="type-row"><strong>${esc(type)}</strong><div class="track"><div class="fill" style="width:${Math.max(5, (count / max) * 100)}%"></div></div><span>${count}</span></div>
+    `).join("") || '<div class="empty">No type data.</div>';
+  }
+
+  function componentHtml(component, list) {
+    const title = esc(component.title || "AI Component");
+    if (component.kind === "pipeline") return `<section class="crm-panel"><div class="crm-panel-head"><h3>${title}</h3><button class="crm-btn" data-remove-component="${esc(component.id)}">Remove</button></div><div class="crm-panel-body">${board(list)}</div></section>`;
+    if (component.kind === "sources") return `<section class="crm-panel"><div class="crm-panel-head"><h3>${title}</h3><button class="crm-btn" data-remove-component="${esc(component.id)}">Remove</button></div><div class="crm-panel-body">${sourceDonut(list)}</div></section>`;
+    if (component.kind === "activity") return `<section class="crm-panel"><div class="crm-panel-head"><h3>${title}</h3><button class="crm-btn" data-remove-component="${esc(component.id)}">Remove</button></div><div class="crm-panel-body">${activities(list)}</div></section>`;
+    if (component.kind === "types") return `<section class="crm-panel"><div class="crm-panel-head"><h3>${title}</h3><button class="crm-btn" data-remove-component="${esc(component.id)}">Remove</button></div><div class="crm-panel-body">${typeRows(list)}</div></section>`;
+    if (component.kind === "table") return `<section class="crm-panel"><div class="crm-panel-head"><h3>${title}</h3><button class="crm-btn" data-remove-component="${esc(component.id)}">Remove</button></div><div class="crm-panel-body">${recordsTable(list)}</div></section>`;
+    return `<section class="crm-panel"><div class="crm-panel-head"><h3>${title}</h3><button class="crm-btn" data-remove-component="${esc(component.id)}">Remove</button></div><div class="crm-panel-body">${bars(list)}</div></section>`;
+  }
+
+  function customComponentGrid(list) {
+    if (!customComponents.length) return "";
+    return `<div class="crm-grid" style="margin-top:12px">${customComponents.map((component) => componentHtml(component, list)).join("")}</div>`;
+  }
+
   function dashboardView(list) {
     return `
       ${kpis(list)}
@@ -187,6 +240,7 @@
         <section class="crm-panel"><div class="crm-panel-head"><h3>Lead Source Mix</h3><span>Channels</span></div><div class="crm-panel-body">${sourceDonut(list)}</div></section>
         <section class="crm-panel"><div class="crm-panel-head"><h3>Recent CRM Activity</h3><span>Follow-ups</span></div><div class="crm-panel-body">${activities(list)}</div></section>
       </div>
+      ${customComponentGrid(list)}
       <section class="crm-panel" style="margin-top:12px"><div class="crm-panel-head"><h3>Records</h3><span>Original CRM record table</span></div><div class="crm-panel-body">${recordsTable(list)}</div></section>
     `;
   }
@@ -195,31 +249,69 @@
     const list = records();
     if (!$('crmContent')) return;
     if (activeCrm === "deals") {
-      $('crmContent').innerHTML = kpis(list) + board(list);
+      $('crmContent').innerHTML = kpis(list) + board(list) + customComponentGrid(list);
       return;
     }
     if (activeCrm === "activities" || activeCrm === "feeds") {
-      $('crmContent').innerHTML = kpis(list) + `<section class="crm-panel"><div class="crm-panel-head"><h3>Activities</h3><span>CRM feed</span></div><div class="crm-panel-body">${activities(list)}</div></section>`;
+      $('crmContent').innerHTML = kpis(list) + `<section class="crm-panel"><div class="crm-panel-head"><h3>Activities</h3><span>CRM feed</span></div><div class="crm-panel-body">${activities(list)}</div></section>` + customComponentGrid(list);
       return;
     }
     if (["leads", "vip", "contacts", "accounts", "documents", "reports"].includes(activeCrm)) {
       const filtered = activeCrm === "vip" ? list.filter((record) => record.value >= 5000 || record.probability >= 60) : list;
-      $('crmContent').innerHTML = kpis(filtered) + `<section class="crm-panel"><div class="crm-panel-head"><h3>${esc($('crmTitle')?.textContent || 'Records')}</h3><span>${filtered.length} records</span></div><div class="crm-panel-body">${recordsTable(filtered, 80)}</div></section>`;
+      $('crmContent').innerHTML = kpis(filtered) + `<section class="crm-panel"><div class="crm-panel-head"><h3>${esc($('crmTitle')?.textContent || 'Records')}</h3><span>${filtered.length} records</span></div><div class="crm-panel-body">${recordsTable(filtered)}</div></section>` + customComponentGrid(filtered);
       return;
     }
     $('crmContent').innerHTML = dashboardView(list);
+  }
+
+  function classifyComponent(prompt) {
+    const text = String(prompt || "").toLowerCase();
+    if (text.includes("source") || text.includes("channel") || text.includes("referrer")) return "sources";
+    if (text.includes("pipeline") || text.includes("kanban") || text.includes("board") || text.includes("stage")) return "pipeline";
+    if (text.includes("activity") || text.includes("follow") || text.includes("timeline")) return "activity";
+    if (text.includes("type") || text.includes("category") || text.includes("segment")) return "types";
+    if (text.includes("table") || text.includes("record") || text.includes("list")) return "table";
+    return "forecast";
+  }
+
+  function titleForComponent(kind, prompt) {
+    const clean = String(prompt || "").trim();
+    if (clean && clean.length <= 42) return clean;
+    const defaults = { sources: "AI Lead Source Component", pipeline: "AI Pipeline Component", activity: "AI Activity Component", types: "AI Lead Type Component", table: "AI Record List Component", forecast: "AI Forecast Component" };
+    return defaults[kind] || "AI Component";
+  }
+
+  function addComponent() {
+    const prompt = window.prompt("Describe the CRM dashboard component to add. Example: source chart, pipeline board, activity feed, VIP records, forecast bars.");
+    if (!prompt) return;
+    const kind = classifyComponent(prompt);
+    customComponents.unshift({ id: "component_" + Date.now(), kind, title: titleForComponent(kind, prompt), prompt, createdAt: new Date().toISOString() });
+    saveCrmLocal();
+    renderCrmContent();
+    toast("AI component added: " + titleForComponent(kind, prompt));
+  }
+
+  function explainCrm() {
+    const list = records();
+    const pipeline = list.reduce((sum, record) => sum + record.value, 0);
+    const weighted = list.reduce((sum, record) => sum + record.value * (record.probability / 100), 0);
+    const urgent = list.filter((record) => ["Proposal", "Negotiation"].includes(record.stage));
+    const message = `CRM insight: ${list.length} records, ${money(pipeline)} pipeline value, ${money(weighted)} weighted forecast. ${urgent.length} proposal/negotiation records may need follow-up.`;
+    customComponents.unshift({ id: "component_" + Date.now(), kind: "activity", title: "AI CRM Insight", prompt: message, createdAt: new Date().toISOString() });
+    saveCrmLocal();
+    renderCrmContent();
+    toast(message);
   }
 
   async function loadCrm() {
     try {
       const meRes = await fetch('/auth/me');
       const me = meRes.ok ? await meRes.json() : null;
+      activeAccount = me?.account || null;
+      loadCrmLocal();
       const dashRes = await fetch('/api/dashboard');
       const dash = dashRes.ok ? await dashRes.json() : { leads: [], summary: {} };
-      crmData = {
-        ...dash,
-        localRecords: readLocalRecords(me?.account || {})
-      };
+      crmData = { ...dash, localRecords: readLocalRecords(activeAccount || {}) };
       renderCrmContent();
     } catch (error) {
       if ($('crmContent')) $('crmContent').innerHTML = `<div class="empty">CRM failed to load: ${esc(error.message)}</div>`;
@@ -230,8 +322,15 @@
     document.addEventListener('click', (event) => {
       const button = event.target.closest('[data-crm]');
       if (button) setActiveCrm(button.dataset.crm);
-      if (event.target.closest('#crmAdd')) toast('Component added to the CRM dashboard view.');
-      if (event.target.closest('[data-explain="crm"]')) toast('CRM explains pipeline value, stage probability, sources, and follow-up activity.');
+      if (event.target.closest('#crmAdd')) addComponent();
+      if (event.target.closest('[data-explain="crm"]')) explainCrm();
+      const remove = event.target.closest('[data-remove-component]');
+      if (remove) {
+        customComponents = customComponents.filter((component) => component.id !== remove.dataset.removeComponent);
+        saveCrmLocal();
+        renderCrmContent();
+        toast("CRM component removed.");
+      }
     });
     $('crmSearch')?.addEventListener('input', renderCrmContent);
     $('stageFilter')?.addEventListener('change', renderCrmContent);
