@@ -15,11 +15,24 @@ for (const publicFile of publicFiles) {
 
 const file = "server.js";
 const marker = "// === Constrava login key gate ===";
+const anchor = 'app.get("/analytics/install"';
 if (!fs.existsSync(file)) process.exit(0);
 let text = fs.readFileSync(file, "utf8");
-if (!text.includes("createHash")) text = text.replace('import { randomBytes } from "crypto";', 'import { randomBytes, createHash } from "crypto";');
-if (!text.includes(marker)) {
-  const block = `
+
+if (!text.includes("createHash")) {
+  text = text.replace('import { randomBytes } from "crypto";', 'import { randomBytes, createHash } from "crypto";');
+}
+
+const oldStart = text.indexOf(marker);
+if (oldStart >= 0) {
+  const oldEnd = text.indexOf(anchor, oldStart);
+  if (oldEnd > oldStart) {
+    text = text.slice(0, oldStart) + text.slice(oldEnd);
+    console.log("[account-mini-patch] Removed older generated account gate.");
+  }
+}
+
+const block = `
 ${marker}
 const cxSessions = new Map();
 const cxCookieName = "cx_session";
@@ -36,7 +49,7 @@ function cxReturn(v){const c=String(v||"/app/");return c.startsWith("/")&&!c.sta
 function cxPrivate(p){return p==="/app"||p==="/app/"||p.startsWith("/app/")||p==="/dashboard"||p==="/dashboard/"||p.startsWith("/dashboard/")||p==="/crm"||p.startsWith("/crm/")||p==="/api/dashboard"||p==="/live"||p==="/reports/latest"||p==="/sites";}
 function cxJson(req){return req.path.startsWith("/api/")||String(req.get("accept")||"").includes("application/json");}
 function cxReq(req){if(req.account)return req.account;const t=cxCookie(req,cxCookieName);if(!t)return null;const s=cxSessions.get(cxHash(t));if(!s||s.expires<Date.now())return null;req.account=cxAcct(s.email);return req.account;}
-function cxServeWorkspace(req,res){const a=cxReq(req);if(!a)return res.redirect("/welcome?returnTo="+encodeURIComponent("/app/"));try{const filePath=path.join(__dirname,"dashboard.html");let html=fs.readFileSync(filePath,"utf8");const inject='<script src="/account-session.js"></script>';if(!html.includes('/account-session.js'))html=html.replace("</body>",inject+"\\n</body>");html=html.replace(/const token=new URLSearchParams\(location\.search\)\.get\('token'\)\|\|'demo';/,'const token='+JSON.stringify(a.dashboard_token)+';');res.type("html").send(removeVendorReferences(html));}catch(e){res.status(500).send("Workspace failed to load.");}}
+function cxServeWorkspace(req,res){const a=cxReq(req);if(!a)return res.redirect("/welcome?returnTo="+encodeURIComponent("/app/"));try{let html=fs.readFileSync(path.join(__dirname,"private-app.html"),"utf8");html=html.replace("__CX_ACCOUNT_TOKEN__",a.dashboard_token);html=html.replace("__CX_ACCOUNT_EMAIL__",a.email);res.type("html").send(removeVendorReferences(html));}catch(e){res.status(500).send("Private workspace failed to load.");}}
 function cxRedirectToWorkspace(req,res){const a=cxReq(req);if(!a)return res.redirect("/welcome?returnTo="+encodeURIComponent("/app/"));return res.redirect("/app/");}
 app.get("/welcome",(req,res)=>{if(cxReq(req))return res.redirect("/app/");res.sendFile(path.join(__dirname,"welcome.html"));});
 app.get("/signin",(req,res)=>{if(cxReq(req))return res.redirect(cxReturn(req.query.returnTo));res.sendFile(path.join(__dirname,"signin.html"));});
@@ -44,13 +57,19 @@ app.get("/app",cxServeWorkspace);
 app.get("/app/",cxServeWorkspace);
 app.get("/dashboard",cxRedirectToWorkspace);
 app.get("/dashboard/",cxRedirectToWorkspace);
-app.get("/auth/me",(req,res)=>{const a=cxReq(req);if(!a)return res.status(401).json({ok:false,signedIn:false});res.json({ok:true,signedIn:true,account:a,settings:{privacy:"account-only"}});});
+app.get("/auth/me",(req,res)=>{const a=cxReq(req);if(!a)return res.status(401).json({ok:false,signedIn:false});res.json({ok:true,signedIn:true,account:a,settings:{privacy:"account-only",theme:"dark-blue-sharp",landing:"/app/"}});});
 app.post("/auth/login",(req,res)=>{const email=String(req.body?.email||"").trim().toLowerCase();const k=String(req.body?.key||req.body?.secret||req.body?.[["p","a","s","s","w","o","r","d"].join("")]||"");if(!cxKey())return res.status(503).json({ok:false,error:"Set DEV_LOGIN_KEY in Render first."});if(email!==cxEmail()||k!==cxKey())return res.status(401).json({ok:false,error:"Invalid sign-in."});const t=makeToken("sess")+randomBytes(16).toString("hex");cxSessions.set(cxHash(t),{email,expires:Date.now()+1209600000});cxSet(req,res,t);res.json({ok:true,account:cxAcct(email),returnTo:cxReturn(req.body?.returnTo||req.query.returnTo)});});
 app.post("/auth/logout",(req,res)=>{const t=cxCookie(req,cxCookieName);if(t)cxSessions.delete(cxHash(t));cxClear(req,res);res.json({ok:true});});
 app.get("/auth/logout",(req,res)=>{const t=cxCookie(req,cxCookieName);if(t)cxSessions.delete(cxHash(t));cxClear(req,res);res.redirect("/signin");});
-app.use((req,res,next)=>{if(!cxPrivate(req.path))return next();const a=cxReq(req);if(!a){if(cxJson(req)||req.method!=="GET")return res.status(401).json({ok:false,error:"Sign in required."});return res.redirect("/welcome?returnTo="+encodeURIComponent(req.originalUrl||"/app/"));}req.account=a;req.query.token=a.dashboard_token;req.query.private="1";if(req.body&&typeof req.body==="object"){req.body.token=a.dashboard_token;req.body.dashboard_token=a.dashboard_token;req.body.site_id=a.site_id;}const old=res.json.bind(res);res.json=(body)=>{if(body&&typeof body==="object"&&(req.path==="/dashboard/data"||req.path==="/api/dashboard")){return old({...body,account:a,settings:{privacy:"account-only"},site:{...(body.site||{}),site_id:a.site_id,token:a.dashboard_token,owner_email:a.email}});}return old(body);};next();});
+app.use((req,res,next)=>{if(!cxPrivate(req.path))return next();const a=cxReq(req);if(!a){if(cxJson(req)||req.method!=="GET")return res.status(401).json({ok:false,error:"Sign in required."});return res.redirect("/welcome?returnTo="+encodeURIComponent(req.originalUrl||"/app/"));}req.account=a;req.query.token=a.dashboard_token;req.query.private="1";if(req.body&&typeof req.body==="object"){req.body.token=a.dashboard_token;req.body.dashboard_token=a.dashboard_token;req.body.site_id=a.site_id;}const old=res.json.bind(res);res.json=(body)=>{if(body&&typeof body==="object"&&(req.path==="/dashboard/data"||req.path==="/api/dashboard")){return old({...body,account:a,settings:{privacy:"account-only",theme:"dark-blue-sharp",landing:"/app/"},site:{...(body.site||{}),site_id:a.site_id,token:a.dashboard_token,owner_email:a.email}});}return old(body);};next();});
 `;
-  text = text.replace('app.get("/analytics/install"', block + '\napp.get("/analytics/install"');
+
+if (text.includes(anchor)) {
+  text = text.replace(anchor, block + "\n" + anchor);
+} else {
+  console.warn("[account-mini-patch] Route anchor not found; appending account gate.");
+  text += "\n" + block;
 }
+
 fs.writeFileSync(file, text);
-console.log("[account-mini-patch] Login key gate applied.");
+console.log("[account-mini-patch] Dark private app gate applied.");
