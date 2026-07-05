@@ -9,17 +9,19 @@ if (!fs.existsSync(file)) {
 let source = fs.readFileSync(file, "utf8");
 let changed = false;
 
-if (!source.includes("__crmOpenAiDiagnosticsPatch_v2")) {
-  const oldStart = source.indexOf("// __crmOpenAiDiagnosticsPatch_v1");
-  const oldEnd = oldStart >= 0 ? source.indexOf('app.get("/api/crm/entries"', oldStart) : -1;
-  if (oldStart >= 0 && oldEnd > oldStart) {
-    source = source.slice(0, oldStart) + source.slice(oldEnd);
-    changed = true;
+if (!source.includes("__crmOpenAiDiagnosticsPatch_v3")) {
+  for (const marker of ["// __crmOpenAiDiagnosticsPatch_v2", "// __crmOpenAiDiagnosticsPatch_v1"]) {
+    const oldStart = source.indexOf(marker);
+    const oldEnd = oldStart >= 0 ? source.indexOf('app.get("/api/crm/entries"', oldStart) : -1;
+    if (oldStart >= 0 && oldEnd > oldStart) {
+      source = source.slice(0, oldStart) + source.slice(oldEnd);
+      changed = true;
+    }
   }
 
   const anchor = 'app.get("/api/crm/entries"';
   const insertAt = source.indexOf(anchor);
-  const route = `// __crmOpenAiDiagnosticsPatch_v2
+  const route = `// __crmOpenAiDiagnosticsPatch_v3
 app.all("/api/openai/diagnostic", async (req, res) => {
   const started = Date.now();
   try {
@@ -36,8 +38,7 @@ app.all("/api/openai/diagnostic", async (req, res) => {
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + process.env.OPENAI_API_KEY },
       body: JSON.stringify({
         model,
-        temperature: 0,
-        max_tokens: 40,
+        max_completion_tokens: 40,
         messages: [
           { role: "system", content: "Return only this JSON object: {\\\"diagnostic\\\":\\\"ok\\\"}" },
           { role: "user", content: "diagnostic" }
@@ -83,7 +84,7 @@ app.all("/api/openai/diagnostic", async (req, res) => {
 
 if (changed) {
   fs.writeFileSync(file, source);
-  console.log("[crm-openai-diagnostics-patch] Added restricted /api/openai/diagnostic route.");
+  console.log("[crm-openai-diagnostics-patch] Added restricted /api/openai/diagnostic route with max_completion_tokens.");
 } else {
   console.log("[crm-openai-diagnostics-patch] Diagnostics route already present or no changes needed.");
 }
