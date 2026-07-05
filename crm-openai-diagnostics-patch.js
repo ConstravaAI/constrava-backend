@@ -9,17 +9,24 @@ if (!fs.existsSync(file)) {
 let source = fs.readFileSync(file, "utf8");
 let changed = false;
 
-if (!source.includes("__crmOpenAiDiagnosticsPatch_v1")) {
+if (!source.includes("__crmOpenAiDiagnosticsPatch_v2")) {
+  const oldStart = source.indexOf("// __crmOpenAiDiagnosticsPatch_v1");
+  const oldEnd = oldStart >= 0 ? source.indexOf('app.get("/api/crm/entries"', oldStart) : -1;
+  if (oldStart >= 0 && oldEnd > oldStart) {
+    source = source.slice(0, oldStart) + source.slice(oldEnd);
+    changed = true;
+  }
+
   const anchor = 'app.get("/api/crm/entries"';
   const insertAt = source.indexOf(anchor);
-  const route = `// __crmOpenAiDiagnosticsPatch_v1
+  const route = `// __crmOpenAiDiagnosticsPatch_v2
 app.all("/api/openai/diagnostic", async (req, res) => {
   const started = Date.now();
   try {
     const token = String(req.query.token || req.body?.token || "").trim();
+    const privateToken = "9f57ffbe-eba8-46ad-9573-c867aa4d1e66";
     if (!token) return res.status(401).json({ ok: false, error: "Missing dashboard token." });
-    const site = await findSiteByToken(token);
-    if (!site && token !== "demo") return res.status(403).json({ ok: false, error: "Invalid dashboard token." });
+    if (token !== privateToken) return res.status(403).json({ ok: false, error: "Invalid diagnostic token." });
     const hasKey = Boolean(process.env.OPENAI_API_KEY);
     const model = process.env.OPENAI_MODEL || "gpt-5.4-mini";
     if (!hasKey) return res.status(500).json({ ok: false, hasKey, model, error: "OPENAI_API_KEY is not set in Render." });
@@ -76,7 +83,7 @@ app.all("/api/openai/diagnostic", async (req, res) => {
 
 if (changed) {
   fs.writeFileSync(file, source);
-  console.log("[crm-openai-diagnostics-patch] Added /api/openai/diagnostic route.");
+  console.log("[crm-openai-diagnostics-patch] Added restricted /api/openai/diagnostic route.");
 } else {
   console.log("[crm-openai-diagnostics-patch] Diagnostics route already present or no changes needed.");
 }
