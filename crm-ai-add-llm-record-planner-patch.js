@@ -20,121 +20,94 @@ function insertBefore(anchor, block, label) {
   changed = true;
 }
 
-const helperBlock = `// __crmAiAddLlmRecordPlanner_v1
-function crmCleanPrimaryRecordType(value) {
-  const raw = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-  if (!raw || raw === "record" || raw === "crm_record" || raw === "item" || raw === "entry") return "lead";
-  const aliases = {
-    leads: "lead",
-    person: "contact",
-    people: "contact",
-    contacts: "contact",
-    companies: "account",
-    company: "account",
-    accounts: "account",
-    deals: "deal",
-    opportunities: "deal",
-    opportunity: "deal",
-    tasks: "task",
-    activities: "activity",
-    notes: "note",
-    ai_entry: "ai_text_lead",
-    ai_crm_entry: "ai_text_lead",
-    form_lead: "external_form_lead",
-    intake: "external_form_lead"
-  };
-  return aliases[raw] || raw;
-}
-function crmModuleForType(type) {
-  const t = crmCleanPrimaryRecordType(type);
-  if (["deal", "opportunity"].includes(t)) return "deals";
-  if (["contact", "person"].includes(t)) return "contacts";
-  if (["account", "company"].includes(t)) return "accounts";
-  if (["task", "activity", "call_log", "email_activity", "note"].includes(t)) return "activities";
-  if (["document", "report"].includes(t)) return t + "s";
-  return "leads";
-}
-function crmPrimaryRecordType(entry) {
-  const explicit = crmCleanPrimaryRecordType(entry?.record_type || entry?.type || entry?.kind || entry?.object_type);
-  if (explicit && explicit !== "lead") return explicit;
-  const text = [entry?.module, entry?.source, entry?.provider, entry?.deal_name, entry?.next_step, entry?.notes, entry?.message, entry?.title, entry?.company].join(" ").toLowerCase();
-  if (/task|todo|follow up|call back|due date|meeting/.test(text)) return "task";
-  if (/call|voicemail|phone conversation/.test(text)) return "call_log";
-  if (/email|inbox|reply|thread/.test(text)) return "email_activity";
-  if (/note|memo/.test(text)) return "note";
-  if (/account|company|business|organization/.test(text) && entry?.company && !entry?.email && !entry?.phone) return "account";
-  if (Number(entry?.value || entry?.deal_value || entry?.budget || 0) > 0 || /deal|proposal|quote|estimate|opportunity|negotiation|closed won|closed lost/.test(text)) return "deal";
-  if (/google forms|typeform|tally|jotform|external form|form submission|intake/.test(text)) return "external_form_lead";
-  if (/website form|contact page|site form/.test(text)) return "website_form_lead";
-  if (entry?.email || entry?.phone || entry?.mobile) return "contact";
-  return "lead";
-}
-function crmAiIdentityKey(entry) {
-  const e = entry || {};
-  const leadId = String(e.lead_id || e.record_id || e.id || "").trim().toLowerCase();
-  if (leadId) return "id:" + leadId;
-  const email = String(e.email || e.lead_email || e.contact_email || "").trim().toLowerCase();
-  if (email) return "email:" + email;
-  const phone = String(e.phone || e.mobile || e.phone_number || "").replace(/\D/g, "");
-  if (phone) return "phone:" + phone;
-  const nameCompany = String((e.name || e.full_name || "") + "::" + (e.company || e.organization || "")).trim().toLowerCase();
-  if (nameCompany && nameCompany !== "::") return "name-company:" + nameCompany;
-  return "random:" + Math.random();
-}
-function replaceMemoryCrmLead(lead) {
-  const key = crmAiIdentityKey(lead);
-  for (let i = memoryLeads.length - 1; i >= 0; i--) {
-    if (crmAiIdentityKey(memoryLeads[i]) === key) memoryLeads.splice(i, 1);
-  }
-  memoryLeads.unshift(lead);
-  while (memoryLeads.length > 250) memoryLeads.pop();
-}
-async function updateCrmLead(siteId, lead) {
-  replaceMemoryCrmLead(lead);
-  if (!hasDb()) return true;
-  try {
-    const info = await tableInfo("crm_leads");
-    const c = cols(info);
-    if (!c.length) return false;
-    const idCol = firstExisting(c, ["lead_id", "record_id", "crm_id"]);
-    const siteCol = firstExisting(c, ["site_id", "site", "client_site_id", "project_id"]);
-    const leadId = String(lead.lead_id || lead.record_id || lead.id || "").trim();
-    if (!idCol || !leadId) return false;
-    const updates = [];
-    const values = [];
-    const add = (col, value) => {
-      if (col && c.includes(col) && !updates.includes(col)) {
-        updates.push(col);
-        values.push(value);
-      }
-    };
-    add(firstExisting(c, ["name", "full_name", "lead_name", "contact_name"]), lead.name);
-    add(firstExisting(c, ["email", "lead_email", "contact_email"]), lead.email);
-    add(firstExisting(c, ["phone", "phone_number", "mobile"]), lead.phone || lead.mobile);
-    add(firstExisting(c, ["company", "organization"]), lead.company);
-    add(firstExisting(c, ["status", "stage", "lead_status"]), lead.status);
-    add(firstExisting(c, ["source", "channel", "campaign"]), lead.source);
-    add(firstExisting(c, ["notes", "message", "body"]), lead.notes);
-    add(firstExisting(c, ["value", "deal_value", "amount", "budget"]), Number(lead.value || 0));
-    const timeCol = firstExisting(c, ["updated_at", "last_contacted", "timestamp", "received_at"]);
-    if (timeCol) add(timeCol, new Date());
-    const payloadCol = firstExisting(c, ["payload", "metadata", "data", "properties", "raw_submission"]);
-    if (payloadCol) add(payloadCol, isJsonColumn(info, payloadCol) ? lead : JSON.stringify(lead));
-    if (!updates.length) return false;
-    let where = `${q(idCol)}=$${values.length + 1}`;
-    values.push(leadId);
-    if (siteCol) {
-      where += ` AND ${q(siteCol)}=$${values.length + 1}`;
-      values.push(String(siteId));
-    }
-    const sql = `UPDATE crm_leads SET ${updates.map((col, i) => `${q(col)}=$${i + 1}`).join(", ")} WHERE ${where}`;
-    const result = await db().query(sql, values);
-    return result.rowCount > 0;
-  } catch {
-    return false;
-  }
-}
-`;
+const helperBlock = [
+  "// __crmAiAddLlmRecordPlanner_v1",
+  "function crmCleanPrimaryRecordType(value) {",
+  "  const raw = String(value || \"\").trim().toLowerCase().replace(/[^a-z0-9]+/g, \"_\").replace(/^_+|_+$/g, \"\");",
+  "  if (!raw || raw === \"record\" || raw === \"crm_record\" || raw === \"item\" || raw === \"entry\") return \"lead\";",
+  "  const aliases = { leads: \"lead\", person: \"contact\", people: \"contact\", contacts: \"contact\", companies: \"account\", company: \"account\", accounts: \"account\", deals: \"deal\", opportunities: \"deal\", opportunity: \"deal\", tasks: \"task\", activities: \"activity\", notes: \"note\", ai_entry: \"ai_text_lead\", ai_crm_entry: \"ai_text_lead\", form_lead: \"external_form_lead\", intake: \"external_form_lead\" };",
+  "  return aliases[raw] || raw;",
+  "}",
+  "function crmModuleForType(type) {",
+  "  const t = crmCleanPrimaryRecordType(type);",
+  "  if ([\"deal\", \"opportunity\"].includes(t)) return \"deals\";",
+  "  if ([\"contact\", \"person\"].includes(t)) return \"contacts\";",
+  "  if ([\"account\", \"company\"].includes(t)) return \"accounts\";",
+  "  if ([\"task\", \"activity\", \"call_log\", \"email_activity\", \"note\"].includes(t)) return \"activities\";",
+  "  if ([\"document\", \"report\"].includes(t)) return t + \"s\";",
+  "  return \"leads\";",
+  "}",
+  "function crmPrimaryRecordType(entry) {",
+  "  const explicit = crmCleanPrimaryRecordType(entry?.record_type || entry?.type || entry?.kind || entry?.object_type);",
+  "  if (explicit && explicit !== \"lead\") return explicit;",
+  "  const text = [entry?.module, entry?.source, entry?.provider, entry?.deal_name, entry?.next_step, entry?.notes, entry?.message, entry?.title, entry?.company].join(\" \" ).toLowerCase();",
+  "  if (/task|todo|follow up|call back|due date|meeting/.test(text)) return \"task\";",
+  "  if (/call|voicemail|phone conversation/.test(text)) return \"call_log\";",
+  "  if (/email|inbox|reply|thread/.test(text)) return \"email_activity\";",
+  "  if (/note|memo/.test(text)) return \"note\";",
+  "  if (/account|company|business|organization/.test(text) && entry?.company && !entry?.email && !entry?.phone) return \"account\";",
+  "  if (Number(entry?.value || entry?.deal_value || entry?.budget || 0) > 0 || /deal|proposal|quote|estimate|opportunity|negotiation|closed won|closed lost/.test(text)) return \"deal\";",
+  "  if (/google forms|typeform|tally|jotform|external form|form submission|intake/.test(text)) return \"external_form_lead\";",
+  "  if (/website form|contact page|site form/.test(text)) return \"website_form_lead\";",
+  "  if (entry?.email || entry?.phone || entry?.mobile) return \"contact\";",
+  "  return \"lead\";",
+  "}",
+  "function crmAiIdentityKey(entry) {",
+  "  const e = entry || {};",
+  "  const leadId = String(e.lead_id || e.record_id || e.id || \"\").trim().toLowerCase();",
+  "  if (leadId) return \"id:\" + leadId;",
+  "  const email = String(e.email || e.lead_email || e.contact_email || \"\").trim().toLowerCase();",
+  "  if (email) return \"email:\" + email;",
+  "  const phone = String(e.phone || e.mobile || e.phone_number || \"\").replace(/\\D/g, \"\");",
+  "  if (phone) return \"phone:\" + phone;",
+  "  const nameCompany = String((e.name || e.full_name || \"\") + \"::\" + (e.company || e.organization || \"\")).trim().toLowerCase();",
+  "  if (nameCompany && nameCompany !== \"::\") return \"name-company:\" + nameCompany;",
+  "  return \"random:\" + Math.random();",
+  "}",
+  "function replaceMemoryCrmLead(lead) {",
+  "  const key = crmAiIdentityKey(lead);",
+  "  for (let i = memoryLeads.length - 1; i >= 0; i--) {",
+  "    if (crmAiIdentityKey(memoryLeads[i]) === key) memoryLeads.splice(i, 1);",
+  "  }",
+  "  memoryLeads.unshift(lead);",
+  "  while (memoryLeads.length > 250) memoryLeads.pop();",
+  "}",
+  "async function updateCrmLead(siteId, lead) {",
+  "  replaceMemoryCrmLead(lead);",
+  "  if (!hasDb()) return true;",
+  "  try {",
+  "    const info = await tableInfo(\"crm_leads\");",
+  "    const c = cols(info);",
+  "    if (!c.length) return false;",
+  "    const idCol = firstExisting(c, [\"lead_id\", \"record_id\", \"crm_id\"]);",
+  "    const siteCol = firstExisting(c, [\"site_id\", \"site\", \"client_site_id\", \"project_id\"]);",
+  "    const leadId = String(lead.lead_id || lead.record_id || lead.id || \"\").trim();",
+  "    if (!idCol || !leadId) return false;",
+  "    const updates = [];",
+  "    const values = [];",
+  "    const add = (col, value) => { if (col && c.includes(col) && !updates.includes(col)) { updates.push(col); values.push(value); } };",
+  "    add(firstExisting(c, [\"name\", \"full_name\", \"lead_name\", \"contact_name\"]), lead.name);",
+  "    add(firstExisting(c, [\"email\", \"lead_email\", \"contact_email\"]), lead.email);",
+  "    add(firstExisting(c, [\"phone\", \"phone_number\", \"mobile\"]), lead.phone || lead.mobile);",
+  "    add(firstExisting(c, [\"company\", \"organization\"]), lead.company);",
+  "    add(firstExisting(c, [\"status\", \"stage\", \"lead_status\"]), lead.status);",
+  "    add(firstExisting(c, [\"source\", \"channel\", \"campaign\"]), lead.source);",
+  "    add(firstExisting(c, [\"notes\", \"message\", \"body\"]), lead.notes);",
+  "    add(firstExisting(c, [\"value\", \"deal_value\", \"amount\", \"budget\"]), Number(lead.value || 0));",
+  "    const timeCol = firstExisting(c, [\"updated_at\", \"last_contacted\", \"timestamp\", \"received_at\"]);",
+  "    if (timeCol) add(timeCol, new Date());",
+  "    const payloadCol = firstExisting(c, [\"payload\", \"metadata\", \"data\", \"properties\", \"raw_submission\"]);",
+  "    if (payloadCol) add(payloadCol, isJsonColumn(info, payloadCol) ? lead : JSON.stringify(lead));",
+  "    if (!updates.length) return false;",
+  "    let where = `${q(idCol)}=$${values.length + 1}`;",
+  "    values.push(leadId);",
+  "    if (siteCol) { where += ` AND ${q(siteCol)}=$${values.length + 1}`; values.push(String(siteId)); }",
+  "    const sql = `UPDATE crm_leads SET ${updates.map((col, i) => `${q(col)}=$${i + 1}`).join(\", \")} WHERE ${where}`;",
+  "    const result = await db().query(sql, values);",
+  "    return result.rowCount > 0;",
+  "  } catch { return false; }",
+  "}",
+].join("\n");
 
 insertBefore("async function llmPlanCrmEntry(text, currentEntries) {", helperBlock, "AI entry planner function");
 
