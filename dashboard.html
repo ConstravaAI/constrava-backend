@@ -22,7 +22,12 @@
   <style>
     :root {
       --green: #10b981;
+      --green-dark: #047857;
       --ink: #0f172a;
+      --muted: #64748b;
+      --line: rgba(16,185,129,.18);
+      --card: rgba(255,255,255,.82);
+      --shadow: 0 18px 45px rgba(15,23,42,.08);
     }
 
     * { box-sizing: border-box; }
@@ -101,7 +106,7 @@
       justify-content: space-between;
       align-items: start;
       gap: 18px;
-      margin-bottom: 18px;
+      margin-bottom: 22px;
     }
 
     .hero h1 {
@@ -111,13 +116,66 @@
       letter-spacing: -.05em;
     }
 
+    .hero p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      max-width: 720px;
+      line-height: 1.55;
+    }
+
+    .source-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .source-card {
+      min-height: 170px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--card);
+      box-shadow: var(--shadow);
+    }
+
+    .source-card h2 {
+      margin: 0 0 8px;
+      color: #073d32;
+      font-size: 18px;
+      letter-spacing: -.02em;
+    }
+
+    .source-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 14px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      margin-bottom: 14px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(16,185,129,.12);
+      color: var(--green-dark);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
     .hidden { display: none !important; }
+
+    @media (max-width: 1100px) {
+      .source-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
 
     @media (max-width: 900px) {
       .app { grid-template-columns: 1fr; }
       .side { position: relative; height: auto; }
       .hero { display: block; }
       .main { padding: 24px 14px; }
+      .source-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -127,28 +185,78 @@
       <div class="brand"><div class="mark">∕∕</div><div>CONSTRAVA</div></div>
       <button class="navbtn active" data-main="analytics">📈 Analytics</button>
       <button class="navbtn" data-main="crm">🧩 CRM</button>
+      <button class="navbtn" data-main="sources">🔌 Outside Sources</button>
     </aside>
 
     <main class="main">
       <div class="shell">
         <header class="hero">
-          <h1>Constrava Dashboard</h1>
+          <div>
+            <h1 id="pageTitle">Constrava Dashboard</h1>
+            <p id="pageSubtitle" class="hidden"></p>
+          </div>
         </header>
 
         <div id="analytics"></div>
         <div id="crm" class="hidden"></div>
+        <section id="sources" class="hidden">
+          <div class="source-grid">
+            <article class="source-card">
+              <span class="badge">Website</span>
+              <h2>Website tracking</h2>
+              <p>Connect a site so page views, clicks, forms, and visitor sources can flow into the dashboard.</p>
+            </article>
+            <article class="source-card">
+              <span class="badge">Forms</span>
+              <h2>Lead forms</h2>
+              <p>Connect contact forms, quote forms, intake forms, and Google Forms so submissions become CRM records.</p>
+            </article>
+            <article class="source-card">
+              <span class="badge">Email</span>
+              <h2>Business email</h2>
+              <p>Connect Gmail, Outlook, or a shared inbox to log conversations and follow-up history.</p>
+            </article>
+            <article class="source-card">
+              <span class="badge">Calendar</span>
+              <h2>Calendar</h2>
+              <p>Connect appointments, calls, consultations, and demos so activity history stays attached to leads.</p>
+            </article>
+            <article class="source-card">
+              <span class="badge">Sales</span>
+              <h2>Payments and invoices</h2>
+              <p>Connect sales systems so purchases, invoices, deal values, and revenue can be matched to customers.</p>
+            </article>
+            <article class="source-card">
+              <span class="badge">Marketing</span>
+              <h2>Ads and social</h2>
+              <p>Connect ad platforms and social channels so campaigns can be tied to real leads and revenue.</p>
+            </article>
+          </div>
+        </section>
       </div>
     </main>
   </div>
 
   <!-- Prevent server.js from injecting deleted legacy scripts: /crm-demo-form.js /crm-full-workflows.js /crm-form-integrations.js -->
   <script>
+    const titles = {
+      analytics: ["Constrava Dashboard", ""],
+      crm: ["Constrava CRM", ""],
+      sources: ["Outside Sources", "Connect the external systems that feed data into Constrava."]
+    };
+
     function switchMain(main) {
       document.querySelectorAll('[data-main]').forEach(button => {
         button.classList.toggle('active', button.dataset.main === main);
       });
-      document.getElementById('analytics').classList.toggle('hidden', main !== 'analytics');
-      document.getElementById('crm').classList.toggle('hidden', main !== 'crm');
+      ["analytics", "crm", "sources"].forEach(id => {
+        document.getElementById(id).classList.toggle('hidden', id !== main);
+      });
+      const title = titles[main] || titles.analytics;
+      document.getElementById('pageTitle').textContent = title[0];
+      const subtitle = document.getElementById('pageSubtitle');
+      subtitle.textContent = title[1];
+      subtitle.classList.toggle('hidden', !title[1]);
     }
 
     document.querySelectorAll('[data-main]').forEach(button => {
