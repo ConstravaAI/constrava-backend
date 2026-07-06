@@ -22,9 +22,7 @@
   <style>
     :root {
       --green: #10b981;
-      --green-dark: #047857;
       --ink: #0f172a;
-      --muted: #64748b;
     }
 
     * { box-sizing: border-box; }
@@ -113,10 +111,6 @@
       letter-spacing: -.05em;
     }
 
-    .panel {
-      min-height: 0;
-    }
-
     .hidden { display: none !important; }
 
     @media (max-width: 900px) {
@@ -141,12 +135,13 @@
           <h1>Constrava Dashboard</h1>
         </header>
 
-        <section id="analytics" class="panel"></section>
-        <section id="crm" class="panel hidden"></section>
+        <div id="analytics"></div>
+        <div id="crm" class="hidden"></div>
       </div>
     </main>
   </div>
 
+  <!-- Prevent server.js from injecting deleted legacy scripts: /crm-demo-form.js /crm-full-workflows.js /crm-form-integrations.js -->
   <script>
     function switchMain(main) {
       document.querySelectorAll('[data-main]').forEach(button => {
