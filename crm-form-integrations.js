@@ -85,3 +85,78 @@ function onFormSubmit(e) {
   $('gfClose').onclick=()=>modal.classList.remove('open');$('gfSignIn').onclick=signIn;$('gfLoad').onclick=loadForms;$('gfScript').onclick=showScript;$('gfCopy').onclick=copy;$('gfDownload').onclick=download;$('gfTest').onclick=test;modal.onclick=e=>{if(e.target===modal)modal.classList.remove('open');};
   document.addEventListener('click',function(e){const btn=e.target.closest('[data-cx-flow="website"]');if(!btn)return;e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();open();},true);
 })();
+
+(function(){
+  if(window.__constravaSetupTabLoaded) return;
+  window.__constravaSetupTabLoaded = true;
+
+  function ensureSetupTab(){
+    const shell=document.querySelector('.shell');
+    const tabs=document.querySelector('.tabs');
+    if(!shell || !tabs) return false;
+
+    let setupPanel=document.getElementById('setup');
+    if(!setupPanel){
+      setupPanel=document.createElement('section');
+      setupPanel.id='setup';
+      setupPanel.className='hidden';
+      shell.appendChild(setupPanel);
+    }
+
+    let topTab=document.querySelector('.tab[data-main="setup"]');
+    if(!topTab){
+      topTab=document.createElement('button');
+      topTab.className='tab';
+      topTab.type='button';
+      topTab.dataset.main='setup';
+      topTab.textContent='Set-up';
+      tabs.appendChild(topTab);
+    }
+
+    const crmMainButton=document.querySelector('.side .navbtn[data-main="crm"]');
+    if(crmMainButton && !document.querySelector('.side .navbtn[data-main="setup"]')){
+      const sideButton=document.createElement('button');
+      sideButton.className='navbtn';
+      sideButton.type='button';
+      sideButton.dataset.main='setup';
+      sideButton.textContent='⚙️ Set-up';
+      crmMainButton.insertAdjacentElement('afterend',sideButton);
+    }
+
+    function showSetup(){
+      document.querySelectorAll('[data-main]').forEach(button=>button.classList.toggle('active',button.dataset.main==='setup'));
+      document.querySelectorAll('.tab').forEach(button=>button.classList.toggle('active',button.dataset.main==='setup'));
+      const analytics=document.getElementById('analytics');
+      const crm=document.getElementById('crm');
+      if(analytics) analytics.classList.add('hidden');
+      if(crm) crm.classList.add('hidden');
+      setupPanel.classList.remove('hidden');
+    }
+
+    function hideSetup(){
+      setupPanel.classList.add('hidden');
+    }
+
+    document.querySelectorAll('[data-main="setup"]').forEach(button=>{
+      button.onclick=function(event){
+        event.preventDefault();
+        showSetup();
+      };
+    });
+
+    document.addEventListener('click',function(event){
+      const button=event.target.closest('[data-main]');
+      if(!button || button.dataset.main==='setup') return;
+      hideSetup();
+    },true);
+
+    return true;
+  }
+
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',ensureSetupTab);
+  }else{
+    ensureSetupTab();
+  }
+  setTimeout(ensureSetupTab,300);
+})();
