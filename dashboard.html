@@ -4,17 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Constrava Dashboard</title>
-  <link rel="canonical" href="https://constravaai.com/dashboard/">
+  <link rel="canonical" href="https://constravaai.com/dashboard">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@450;600;700;800;900&display=swap" rel="stylesheet">
   <script>
     (function(){
-      const canonicalOrigin = "https://constravaai.com";
+      const canonicalUrl = "https://constravaai.com/dashboard";
       if (location.hostname === "constrava-backend.onrender.com") {
-        const params = new URLSearchParams(location.search);
-        if (!params.get("mode")) params.set("mode", "private");
-        location.replace(canonicalOrigin + "/dashboard/?" + params.toString());
+        location.replace(canonicalUrl);
+        return;
+      }
+      if (location.hostname === "constravaai.com" && (location.pathname === "/dashboard/" || location.search)) {
+        location.replace(canonicalUrl);
       }
     })();
   </script>
