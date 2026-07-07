@@ -9,12 +9,23 @@ if (fs.existsSync(file)) {
     source = source.split(search).join(replacement);
     return true;
   }
+
+  if (replaceAllSafe('app.use(express.static(__dirname));', 'app.use(express.static(__dirname, { redirect: false }));')) changed = true;
+
   const oldDashboardUrl = 'dashboard_url: `/dashboard?token=${encodeURIComponent(dashboardToken)}`';
-  const newDashboardUrl = 'dashboard_url: `${CANONICAL_ORIGIN}/dashboard/?token=${encodeURIComponent(dashboardToken)}&mode=private`';
+  const newDashboardUrl = 'dashboard_url: `${CANONICAL_ORIGIN}/dashboard`';
   if (replaceAllSafe(oldDashboardUrl, newDashboardUrl)) changed = true;
+
+  const olderDashboardUrl = 'dashboard_url: `${CANONICAL_ORIGIN}/dashboard/?token=${encodeURIComponent(dashboardToken)}&mode=private`';
+  if (replaceAllSafe(olderDashboardUrl, newDashboardUrl)) changed = true;
+
   const oldRootLink = "<h1>Constrava</h1><p><a href='/dashboard?token=demo'>Open dashboard demo</a></p>";
-  const newRootLink = "<h1>Constrava</h1><p><a href='/dashboard/?token=demo&mode=private'>Open dashboard demo</a></p>";
+  const newRootLink = "<h1>Constrava</h1><p><a href='/dashboard'>Open dashboard</a></p>";
   if (replaceAllSafe(oldRootLink, newRootLink)) changed = true;
+
+  const olderRootLink = "<h1>Constrava</h1><p><a href='/dashboard/?token=demo&mode=private'>Open dashboard demo</a></p>";
+  if (replaceAllSafe(olderRootLink, newRootLink)) changed = true;
+
   if (changed) fs.writeFileSync(file, source);
 }
 
