@@ -78,6 +78,7 @@
   </div></div><div class="box-foot"><button class="btn" id="closeModal">Cancel</button><button class="btn primary" id="saveRecord">Save Record</button></div></div></div>
   <div class="modal" id="aiModal"><div class="box"><div class="box-head"><h2>AI Add Record</h2><p>Choose the type first, then paste normal text. The saved fields follow the type you selected.</p></div><div class="box-body"><label>Type of record</label><select id="aiType"><option value="lead">Lead</option><option value="person">Person</option><option value="company">Company</option><option value="task">Task</option><option value="sale">Sale</option><option value="note">Note</option></select><label>Plain text record</label><textarea id="aiText" placeholder="Jordan Lee from Lee Manufacturing wants a proposal for $9200. Email jordan@example.com. High priority."></textarea></div><div class="box-foot"><button class="btn" id="closeAi">Cancel</button><button class="btn primary" id="saveAi">Create Record</button></div></div></div>
   <div class="toast" id="toast">Ready</div>
+  <script src="/connect-website-guide.js"></script>
   <!-- Prevent server.js from injecting deleted legacy scripts: /crm-demo-form.js /crm-full-workflows.js /crm-form-integrations.js -->
   <script>
     const params=new URLSearchParams(location.search),token=params.get('token')||'demo',STORE_KEY='constravaCrmRecordsV2',DELETE_KEY='constravaCrmDeletedV2';
