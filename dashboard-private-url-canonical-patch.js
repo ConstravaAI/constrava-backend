@@ -39,7 +39,7 @@ if (fs.existsSync(dashboardFile)) {
   patch('<button class="navbtn" data-main="sources">Outside Sources</button>', '<button class="navbtn" data-main="sources" data-short="O"><span>Outside Sources</span></button>');
 
   const cssMarker = '@media(max-width:1200px)';
-  const cssAdd = '.app{transition:grid-template-columns .22s ease}.app.sidebar-collapsed{grid-template-columns:78px 1fr}.sidebar-toggle{width:100%;height:40px;margin:0 0 16px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#ecfdf5;border-radius:12px;font-weight:950;font-size:20px}.app.sidebar-collapsed .side{padding:22px 12px}.app.sidebar-collapsed .brand{justify-content:center;margin-bottom:16px}.app.sidebar-collapsed .brand-text{display:none}.app.sidebar-collapsed .navbtn{display:none}';
+  const cssAdd = '.app{transition:grid-template-columns .22s ease}.app.sidebar-collapsed{grid-template-columns:58px 1fr}.sidebar-toggle{width:28px;height:28px;margin:-8px 0 18px auto;display:grid;place-items:center;border:0;background:rgba(255,255,255,.06);color:rgba(236,253,245,.72);border-radius:999px;font-weight:900;font-size:18px;line-height:1;box-shadow:none}.sidebar-toggle:hover{background:rgba(255,255,255,.12);color:#ecfdf5}.app.sidebar-collapsed .side{padding:22px 10px}.app.sidebar-collapsed .brand{justify-content:center;margin-bottom:18px}.app.sidebar-collapsed .brand-text{display:none}.app.sidebar-collapsed .mark{width:32px;height:32px;border-radius:10px}.app.sidebar-collapsed .sidebar-toggle{margin:0 auto 18px}.app.sidebar-collapsed .navbtn{display:none}';
   if (!html.includes('.app.sidebar-collapsed{grid-template-columns') && html.includes(cssMarker)) {
     html = html.replace(cssMarker, cssAdd + cssMarker);
     changed = true;
