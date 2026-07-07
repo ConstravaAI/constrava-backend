@@ -40,7 +40,7 @@ if (fs.existsSync(dashboardFile)) {
 
   const cssMarker = '@media(max-width:1200px)';
   const cssAdd = '.app{transition:grid-template-columns .22s ease}.app.sidebar-collapsed{grid-template-columns:78px 1fr}.sidebar-toggle{width:100%;height:40px;margin:0 0 16px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.08);color:#ecfdf5;border-radius:12px;font-weight:950;font-size:20px}.app.sidebar-collapsed .side{padding:22px 12px}.app.sidebar-collapsed .brand{justify-content:center;margin-bottom:16px}.app.sidebar-collapsed .brand-text{display:none}.app.sidebar-collapsed .navbtn{padding:13px 0;text-align:center}.app.sidebar-collapsed .navbtn span{display:none}.app.sidebar-collapsed .navbtn::after{content:attr(data-short);font-size:14px}';
-  if (!html.includes('sidebar-collapsed') && html.includes(cssMarker)) {
+  if (!html.includes('.app.sidebar-collapsed{grid-template-columns') && html.includes(cssMarker)) {
     html = html.replace(cssMarker, cssAdd + cssMarker);
     changed = true;
   }
