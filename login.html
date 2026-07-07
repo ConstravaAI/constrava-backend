@@ -54,7 +54,6 @@
         <button id="signupTab" type="button">Create account</button>
       </div>
       <form class="auth-form" id="authForm">
-        <div id="nameRow" class="hidden"><label>Name<input id="name" autocomplete="name" placeholder="Your name"></label></div>
         <label>Email<input id="email" autocomplete="email" type="email" placeholder="you@example.com" required></label>
         <label>Password<input id="password" autocomplete="current-password" type="password" minlength="8" placeholder="At least 8 characters" required></label>
         <div class="message" id="message"></div>
@@ -72,7 +71,6 @@
     const signupTab = document.getElementById('signupTab');
     const formTitle = document.getElementById('formTitle');
     const formSubtitle = document.getElementById('formSubtitle');
-    const nameRow = document.getElementById('nameRow');
     const submitBtn = document.getElementById('submitBtn');
     const message = document.getElementById('message');
 
@@ -80,7 +78,6 @@
       mode = next;
       loginTab.classList.toggle('active', mode === 'login');
       signupTab.classList.toggle('active', mode === 'signup');
-      nameRow.classList.toggle('hidden', mode !== 'signup');
       formTitle.textContent = mode === 'login' ? 'Sign in' : 'Create account';
       formSubtitle.textContent = mode === 'login' ? 'Open your Constrava dashboard.' : 'Create a private dashboard account.';
       submitBtn.textContent = mode === 'login' ? 'Sign in' : 'Create account';
@@ -99,7 +96,6 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: document.getElementById('name').value,
             email: document.getElementById('email').value,
             password: document.getElementById('password').value,
             returnTo
