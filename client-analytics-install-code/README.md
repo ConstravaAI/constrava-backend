@@ -38,10 +38,10 @@ Place the code once on every page, preferably right before the closing `</body>`
     respectDoNotTrack: true
   };
 </script>
-<script async src="https://constravaai.com/tracker.js"></script>
+<script async src="https://constravaai.com/tracker.js" data-token="CLIENT_SITE_ID"></script>
 ```
 
-Replace `CLIENT_SITE_ID` with the site ID generated inside the Constrava dashboard.
+Replace `CLIENT_SITE_ID` with the site ID generated inside the Constrava dashboard. The `data-token` value is what the tracker uses to connect website events to the correct Constrava site.
 
 ## Design direction
 
