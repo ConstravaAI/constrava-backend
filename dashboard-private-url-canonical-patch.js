@@ -33,7 +33,7 @@ if (fs.existsSync(dashboardFile)) {
   }
 
   patch('<div class="app">', '<div class="app" id="appShell">');
-  patch('<div class="brand"><div class="mark">∕∕</div><div>CONSTRAVA</div></div>', '<div class="brand"><div class="mark">∕∕</div><div class="brand-text">CONSTRAVA</div></div><button class="sidebar-toggle" id="sidebarToggle" type="button">‹</button>');
+  patch('<div class="brand"><div class="mark">∕∕</div><div>CONSTRAVA</div></div>', '<div class="brand"><div class="mark">∕∕</div><div class="brand-text">CONSTRAVA</div></div><button class="sidebar-toggle" type="button" onclick="var s=document.getElementById(\'appShell\');s.classList.toggle(\'sidebar-collapsed\');this.textContent=s.classList.contains(\'sidebar-collapsed\')?\'›\':\'‹\';">‹</button>');
   patch('<button class="navbtn active" data-main="analytics">Analytics</button>', '<button class="navbtn active" data-main="analytics" data-short="A"><span>Analytics</span></button>');
   patch('<button class="navbtn" data-main="crm">CRM</button>', '<button class="navbtn" data-main="crm" data-short="C"><span>CRM</span></button>');
   patch('<button class="navbtn" data-main="sources">Outside Sources</button>', '<button class="navbtn" data-main="sources" data-short="O"><span>Outside Sources</span></button>');
