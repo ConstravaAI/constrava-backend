@@ -1,0 +1,21 @@
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const sourceRuntimePath = path.join(here, "server-runtime.js");
+const responsiveRuntimePath = path.join(here, ".server-runtime-responsive.js");
+
+const responsiveCss = String.raw`
+/* Responsive Constrava dashboard layer */
+.workspace > div:last-child{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.workspace input{min-width:min(420px,100%)}.rightTools{flex-wrap:wrap}.tabs{flex-wrap:wrap}.card,.notificationDropdown,dialog{max-width:100%}img,svg,canvas,pre{max-width:100%}pre{overflow:auto}.modalBody{max-height:min(72vh,720px);overflow:auto}dialog input,dialog select,dialog textarea{width:100%}
+@media(max-width:1100px){.metrics{grid-template-columns:repeat(2,1fr)}.two,.notificationPanel,.notificationGrid{grid-template-columns:1fr}.crmShell{grid-template-columns:1fr}.crmSide{position:static;top:auto;display:flex;gap:8px;overflow-x:auto;white-space:nowrap}.crmSideTitle{display:none}.crmTab{min-width:max-content;width:auto}.workspace{align-items:stretch}.workspace > div:last-child{justify-content:flex-start}.notificationDropdown{right:auto;left:0;width:min(720px,calc(100vw - 24px))}}
+@media(max-width:760px){body{overflow-x:hidden}.topbar{display:flex;flex-direction:column;align-items:stretch;gap:12px;padding:12px}.leftTools{display:flex;flex-direction:column;align-items:stretch;gap:10px}.brand{font-size:22px}.tabs{display:flex;overflow-x:auto;padding-bottom:2px;gap:8px}.tab{flex:0 0 auto;padding:10px 12px}.rightTools{display:flex;justify-content:space-between;gap:8px;overflow:visible}.settingsIcon{width:44px;height:44px;flex:0 0 auto}.logoutText{flex:1}.shell{width:calc(100% - 20px)!important;margin:14px auto!important}.workspace{display:block;margin-bottom:14px}.workspace h1{font-size:32px}.workspace > div:last-child{display:grid;grid-template-columns:1fr;gap:8px;margin-top:14px}.workspace input,.workspace button{width:100%}.grid,.metrics,.two,.cards,.heroGrid,.crmShell,.notificationPanel,.notificationGrid{display:grid!important;grid-template-columns:1fr!important}.card{border-radius:16px;margin-bottom:12px}.in{padding:14px}.metricValue{font-size:28px}.recordCard{grid-template-columns:1fr!important}.recordCard > div:last-child{display:flex!important;justify-content:space-between!important;align-items:center!important;justify-items:stretch!important;margin-top:10px}.recordCard .secondary{min-width:100px}.crmSide{display:flex;overflow-x:auto;padding:8px;margin-bottom:12px}.crmTab{flex:0 0 auto}.notificationDropdown{position:fixed!important;left:10px!important;right:10px!important;top:118px!important;width:auto!important;max-height:calc(100vh - 140px);overflow:auto;padding:12px}.notificationHead{display:block}.notificationHead .ghostSmall{margin-top:8px}.modalHead,.modalBody,.modalFoot{padding:14px}.modalFoot{display:grid;grid-template-columns:1fr;gap:8px}dialog{width:calc(100vw - 20px);max-width:calc(100vw - 20px)}textarea{min-height:110px}.resource{grid-template-columns:auto 1fr}.resource .secondary{grid-column:1 / -1;width:100%}}
+@media(max-width:420px){.topbar{padding:10px}.tab{font-size:14px;padding:9px 10px}.workspace h1{font-size:28px}.metricValue{font-size:24px}.pill{font-size:11px}.fieldLine{font-size:12px}.notificationDropdown{top:126px}.card{border-radius:14px}.in{padding:12px}}
+`;
+
+let runtime = await fs.readFile(sourceRuntimePath, "utf8");
+const injection = `source = source.replace("</style>\\n</head>", ${JSON.stringify(responsiveCss)} + "\\n</style>\\n</head>");\n`;
+runtime = runtime.replace("await fs.writeFile(runtimePath, source);", injection + "await fs.writeFile(runtimePath, source);");
+await fs.writeFile(responsiveRuntimePath, runtime);
+await import(`${pathToFileURL(responsiveRuntimePath).href}?v=${Date.now()}`);
