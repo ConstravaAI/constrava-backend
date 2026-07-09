@@ -455,16 +455,17 @@ http.createServer(async (req, res) => {
   try {
     const storeData = await store();
     const url = new URL(req.url, ORIGIN);
-    if (url.pathname.startsWith("/api/")) return await api(req, res, url);
-    if (url.pathname === "/demo") return html(res, appPage({ demo: true }));
-    if (["/dashboard", "/app"].includes(url.pathname)) {
+    const pathname = url.pathname.replace(/\/+$/, "") || "/";
+    if (pathname.startsWith("/api/")) return await api(req, res, url);
+    if (pathname === "/demo") return html(res, appPage({ demo: true }));
+    if (["/dashboard", "/app"].includes(pathname)) {
       const user = currentUser(req, storeData);
       if (!user) return redirect(res, "/signin");
       ensureUserWorkspace(storeData, user);
       await save(storeData);
       return html(res, appPage({ demo: false, user }));
     }
-    if (["/signin", "/login"].includes(url.pathname)) return html(res, signInPage());
+    if (["/signin", "/login"].includes(pathname)) return html(res, signInPage());
     return html(res, publicPage());
   } catch (error) {
     send(res, error.status || 500, { error: error.message });
