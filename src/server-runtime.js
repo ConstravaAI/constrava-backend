@@ -61,6 +61,97 @@ const manualRecordServerCode = String.raw`function manualRecordFromBody(body, wo
   return record;
 }`;
 
+const openAiPriorityServerCode = String.raw`function extractOpenAIText(data) {
+  if (data && typeof data.output_text === "string") return data.output_text;
+  const parts = [];
+  for (const item of data && data.output ? data.output : []) {
+    for (const content of item.content || []) {
+      if (typeof content.text === "string") parts.push(content.text);
+      if (typeof content.output_text === "string") parts.push(content.output_text);
+    }
+  }
+  return parts.join("");
+}
+
+async function runOpenAIPriorityCheck(storeData, workspaceId) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw Object.assign(new Error("OPENAI_API_KEY is not configured on the server."), { status: 503 });
+  const rows = filtered(storeData, {}, workspaceId);
+  if (!rows.length) return { checked: 0, updated: 0, updates: [] };
+  const records = rows.map((record) => ({
+    id: record.id,
+    type: record.type,
+    title: record.title,
+    status: record.status,
+    priorityScore: record.priorityScore,
+    currentReasons: record.priorityReasons || [],
+    tags: record.tags || [],
+    fields: record.fields || {},
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt
+  }));
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["updates"],
+    properties: {
+      updates: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["id", "priorityLevel", "reason"],
+          properties: {
+            id: { type: "string" },
+            priorityLevel: { type: "string", enum: ["low", "normal", "high", "highest"] },
+            reason: { type: "string" }
+          }
+        }
+      }
+    }
+  };
+  const payload = {
+    model: process.env.OPENAI_PRIORITY_MODEL || process.env.OPENAI_MODEL || "gpt-4.1-mini",
+    input: [
+      { role: "system", content: "You are a CRM operations assistant. Review every record and assign one of exactly four priority levels: low, normal, high, highest. Highest is only for urgent, high-value, deadline-driven, or immediate-action records that should appear in notifications. Return JSON only." },
+      { role: "user", content: "Run a fresh priority check for these records. Consider urgency, deadlines, deal value, follow-up need, buying intent, task due dates, and missing important information. Keep reasons short. Records: " + JSON.stringify(records).slice(0, 70000) }
+    ],
+    text: { format: { type: "json_schema", name: "priority_review", strict: true, schema } },
+    store: false
+  };
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: { "content-type": "application/json", "authorization": "Bearer " + apiKey },
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw Object.assign(new Error(data.error && data.error.message ? data.error.message : "OpenAI priority check failed."), { status: response.status || 502 });
+  const text = extractOpenAIText(data);
+  let parsed;
+  try { parsed = JSON.parse(text); } catch { throw Object.assign(new Error("OpenAI priority check did not return valid JSON."), { status: 502 }); }
+  const priorityMap = { low: 25, normal: 50, high: 75, highest: 95 };
+  const byId = new Map(rows.map((record) => [record.id, record]));
+  const now = new Date().toISOString();
+  const applied = [];
+  for (const item of parsed.updates || []) {
+    const record = byId.get(clean(item.id));
+    const level = clean(item.priorityLevel).toLowerCase();
+    if (!record || !(level in priorityMap)) continue;
+    const reason = clean(item.reason || "OpenAI priority check").slice(0, 240);
+    record.priorityScore = priorityMap[level];
+    record.priorityReasons = [reason];
+    record.updatedAt = now;
+    record.metadata ||= {};
+    record.metadata.priorityLevel = level;
+    record.metadata.aiPriorityCheckedAt = now;
+    record.metadata.aiPriorityModel = data.model || payload.model;
+    record.metadata.editHistory ||= [];
+    record.metadata.editHistory.push({ at: now, action: "openai_priority_check", source: "OpenAI", reason });
+    applied.push({ id: record.id, title: record.title, priorityLevel: level, priorityScore: record.priorityScore, reason });
+  }
+  return { checked: rows.length, updated: applied.length, model: data.model || payload.model, updates: applied };
+}`;
+
 const recordEditorClientCode = String.raw`function editorTypeConfig(type){return {Person:{title:'Name',note:'People and contacts.',extra:[['email','Email','email'],['phone','Phone','text'],['companyName','Company','text'],['role','Role','text']]},Company:{title:'Company name',note:'Organizations, customers, vendors, or accounts.',extra:[['industry','Industry','text'],['website','Website','url'],['contactEmail','Main contact email','email']]},Deal:{title:'Deal title',note:'Opportunities, quotes, proposals, or sales.',extra:[['companyName','Company','text'],['value','Value','number'],['stage','Stage','text']]},Task:{title:'Task title',note:'Follow-ups and work that needs to be completed.',extra:[['taskType','Task type','text'],['status','Status','text']]},Intake:{title:'Intake title',note:'Incoming requests, form submissions, or raw leads.',extra:[['source','Source','text']]},Note:{title:'Note title',note:'Saved context, observations, or internal notes.',extra:[['category','Category','text']]}}[type]||{title:'Title',note:'General record.',extra:[]}}
 function manualSpecificFields(type){const c=editorTypeConfig(type);return '<p class="muted">'+esc(c.note)+'</p>'+c.extra.map(function(f){return '<label>'+esc(f[1])+'</label><input name="'+esc(f[0])+'" type="'+esc(f[2])+'">'}).join('')}
 function updateManualForm(){const type=(document.getElementById('manualType')||{}).value||'Person';const label=document.getElementById('manualTitleLabel');if(label)label.textContent=editorTypeConfig(type).title;const fields=document.getElementById('manualSpecificFields');if(fields)fields.innerHTML=manualSpecificFields(type)}
@@ -69,7 +160,7 @@ function crmShell(content){const items=[['overview','Overview'],['all','All Reco
 function editRecordsContent(){return crmShell('<div class="grid two"><section class="card"><div class="in"><h2>Edit Records</h2><p class="muted">Create a manual record with the required type and title. Constrava generates the record ID, date added, and edit history automatically.</p><form id="manualRecordForm"><label>Type of record</label><select name="type" id="manualType"><option value="Person">Person</option><option value="Company">Company</option><option value="Deal">Deal</option><option value="Task">Task</option><option value="Intake">Intake</option><option value="Note">Note</option></select><label id="manualTitleLabel">Name</label><input name="title" required placeholder="Required"><label>Priority</label><select name="priorityLevel"><option value="low">Low</option><option value="normal" selected>Normal</option><option value="high">High</option><option value="highest">Highest - show in notifications</option></select><label>Associated date</label><input name="associatedDate" type="date"><label>Description</label><textarea name="description" placeholder="Optional notes or saved text for this record"></textarea><label>Tags</label><input name="tags" placeholder="Optional, comma separated"><div id="manualSpecificFields"></div><br><button class="primary">Create manual record</button><p class="status" id="manualStatus"></p></form></div></section><section class="card"><div class="in"><h2>AI Add</h2><p class="muted">Paste a lead, note, email, or form submission. Constrava will draft records for review before committing them.</p><form id="aiForm"><textarea name="rawText" required placeholder="Example: Sarah from Bluebird Dental wants a website quote, budget $6,000, follow up tomorrow."></textarea><br><br><button class="primary">Create AI plan</button></form></div></section></div><div style="margin-top:16px">'+list('Recently edited records',S.records.slice(0,6),'No records yet')+'</div>')}
 function crmContent(){if(S.crmView==='overview'){return crmShell('<div class="grid metrics">'+metric('All records',S.records.length,'CRM objects')+metric('Contacts',crmCount('Person'),'People')+metric('Deals',crmCount('Deal'),money(S.summary.metrics.revenueOpportunity))+metric('Tasks',crmCount('Task'),'Follow-ups')+'</div><div style="margin-top:16px">'+list('High-priority CRM records',S.summary.highPriority,'No high priority records')+'</div>')}if(S.crmView==='all')return crmShell(list('All CRM Records',S.records,'No CRM records yet'));if(S.crmView==='edit')return editRecordsContent();return crmShell(list(({Person:'Contacts',Company:'Companies',Deal:'Deals',Task:'Tasks',Intake:'Intakes',Note:'Notes'})[S.crmView]||S.crmView,S.records.filter(function(r){return r.type===S.crmView}),'This section is empty'))}`;
 
-const recordEditorBindCode = String.raw`function bind(){document.querySelectorAll('.tab').forEach(function(b){b.onclick=function(){tab(b.dataset.tab)}});document.querySelectorAll('[data-crm]').forEach(function(b){b.onclick=function(){S.crmView=b.dataset.crm;render()}});document.querySelectorAll('[data-plan]').forEach(function(b){b.onclick=function(){openPlan(S.plans.find(function(p){return p.planId===b.dataset.plan}))}});let typeSelect=document.getElementById('manualType');if(typeSelect){typeSelect.onchange=updateManualForm;updateManualForm()}let manualForm=document.getElementById('manualRecordForm');if(manualForm)manualForm.onsubmit=async function(e){e.preventDefault();const status=document.getElementById('manualStatus');if(status)status.textContent='Saving record...';try{let payload=Object.fromEntries(new FormData(manualForm));await api('/api/records/manual',{method:'POST',body:JSON.stringify(payload)});await load();S.crmView='edit';render()}catch(err){if(status)status.textContent=err.message||'Could not save record.'}};let f=document.getElementById('aiForm');if(f)f.onsubmit=async function(e){e.preventDefault();let p=await api('/api/records/plan',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(f)))});S.plan=p.plan;openPlan(S.plan);await load();S.crmView='edit';render()}}`;
+const recordEditorBindCode = String.raw`function bind(){document.querySelectorAll('.tab').forEach(function(b){b.onclick=function(){tab(b.dataset.tab)}});document.querySelectorAll('[data-crm]').forEach(function(b){b.onclick=function(){S.crmView=b.dataset.crm;render()}});document.querySelectorAll('[data-plan]').forEach(function(b){b.onclick=function(){openPlan(S.plans.find(function(p){return p.planId===b.dataset.plan}))}});let typeSelect=document.getElementById('manualType');if(typeSelect){typeSelect.onchange=updateManualForm;updateManualForm()}let manualForm=document.getElementById('manualRecordForm');if(manualForm)manualForm.onsubmit=async function(e){e.preventDefault();const status=document.getElementById('manualStatus');if(status)status.textContent='Saving record...';try{let payload=Object.fromEntries(new FormData(manualForm));await api('/api/records/manual',{method:'POST',body:JSON.stringify(payload)});await load();S.crmView='edit';render()}catch(err){if(status)status.textContent=err.message||'Could not save record.'}};let f=document.getElementById('aiForm');if(f)f.onsubmit=async function(e){e.preventDefault();let p=await api('/api/records/plan',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(f)))});S.plan=p.plan;openPlan(S.plan);await load();S.crmView='edit';render()};let pc=document.getElementById('priorityCheck');if(pc)pc.onclick=async function(){const old=pc.textContent;pc.disabled=true;pc.textContent='Checking priorities...';try{const result=await api('/api/records/priority-check',{method:'POST',body:JSON.stringify({})});await load();pc.textContent='Updated '+result.updated+' records';render();setTimeout(function(){const next=document.getElementById('priorityCheck');if(next){next.textContent=old;next.disabled=false}},1800)}catch(err){pc.textContent=err.message||'Priority check failed';setTimeout(function(){const next=document.getElementById('priorityCheck');if(next){next.textContent=old;next.disabled=false}},3000)}}}`;
 
 let source = await fs.readFile(serverPath, "utf8");
 const start = source.indexOf("function signInPage() {");
@@ -85,11 +176,11 @@ source = source
   .replaceAll("width:min(1180px,calc(100% - 36px));margin:28px auto", "width:min(1500px,calc(100% - 24px));margin:20px auto")
   .replaceAll("padding:82px 0", "padding:64px 0")
   .replaceAll("gap:44px", "gap:28px")
-  .replaceAll('<button class="primary" id="aiAdd">AI Add</button>', '<button class="primary" id="aiAdd">Edit Records</button>')
+  .replaceAll('<input id="search" placeholder="Search records, tasks, leads..."> <button class="primary" id="aiAdd">AI Add</button>', '<input id="search" placeholder="Search records, tasks, leads..."> <button class="secondary" id="priorityCheck">AI Priority Check</button> <button class="primary" id="aiAdd">Edit Records</button>')
   .replaceAll("S.crmView='ai'", "S.crmView='edit'");
 
-source = source.replace("\nasync function api(req, res, url, route) {", "\n" + manualRecordServerCode + "\n\nasync function api(req, res, url, route) {");
-source = source.replace('if (req.method === "POST" && route === "/api/records/plan") {', 'if (req.method === "POST" && route === "/api/records/manual") { const record = manualRecordFromBody(await readBody(req), ctx.workspaceId); storeData.records.push(record); await saveStore(storeData); return send(res, 201, { record }); } if (req.method === "POST" && route === "/api/records/plan") {');
+source = source.replace("\nasync function api(req, res, url, route) {", "\n" + manualRecordServerCode + "\n\n" + openAiPriorityServerCode + "\n\nasync function api(req, res, url, route) {");
+source = source.replace('if (req.method === "POST" && route === "/api/records/plan") {', 'if (req.method === "POST" && route === "/api/records/manual") { const record = manualRecordFromBody(await readBody(req), ctx.workspaceId); storeData.records.push(record); await saveStore(storeData); return send(res, 201, { record }); } if (req.method === "POST" && route === "/api/records/priority-check") { const result = await runOpenAIPriorityCheck(storeData, ctx.workspaceId); await saveStore(storeData); return send(res, 200, result); } if (req.method === "POST" && route === "/api/records/plan") {');
 source = source.replace("function render(){", recordEditorClientCode + "\nfunction render(){");
 source = source.replace("async function refresh(nextTab)", recordEditorBindCode + "\nasync function refresh(nextTab)");
 
