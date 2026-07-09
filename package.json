@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node src/server-runtime.js",
-    "dev": "node src/server-runtime.js",
-    "check": "node --check src/server.js && node --check src/server-runtime.js"
+    "start": "node src/server-responsive.js",
+    "dev": "node src/server-responsive.js",
+    "check": "node --check src/server.js && node --check src/server-runtime.js && node --check src/server-responsive.js"
   },
   "engines": {
     "node": ">=20"
