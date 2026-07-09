@@ -15,10 +15,131 @@
 
   ready(function () {
     var sources = document.getElementById('sources');
-    if (!sources || document.getElementById('connectWebsiteGuide')) return;
+    if (!sources) return;
 
     var params = new URLSearchParams(location.search);
     var dashboardToken = params.get('token') || 'demo';
+
+    function installSidebarSettings() {
+      var sidebar = document.querySelector('.side');
+      var shell = document.querySelector('.shell');
+      if (!sidebar || !shell || document.getElementById('sidebarSettingsTools')) return;
+
+      var style = document.createElement('style');
+      style.textContent = [
+        '.side{display:flex;flex-direction:column}',
+        '.side-tools{margin-top:auto;padding-top:22px;display:grid;gap:8px}',
+        '.side-tool{width:100%;border:0;border-radius:15px;padding:13px 14px;text-align:left;font-weight:900;text-decoration:none;color:rgba(236,253,245,.9);background:rgba(255,255,255,.08)}',
+        '.side-tool:hover,.side-tool.active{background:linear-gradient(90deg,rgba(16,185,129,.32),rgba(255,255,255,.12));box-shadow:inset 3px 0 0 #12f7a3}',
+        '.side-tool.signout{color:#fed7aa;background:rgba(251,146,60,.1)}',
+        '.settings-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}',
+        '.settings-card{min-height:190px;padding:20px;border:1px solid rgba(16,185,129,.18);border-radius:18px;background:rgba(255,255,255,.92);box-shadow:var(--shadow)}',
+        '.settings-card h2{margin:0 0 8px;color:#073d32}',
+        '.settings-card p{margin:0 0 14px;color:var(--muted);line-height:1.5;font-size:14px}',
+        '.settings-value{display:block;padding:11px 12px;border:1px solid #dbe8e4;border-radius:12px;background:#f8fafc;color:#0f172a;font-weight:850;overflow-wrap:anywhere}',
+        '@media(max-width:1200px){.settings-grid{grid-template-columns:1fr}}'
+      ].join('');
+      document.head.appendChild(style);
+
+      var settingsSection = document.createElement('section');
+      settingsSection.id = 'settings';
+      settingsSection.className = 'hidden';
+      settingsSection.innerHTML = [
+        '<div class="settings-grid">',
+          '<article class="settings-card">',
+            '<span class="badge">Account</span>',
+            '<h2>Signed in</h2>',
+            '<p>Manage the current dashboard session and leave the workspace when you are done.</p>',
+            '<span class="settings-value" id="settingsAccount">Checking account...</span>',
+            '<div class="crm-actions" style="margin-top:14px"><a class="btn danger" href="/logout">Sign out</a></div>',
+          '</article>',
+          '<article class="settings-card">',
+            '<span class="badge">Dashboard</span>',
+            '<h2>Website token</h2>',
+            '<p>This token connects website events to this Constrava dashboard.</p>',
+            '<span class="settings-value">' + escapeHtml(dashboardToken) + '</span>',
+            '<div class="crm-actions" style="margin-top:14px"><a class="btn" href="/analytics/install?token=' + encodeURIComponent(dashboardToken) + '" target="_blank" rel="noopener">Open install helper</a></div>',
+          '</article>',
+          '<article class="settings-card">',
+            '<span class="badge">Local CRM</span>',
+            '<h2>Session records</h2>',
+            '<p>Clear records and deletions saved only in this browser session.</p>',
+            '<div class="crm-actions"><button class="btn danger" id="settingsClearSession">Clear session</button><button class="btn" id="settingsOpenCrm">Open CRM</button></div>',
+          '</article>',
+        '</div>'
+      ].join('');
+      shell.appendChild(settingsSection);
+
+      var tools = document.createElement('div');
+      tools.id = 'sidebarSettingsTools';
+      tools.className = 'side-tools';
+      tools.innerHTML = [
+        '<button class="side-tool" id="settingsNavBtn" type="button">Settings</button>',
+        '<a class="side-tool signout" href="/logout">Sign out</a>'
+      ].join('');
+      sidebar.appendChild(tools);
+
+      function setTitle(title, subtitle) {
+        var pageTitle = document.getElementById('pageTitle');
+        var pageSubtitle = document.getElementById('pageSubtitle');
+        if (pageTitle) pageTitle.textContent = title;
+        if (pageSubtitle) {
+          pageSubtitle.textContent = subtitle || '';
+          pageSubtitle.classList.toggle('hidden', !subtitle);
+        }
+      }
+
+      function showSettings() {
+        ['analytics', 'crm', 'sources'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.classList.add('hidden');
+        });
+        settingsSection.classList.remove('hidden');
+        document.querySelectorAll('[data-main]').forEach(function (button) { button.classList.remove('active'); });
+        var settingsButton = document.getElementById('settingsNavBtn');
+        if (settingsButton) settingsButton.classList.add('active');
+        setTitle('Settings', 'Manage your account, dashboard token, and local CRM session.');
+      }
+
+      function hideSettings() {
+        settingsSection.classList.add('hidden');
+        var settingsButton = document.getElementById('settingsNavBtn');
+        if (settingsButton) settingsButton.classList.remove('active');
+      }
+
+      document.querySelectorAll('[data-main]').forEach(function (button) {
+        button.addEventListener('click', hideSettings);
+      });
+      document.getElementById('settingsNavBtn').addEventListener('click', showSettings);
+      document.getElementById('settingsOpenCrm').addEventListener('click', function () {
+        hideSettings();
+        var crmButton = document.querySelector('[data-main="crm"]');
+        if (crmButton) crmButton.click();
+      });
+      document.getElementById('settingsClearSession').addEventListener('click', function () {
+        if (!confirm('Clear session-added CRM records and deletions from this browser?')) return;
+        sessionStorage.removeItem('constravaCrmRecordsV2');
+        sessionStorage.removeItem('constravaCrmDeletedV2');
+        var crmButton = document.querySelector('[data-main="crm"]');
+        if (crmButton) crmButton.click();
+      });
+
+      fetch('/api/auth/me', { cache: 'no-store' })
+        .then(function (response) { return response.ok ? response.json() : null; })
+        .then(function (data) {
+          var account = document.getElementById('settingsAccount');
+          if (!account) return;
+          account.textContent = data && data.user && data.user.email ? data.user.email : 'Active dashboard session';
+        })
+        .catch(function () {
+          var account = document.getElementById('settingsAccount');
+          if (account) account.textContent = 'Active dashboard session';
+        });
+    }
+
+    installSidebarSettings();
+    if (document.getElementById('connectWebsiteGuide')) return;
+
     var installUrl = '/analytics/install?token=' + encodeURIComponent(dashboardToken);
     var currentStep = 0;
     var steps = [
