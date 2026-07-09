@@ -216,6 +216,14 @@ app.post("/api/ai/record-sort", requireAuth, async (req, res) => {
   console.log("AI record sorter endpoint already present");
 }
 
+const crmRecordRouteSearch = 'app.post("/api/crm/records", requireAuth, async (req, res) => { try { const record = await saveUserRecord(req.user.id, req.body?.record || req.body || {}); res.json({ ok: true, record }); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });';
+const crmRecordRouteReplacement = 'app.post("/api/crm/records", requireAuth, async (req, res) => { try { const rawInput = req.body?.input ?? req.body?.text ?? req.body?.payload; if (rawInput !== undefined || req.body?.source_type || req.body?.sourceType) { const sorted = await sortRecordsWithAi({ input: rawInput ?? req.body, sourceType: String(req.body?.source_type || req.body?.sourceType || "api_crm_records"), preferredType: String(req.body?.record_type || req.body?.preferred_type || "auto"), context: req.body?.context && typeof req.body.context === "object" ? req.body.context : {} }); const records = []; for (const candidate of sorted.records) records.push(await saveUserRecord(req.user.id, candidate)); return res.json({ ok: true, ai: sorted.ai, fallback: sorted.fallback, records, record: records[0] || null, error: sorted.error || null }); } const record = await saveUserRecord(req.user.id, req.body?.record || req.body || {}); res.json({ ok: true, record }); } catch (err) { res.status(500).json({ ok: false, error: err.message }); } });';
+if (server.includes(crmRecordRouteSearch) && !server.includes('sourceType: String(req.body?.source_type || req.body?.sourceType || "api_crm_records")')) {
+  server = server.replace(crmRecordRouteSearch, crmRecordRouteReplacement);
+  serverChanged = true;
+  console.log("CRM record API now uses AI sorting for raw inputs");
+}
+
 const formRouteSearch = 'const lead = normalizeFormLead(req.body || {}, siteSlug, formSlug, req); const crmStored = await insertCrmLead(siteSlug, lead);';
 const formRouteReplacement = 'const lead = await sortFormLeadWithAi(req.body || {}, siteSlug, formSlug, req); const crmStored = await insertCrmLead(siteSlug, lead);';
 if (server.includes(formRouteSearch) && !server.includes(formRouteReplacement)) {
