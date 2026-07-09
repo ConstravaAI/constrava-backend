@@ -8,32 +8,41 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const storeFile = path.join(root, "data", "store.json");
 const PORT = Number(process.env.PORT || 3000);
 const ORIGIN = process.env.PUBLIC_ORIGIN || `http://localhost:${PORT}`;
+const COOKIE_NAME = "constrava_session";
 const DEV_EMAIL = "constrava@constravaai.com";
 const DEV_LOGIN_KEY_ENV = "DEV_LOGIN_KEY";
-const COOKIE_NAME = "constrava_session";
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
-const id = (prefix) => `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
+const id = (prefix) => `${prefix}_${crypto.randomBytes(8).toString("hex")}`;
 const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
-const clampScore = (value) => Math.max(0, Math.min(100, Number(value) || 0));
-const escapeHtml = (value) => String(value ?? "").replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char]));
+const score = (value) => Math.max(0, Math.min(100, Number(value) || 0));
+const esc = (value) => String(value ?? "").replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char]));
+
+function isSecureRequest(req) {
+  return String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim() === "https" || ORIGIN.startsWith("https://");
+}
+
+function sessionCookie(req, sessionId, clear = false) {
+  const secure = isSecureRequest(req) ? "; Secure" : "";
+  if (clear) return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=0`;
+  return `${COOKIE_NAME}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=${SESSION_MAX_AGE_SECONDS}`;
+}
+
+function parseCookies(req) {
+  const cookie = String(req.headers.cookie || "");
+  return Object.fromEntries(cookie.split(";").map((part) => part.trim()).filter(Boolean).map((part) => {
+    const index = part.indexOf("=");
+    return [decodeURIComponent(index >= 0 ? part.slice(0, index) : part), decodeURIComponent(index >= 0 ? part.slice(index + 1) : "")];
+  }));
+}
 
 function baseRecord(type, title, fields = {}, priorityScore = 40, tags = [], workspaceId = "demo") {
   const now = new Date().toISOString();
   return {
-    id: id(type.toLowerCase()),
-    workspaceId,
-    type,
-    title,
+    id: id(type.toLowerCase()), workspaceId, type, title,
     status: type === "Task" || type === "Deal" ? "open" : "active",
-    priorityScore,
-    priorityReasons: ["Seeded workspace context"],
-    tags,
-    fields,
-    relationships: [],
-    sourceIds: ["source_manual"],
-    createdAt: now,
-    updatedAt: now,
-    metadata: {}
+    priorityScore, priorityReasons: ["Seeded workspace context"], tags, fields,
+    relationships: [], sourceIds: ["source_manual"], createdAt: now, updatedAt: now, metadata: {}
   };
 }
 
@@ -55,42 +64,26 @@ function seed() {
       { id: "source_site", workspaceId: "demo", name: "External Website", type: "website", status: "ready_to_connect", metadata: {} }
     ],
     records: starterRecords("demo"),
-    events: [
-      { id: id("event"), workspaceId: "demo", type: "page_view", siteId: "site_demo", sessionId: "sample", sourceUrl: "/", referrer: "direct", metadata: {}, createdAt: new Date().toISOString() }
-    ],
-    plans: [],
-    reports: [],
-    users: [],
-    sessions: []
+    events: [{ id: id("event"), workspaceId: "demo", type: "page_view", siteId: "site_demo", sessionId: "sample", sourceUrl: "/", referrer: "direct", metadata: {}, createdAt: new Date().toISOString() }],
+    plans: [], reports: [], users: [], sessions: []
   };
 }
 
 function ensureUserWorkspace(storeData, user) {
   if (!user.workspaceId) user.workspaceId = `workspace_${user.id}`;
-  if (!storeData.records.some((record) => record.workspaceId === user.workspaceId)) {
-    storeData.records.push(...starterRecords(user.workspaceId));
-  }
+  if (!storeData.records.some((record) => record.workspaceId === user.workspaceId)) storeData.records.push(...starterRecords(user.workspaceId));
 }
 
 function ensureDeveloperAccount(storeData) {
   if (!process.env[DEV_LOGIN_KEY_ENV]) return null;
   let user = storeData.users.find((candidate) => candidate.email === DEV_EMAIL);
   if (!user) {
-    user = {
-      id: "user_developer",
-      email: DEV_EMAIL,
-      name: "Constrava Developer",
-      role: "developer",
-      workspaceId: "workspace_developer",
-      createdAt: new Date().toISOString(),
-      authProvider: DEV_LOGIN_KEY_ENV
-    };
+    user = { id: "user_developer", email: DEV_EMAIL, name: "Constrava Developer", role: "developer", workspaceId: "workspace_developer", createdAt: new Date().toISOString(), authProvider: DEV_LOGIN_KEY_ENV };
     storeData.users.push(user);
   }
-  user.name = user.name || "Constrava Developer";
   user.role = "developer";
-  user.workspaceId = user.workspaceId || "workspace_developer";
   user.authProvider = DEV_LOGIN_KEY_ENV;
+  user.workspaceId ||= "workspace_developer";
   ensureUserWorkspace(storeData, user);
   return user;
 }
@@ -104,12 +97,8 @@ function normalize(storeData) {
   storeData.reports ||= [];
   storeData.users ||= [];
   storeData.sessions ||= [];
-  for (const source of fresh.sources) {
-    if (!storeData.sources.some((entry) => entry.id === source.id)) storeData.sources.push(source);
-  }
-  for (const collection of [storeData.records, storeData.events, storeData.plans, storeData.reports]) {
-    for (const item of collection) item.workspaceId ||= "demo";
-  }
+  for (const source of fresh.sources) if (!storeData.sources.some((entry) => entry.id === source.id)) storeData.sources.push(source);
+  for (const collection of [storeData.records, storeData.events, storeData.plans, storeData.reports]) for (const item of collection) item.workspaceId ||= "demo";
   if (!storeData.records.some((record) => record.workspaceId === "demo")) storeData.records.push(...starterRecords("demo"));
   ensureDeveloperAccount(storeData);
   return storeData;
@@ -135,11 +124,7 @@ async function readBody(req) {
   let raw = "";
   for await (const chunk of req) raw += chunk;
   if (!raw) return {};
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return { rawText: raw };
-  }
+  try { return JSON.parse(raw); } catch { return { rawText: raw }; }
 }
 
 function send(res, status, data, headers = {}) {
@@ -157,25 +142,8 @@ function redirect(res, location) {
   res.end();
 }
 
-function parseCookies(req) {
-  return Object.fromEntries(String(req.headers.cookie || "").split(";").map((part) => part.trim()).filter(Boolean).map((part) => {
-    const index = part.indexOf("=");
-    return [decodeURIComponent(index >= 0 ? part.slice(0, index) : part), decodeURIComponent(index >= 0 ? part.slice(index + 1) : "")];
-  }));
-}
-
-function requestSessionId(req) {
-  const cookieSession = parseCookies(req)[COOKIE_NAME];
-  if (cookieSession) return cookieSession;
-  const auth = String(req.headers.authorization || "");
-  const bearer = auth.match(/^Bearer\s+(.+)$/i)?.[1];
-  if (bearer) return bearer;
-  return String(req.headers["x-constrava-session"] || "");
-}
-
 function passwordHash(password, salt = crypto.randomBytes(16).toString("hex")) {
-  const hash = crypto.scryptSync(String(password || ""), salt, 32).toString("hex");
-  return { salt, hash };
+  return { salt, hash: crypto.scryptSync(String(password || ""), salt, 32).toString("hex") };
 }
 
 function safeEqualText(a, b) {
@@ -187,16 +155,15 @@ function safeEqualText(a, b) {
 function verifyPassword(password, user) {
   if (!user?.passwordSalt || !user?.passwordHash) return false;
   const { hash } = passwordHash(password, user.passwordSalt);
-  return crypto.timingSafeEqual(Buffer.from(hash, "hex"), Buffer.from(user.passwordHash, "hex"));
+  return safeEqualText(hash, user.passwordHash);
 }
 
-function sessionCookie(sessionId, clear = false) {
-  if (clear) return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
-  return `${COOKIE_NAME}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}`;
+function sessionIdFromCookie(req) {
+  return parseCookies(req)[COOKIE_NAME] || "";
 }
 
 function currentUser(req, storeData) {
-  const sessionId = requestSessionId(req);
+  const sessionId = sessionIdFromCookie(req);
   if (!sessionId) return null;
   const session = storeData.sessions.find((entry) => entry.id === sessionId);
   if (!session) return null;
@@ -206,15 +173,13 @@ function currentUser(req, storeData) {
 }
 
 function publicUser(user) {
-  if (!user) return null;
-  return { id: user.id, email: user.email, name: user.name, role: user.role || "user", workspaceId: user.workspaceId };
+  return user ? { id: user.id, email: user.email, name: user.name, role: user.role || "user", workspaceId: user.workspaceId } : null;
 }
 
 function requestContext(req, url, storeData) {
   if (url.searchParams.get("demo") === "1") return { workspaceId: "demo", demo: true, user: null };
   const user = currentUser(req, storeData);
-  if (!user) return null;
-  return { workspaceId: user.workspaceId, demo: false, user };
+  return user ? { workspaceId: user.workspaceId, demo: false, user } : null;
 }
 
 function extract(text) {
@@ -231,14 +196,11 @@ function priority(text, fields) {
   const lower = text.toLowerCase();
   let value = 38;
   const reasons = [];
-  if (fields.value || /\$|budget|approved/.test(lower)) {
-    value += fields.value >= 8000 ? 24 : 18;
-    reasons.push(fields.value ? `Budget/value around $${fields.value.toLocaleString()}` : "Budget mentioned");
-  }
+  if (fields.value || /\$|budget|approved/.test(lower)) { value += fields.value >= 8000 ? 24 : 18; reasons.push(fields.value ? `Budget/value around $${fields.value.toLocaleString()}` : "Budget mentioned"); }
   if (/urgent|asap|deadline|tomorrow|this week|end of the month/.test(lower)) { value += 20; reasons.push("Urgency or deadline language"); }
   if (/quote|proposal|estimate|contract|ready|hire/.test(lower)) { value += 18; reasons.push("Buying intent detected"); }
   if (/follow up|follow-up|call|email|schedule|meeting/.test(lower)) { value += 12; reasons.push("Clear next action"); }
-  return { score: clampScore(value), reasons: reasons.length ? reasons : ["General activity"] };
+  return { score: score(value), reasons: reasons.length ? reasons : ["General activity"] };
 }
 
 function tagsFor(text, fields) {
@@ -261,16 +223,7 @@ async function makePlan(storeData, input, workspaceId) {
   const fields = extract(rawText);
   const priorityData = priority(rawText, fields);
   const tags = tagsFor(rawText, fields);
-  const plan = {
-    planId: id("plan"),
-    workspaceId,
-    source: { kind: input.kind || "manual", sourceId: input.sourceId || "source_manual", rawText },
-    summary: "Prepared structured business records from the incoming information.",
-    riskLevel: "review",
-    aiProvider: "local-fallback",
-    createdAt: new Date().toISOString(),
-    actions: []
-  };
+  const plan = { planId: id("plan"), workspaceId, source: { kind: input.kind || "manual", sourceId: input.sourceId || "source_manual", rawText }, summary: "Prepared structured business records from the incoming information.", riskLevel: "review", aiProvider: "local-fallback", createdAt: new Date().toISOString(), actions: [] };
   plan.actions.push(action("create", "Intake", { title: `Intake from ${input.kind || "manual input"}`, rawText }, priorityData, tags, "Preserve the raw submission."));
   if (fields.companyName) plan.actions.push(action("create", "Company", { name: fields.companyName }, priorityData, tags, "Company-like name detected."));
   if (fields.name || fields.email) plan.actions.push(action("create", "Person", { name: fields.name || fields.email.split("@")[0] || "New Contact", email: fields.email, companyName: fields.companyName }, priorityData, tags, "Contact details detected."));
@@ -288,22 +241,7 @@ function commitPlan(storeData, planId, actionIds, workspaceId) {
   const committed = [];
   for (const entry of plan.actions.filter((candidate) => selected.has(candidate.id) && candidate.actionType !== "ignore")) {
     const title = clean(entry.fields.title || entry.fields.name || entry.fields.companyName || entry.fields.request || `${entry.recordType} record`);
-    const record = {
-      id: id(entry.recordType.toLowerCase()),
-      workspaceId,
-      type: entry.recordType,
-      title,
-      status: entry.recordType === "Task" || entry.recordType === "Deal" ? "open" : "active",
-      priorityScore: clampScore(entry.priorityScore),
-      priorityReasons: entry.priorityReasons || [],
-      tags: entry.tags || [],
-      fields: entry.fields || {},
-      relationships: entry.relationships || [],
-      sourceIds: [plan.source?.sourceId].filter(Boolean),
-      createdAt: now,
-      updatedAt: now,
-      metadata: { planId, aiProvider: plan.aiProvider, reasoning: entry.reasoning }
-    };
+    const record = { id: id(entry.recordType.toLowerCase()), workspaceId, type: entry.recordType, title, status: entry.recordType === "Task" || entry.recordType === "Deal" ? "open" : "active", priorityScore: score(entry.priorityScore), priorityReasons: entry.priorityReasons || [], tags: entry.tags || [], fields: entry.fields || {}, relationships: entry.relationships || [], sourceIds: [plan.source?.sourceId].filter(Boolean), createdAt: now, updatedAt: now, metadata: { planId, aiProvider: plan.aiProvider, reasoning: entry.reasoning } };
     storeData.records.push(record);
     committed.push(record);
   }
@@ -316,7 +254,7 @@ function commitPlan(storeData, planId, actionIds, workspaceId) {
 function filtered(storeData, query = {}, workspaceId = "demo") {
   let rows = storeData.records.filter((record) => record.workspaceId === workspaceId);
   if (query.type) rows = rows.filter((record) => record.type.toLowerCase() === query.type.toLowerCase());
-  if (query.q) rows = rows.filter((record) => JSON.stringify(record).toLowerCase().includes(query.q.toLowerCase()));
+  if (query.q) rows = rows.filter((record) => JSON.stringify(record).toLowerCase().includes(String(query.q).toLowerCase()));
   rows = [...rows];
   rows.sort(query.sort === "newest" ? (a, b) => b.createdAt.localeCompare(a.createdAt) : (a, b) => Number(b.priorityScore || 0) - Number(a.priorityScore || 0));
   return rows;
@@ -330,15 +268,7 @@ function dashboardSummary(storeData, workspaceId) {
   const opportunity = deals.reduce((sum, deal) => sum + Number(deal.fields?.value || 0), 0);
   const highPriority = rows.filter((record) => record.priorityScore >= 75).slice(0, 6);
   return {
-    metrics: {
-      newLeads: leads.length,
-      activeDeals: deals.length,
-      overdueTasks: tasks.filter((task) => task.fields?.dueDate && task.fields.dueDate < new Date().toISOString().slice(0, 10)).length,
-      conversionRate: leads.length ? Math.round((deals.length / leads.length) * 100) : 0,
-      trafficEvents: storeData.events.filter((event) => event.workspaceId === workspaceId).length,
-      revenueOpportunity: opportunity,
-      aiCreatedRecords: rows.filter((record) => record.metadata?.aiProvider).length
-    },
+    metrics: { newLeads: leads.length, activeDeals: deals.length, overdueTasks: tasks.filter((task) => task.fields?.dueDate && task.fields.dueDate < new Date().toISOString().slice(0, 10)).length, conversionRate: leads.length ? Math.round((deals.length / leads.length) * 100) : 0, trafficEvents: storeData.events.filter((event) => event.workspaceId === workspaceId).length, revenueOpportunity: opportunity, aiCreatedRecords: rows.filter((record) => record.metadata?.aiProvider).length },
     sourcePerformance: storeData.sources.map((source) => ({ ...source, records: rows.filter((record) => record.sourceIds?.includes(source.id)).length, events: storeData.events.filter((event) => event.workspaceId === workspaceId && event.siteId === source.metadata?.siteId).length })),
     highPriority,
     recommendedActions: highPriority.slice(0, 4).map((record) => ({ title: `Review ${record.title}`, reason: record.priorityReasons?.[0] || "High priority", recordId: record.id })),
@@ -361,13 +291,7 @@ function signInPage() {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in | Constrava</title><style>
 :root{--blue:#061a33;--soft:#eaf2ff;--line:#d9e3f2;--ink:#071629;--muted:#607089}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at top,#dbeaff,#f7fbff 38%,#fff);color:var(--ink);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:24px}.shell{width:min(900px,100%);display:grid;grid-template-columns:.9fr 1.1fr;gap:22px}.panel,.card{background:white;border:1px solid var(--line);border-radius:28px;box-shadow:0 24px 70px rgba(6,26,51,.10)}.panel{padding:30px;background:linear-gradient(135deg,var(--blue),#0d2b52);color:white}.panel p{color:#d8e6f8}.brand{font-size:24px;font-weight:950}.card{padding:28px}h1{margin:0 0 10px;font-size:42px;letter-spacing:-.06em;color:var(--blue)}p{color:var(--muted);line-height:1.55}.tabs{display:flex;gap:8px;margin:18px 0}.tabs button{flex:1;border:1px solid var(--line);background:white;border-radius:999px;padding:10px;font-weight:900;color:var(--blue);cursor:pointer}.tabs button.active{background:var(--blue);color:white}label{font-size:13px;font-weight:900;color:#263d5c}input{width:100%;border:1px solid var(--line);border-radius:14px;padding:13px;margin:6px 0 12px;font:inherit}button.submit{width:100%;display:flex;justify-content:center;border:0;border-radius:999px;padding:13px 16px;background:var(--blue);color:white;text-decoration:none;font-weight:900;font:inherit;cursor:pointer}.back{margin-top:12px;width:100%;display:flex;justify-content:center;border-radius:999px;padding:13px 16px;background:white;color:var(--blue);border:1px solid var(--line);text-decoration:none;font-weight:900}.status{min-height:22px;font-size:14px;color:#9d2b2b}.hint{font-size:13px;background:var(--soft);border:1px solid var(--line);padding:10px;border-radius:14px}@media(max-width:800px){.shell{grid-template-columns:1fr}}
 </style></head><body><main class="shell"><section class="panel"><div class="brand">Constrava</div><h1 style="color:white">Welcome back.</h1><p>Sign in with a saved account, or create a new one. After authentication, Constrava opens the dashboard connected to your personal workspace.</p></section><section class="card"><h1 id="title">Sign in</h1><p id="copy">Enter your saved account details to open your dashboard.</p>${devConfigured ? `<p class="hint">Developer login is enabled for ${DEV_EMAIL}. Use the configured ${DEV_LOGIN_KEY_ENV} value as the password.</p>` : ""}<div class="tabs"><button id="loginTab" class="active">Sign in</button><button id="signupTab">Create account</button></div><form id="authForm"><div id="nameWrap" style="display:none"><label>Name</label><input name="name" autocomplete="name" placeholder="Your name"></div><label>Email</label><input name="email" type="email" autocomplete="email" placeholder="you@company.com" required><label>Password</label><input name="password" type="password" autocomplete="current-password" placeholder="At least 6 characters" required><button class="submit" id="submitBtn">Sign in</button></form><p class="status" id="status"></p><a class="back" href="/">Back to homepage</a></section></main><script>
-let mode="login";function setMode(next){mode=next;loginTab.classList.toggle("active",mode==="login");signupTab.classList.toggle("active",mode==="signup");nameWrap.style.display=mode==="signup"?"block":"none";title.textContent=mode==="signup"?"Create account":"Sign in";copy.textContent=mode==="signup"?"Create a saved account and open your personal dashboard.":"Enter your saved account details to open your dashboard.";submitBtn.textContent=mode==="signup"?"Create account":"Sign in";status.textContent=""}loginTab.onclick=function(){setMode("login")};signupTab.onclick=function(){setMode("signup")};authForm.onsubmit=async function(e){e.preventDefault();status.textContent="";submitBtn.disabled=true;try{const payload=Object.fromEntries(new FormData(authForm));const r=await fetch(mode==="signup"?"/api/auth/signup":"/api/auth/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const data=await r.json();if(!r.ok)throw new Error(data.error||"Authentication failed");if(data.sessionToken)localStorage.setItem("constrava_session_token",data.sessionToken);location.href="/dashboard/"}catch(err){status.textContent=err.message}finally{submitBtn.disabled=false}};
-</script></body></html>`;
-}
-
-function sessionRestorePage() {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Restoring session | Constrava</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f7fbff;color:#061a33;font-family:Inter,system-ui,sans-serif}.card{background:white;border:1px solid #d9e3f2;border-radius:24px;padding:28px;width:min(420px,calc(100% - 32px));box-shadow:0 24px 70px rgba(6,26,51,.10)}p{color:#607089}</style></head><body><main class="card"><h1>Restoring your session…</h1><p>If this takes more than a moment, you may need to sign in again.</p></main><script>
-(async function(){const token=localStorage.getItem("constrava_session_token");if(!token){location.href="/signin";return}try{const r=await fetch("/api/auth/restore",{method:"POST",headers:{authorization:"Bearer "+token}});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||"Session expired");if(data.sessionToken)localStorage.setItem("constrava_session_token",data.sessionToken);location.href="/dashboard/"}catch(e){localStorage.removeItem("constrava_session_token");location.href="/signin"}})();
+localStorage.removeItem("constrava_session_token");let mode="login";function setMode(next){mode=next;loginTab.classList.toggle("active",mode==="login");signupTab.classList.toggle("active",mode==="signup");nameWrap.style.display=mode==="signup"?"block":"none";title.textContent=mode==="signup"?"Create account":"Sign in";copy.textContent=mode==="signup"?"Create a saved account and open your personal dashboard.":"Enter your saved account details to open your dashboard.";submitBtn.textContent=mode==="signup"?"Create account":"Sign in";status.textContent=""}loginTab.onclick=function(){setMode("login")};signupTab.onclick=function(){setMode("signup")};authForm.onsubmit=async function(e){e.preventDefault();status.textContent="";submitBtn.disabled=true;try{const payload=Object.fromEntries(new FormData(authForm));const r=await fetch(mode==="signup"?"/api/auth/signup":"/api/auth/login",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const data=await r.json();if(!r.ok)throw new Error(data.error||"Authentication failed");location.href="/dashboard/"}catch(err){status.textContent=err.message}finally{submitBtn.disabled=false}};
 </script></body></html>`;
 }
 
@@ -377,29 +301,21 @@ function appPage({ demo = false, user = null } = {}) {
   const signoutCopy = demo ? "Exit demo" : "Log out";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Constrava Dashboard</title><style>
 :root{--blue:#061a33;--blue2:#0d2b52;--soft:#eaf2ff;--line:#d9e3f2;--ink:#071629;--muted:#607089;--bg:#f7fbff}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh}.topbar{height:68px;background:var(--blue);color:white;display:flex;align-items:center;justify-content:space-between;padding:0 18px;box-shadow:0 16px 40px rgba(6,26,51,.18);position:sticky;top:0;z-index:10}.leftTools{display:flex;align-items:center;gap:18px;min-width:0}.brand{font-weight:950;font-size:20px;letter-spacing:-.04em;white-space:nowrap}.tabs{display:flex;align-items:center;gap:6px}.tab{border:0;background:transparent;color:#d8e6f8;font:inherit;font-weight:900;padding:11px 14px;border-radius:999px;cursor:pointer}.tab.active,.tab:hover{background:white;color:var(--blue)}.rightTools{display:flex;align-items:center;gap:10px}.settingsIcon{width:42px;height:42px;border-radius:999px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08);color:white;font-size:19px;display:grid;place-items:center;cursor:pointer}.settingsIcon.active,.settingsIcon:hover{background:white;color:var(--blue)}.logoutText{border:1px solid rgba(255,255,255,.28);background:white;color:var(--blue);border-radius:999px;padding:10px 15px;font:inherit;font-weight:950;cursor:pointer}.logoutText:hover{background:#eaf2ff}.shell{width:min(1180px,calc(100% - 36px));margin:28px auto}.workspace{display:flex;justify-content:space-between;gap:14px;align-items:end;margin-bottom:18px}.workspace h1{margin:0;color:var(--blue);font-size:40px;letter-spacing:-.055em}.muted{color:var(--muted)}.grid{display:grid;gap:16px}.metrics{grid-template-columns:repeat(4,1fr)}.two{grid-template-columns:1.1fr .9fr}.three{grid-template-columns:repeat(3,1fr)}.card{background:white;border:1px solid var(--line);border-radius:18px;box-shadow:0 16px 40px rgba(6,26,51,.08)}.in{padding:18px}.row{display:flex;justify-content:space-between;gap:12px}.metricValue{font-size:32px;font-weight:950;color:var(--blue)}.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;background:var(--soft);border:1px solid #bed0ea;color:var(--blue);font-size:12px;font-weight:900}.hot{background:#dceaff}.item{padding:13px 0;border-top:1px solid var(--line)}.item:first-child{border-top:0}.primary{background:var(--blue);color:white;border:0;padding:10px 14px;font-weight:900;border-radius:10px;cursor:pointer}.secondary,input,select,textarea{border:1px solid var(--line);background:white;padding:10px;border-radius:10px;font:inherit}textarea{min-height:130px;width:100%}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}.stack{display:grid;gap:12px}pre{white-space:pre-wrap;background:#061a33;color:#eef6ff;padding:14px;border-radius:12px;overflow:auto}.resource{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center}.resourceIcon{width:42px;height:42px;border-radius:14px;background:var(--soft);display:grid;place-items:center;color:var(--blue);font-size:20px}dialog{border:1px solid var(--line);border-radius:18px;padding:0;box-shadow:0 24px 80px rgba(6,26,51,.22);max-width:min(440px,calc(100vw - 30px))}dialog::backdrop{background:rgba(6,26,51,.42)}.modalHead,.modalBody,.modalFoot{padding:18px}.modalHead{border-bottom:1px solid var(--line)}.modalHead h2{margin:0;color:var(--blue)}.modalFoot{border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}@media(max-width:850px){.topbar{height:auto;display:block;padding:14px}.leftTools{display:block}.tabs{margin-top:12px;overflow:auto}.rightTools{margin-top:12px}.workspace{display:block}.metrics,.two,.three{grid-template-columns:1fr}.resource{grid-template-columns:1fr}.shell{margin-top:18px}}
-</style></head><body><header class="topbar"><div class="leftTools"><div class="brand">Constrava</div><nav class="tabs" aria-label="Dashboard sections"><button class="tab active" data-tab="analytics">Analytics</button><button class="tab" data-tab="crm">CRM</button><button class="tab" data-tab="resources">Connected Resources</button></nav></div><div class="rightTools"><button class="settingsIcon" id="settingsButton" title="Settings" aria-label="Settings">⚙</button><button class="logoutText" id="logoutButton">${signoutCopy}</button></div></header><main class="shell"><section class="workspace"><div><p class="muted" id="workspaceLabel">${escapeHtml(workspaceLabel)}</p><h1 id="pageTitle">Analytics</h1></div><div><input id="search" placeholder="Search records, tasks, leads..."> <button class="primary" id="aiAdd">AI Add</button></div></section><section id="app"></section></main><dialog id="signoutDialog"><div class="modalHead"><h2>Are you sure?</h2></div><div class="modalBody"><p class="muted">This will ${demo ? "leave the demo" : "log you out"} and return you to the public homepage.</p></div><div class="modalFoot"><button class="secondary" id="cancelSignout">Cancel</button><button class="primary" id="confirmSignout">${signoutCopy}</button></div></dialog><dialog id="planDialog"><div class="modalHead"><h2 id="planTitle"></h2></div><div class="modalBody" id="planBody"></div><div class="modalFoot"><button class="secondary" id="closePlan">Cancel</button><button class="primary" id="commitPlan">Commit selected</button></div></dialog><script>
-const DEMO=${JSON.stringify(demo)};const API_SUFFIX=${JSON.stringify(apiSuffix)};const WORKSPACE_LABEL=${JSON.stringify(workspaceLabel)};let S={tab:"analytics",records:[],plans:[],plan:null,summary:null};const esc=function(v){return String(v==null?"":v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")};function savedToken(){return localStorage.getItem("constrava_session_token")||""}function url(p){return API_SUFFIX?p+(p.includes("?")?"&":"?")+API_SUFFIX:p}async function api(p,o){o=o||{};const token=savedToken();const headers={"content-type":"application/json",...(token?{authorization:"Bearer "+token}:{}),...(o.headers||{})};const r=await fetch(url(p),{...o,headers});const d=await r.json();if(r.status===401){if(token)localStorage.removeItem("constrava_session_token");location.href="/signin";return null}if(!r.ok)throw Error(d.error||"Request failed");return d}function money(v){return Number(v||0).toLocaleString(undefined,{style:"currency",currency:"USD",maximumFractionDigits:0})}function metric(n,v,t){return '<div class="card"><div class="in"><p class="muted">'+n+'</p><div class="metricValue">'+v+'</div><p class="muted">'+t+'</p></div></div>'}function row(r){return '<div class="item"><div class="row"><div><span class="pill">'+esc(r.type)+'</span> <b>'+esc(r.title)+'</b><p class="muted">'+esc((r.priorityReasons||[])[0]||"")+'</p></div><span class="pill hot">'+Math.round(r.priorityScore||0)+'</span></div></div>'}async function load(){let out=await Promise.all([api("/api/dashboard/summary"),api("/api/records"),api("/api/sources"),api("/api/plans"),api("/api/reports"),api("/api/analytics/events")]);S.summary=out[0];S.records=out[1].records;S.sources=out[2].sources;S.snippet=out[2].snippet;S.plans=out[3].plans;S.reports=out[4].reports;S.events=out[5].events}function tab(name){S.tab=name;document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===name));document.getElementById("settingsButton").classList.toggle("active",name==="settings");pageTitle.textContent=name==="crm"?"CRM":name==="resources"?"Connected Resources":name==="settings"?"Settings":"Analytics";render()}function render(){let h="",m=S.summary.metrics;if(S.tab==="analytics"){h='<div class="grid metrics">'+metric("New leads",m.newLeads,"Intakes and contacts")+metric("Active deals",m.activeDeals,money(m.revenueOpportunity))+metric("Traffic events",m.trafficEvents,"Captured activity")+metric("AI-created",m.aiCreatedRecords,"Committed records")+'</div><div class="grid two" style="margin-top:16px"><section class="card"><div class="in"><h2>Recommended actions</h2>'+S.summary.recommendedActions.map(a=>'<div class="item"><b>'+esc(a.title)+'</b><p class="muted">'+esc(a.reason)+'</p></div>').join("")+'</div></section><section class="card"><div class="in"><h2>Recent analytics events</h2>'+S.events.slice(0,8).map(e=>'<div class="item"><b>'+esc(e.type)+'</b><p class="muted">'+esc(e.sourceUrl||e.siteId||"")+'</p></div>').join("")+'</div></section></div>'}if(S.tab==="crm"){h='<div class="toolbar"><input id="crmFilter" placeholder="Filter CRM records"><button class="primary" id="filterBtn">Apply</button></div><div class="grid three">'+["Person","Company","Deal","Task","Intake","Note"].map(t=>'<section class="card"><div class="in"><h2>'+t+'</h2>'+S.records.filter(r=>r.type===t).map(row).join("")+'</div></section>').join("")+'</div><section class="card" style="margin-top:16px"><div class="in stack"><h2>AI record creation</h2><form id="aiForm"><textarea name="rawText" required placeholder="Paste a lead, email, form submission, or messy note"></textarea><button class="primary">Create AI plan</button></form></div></section>'}if(S.tab==="resources"){h='<div class="grid two"><section class="card"><div class="in"><h2>Outside resources</h2>'+S.sources.map(s=>'<div class="item resource"><div class="resourceIcon">'+(s.type.includes("email")?"✉":s.type.includes("website")?"⌁":"●")+'</div><div><b>'+esc(s.name)+'</b><p class="muted">'+esc(s.type)+' · '+esc(s.status)+'</p></div><button class="secondary">Configure</button></div>').join("")+'</div></section><section class="card"><div class="in"><h2>Website tracker</h2><p class="muted">Use this snippet on an outside website to send analytics events into the demo source.</p><pre>'+esc(S.snippet)+'</pre></div></section></div><section class="card" style="margin-top:16px"><div class="in"><h2>Recent plans</h2>'+S.plans.slice(0,8).map(p=>'<div class="item"><b>'+esc(p.summary)+'</b><p class="muted">'+esc(p.aiProvider)+' · '+p.actions.length+' actions</p><button class="secondary" data-plan="'+esc(p.planId)+'">Review</button></div>').join("")+'</div></section>'}if(S.tab==="settings"){h='<div class="grid two"><section class="card"><div class="in stack"><h2>Workspace settings</h2><label>Workspace</label><input value="'+esc(WORKSPACE_LABEL)+'"><label>Theme</label><select><option>White and dark blue</option></select><button class="primary">Save settings</button></div></section><section class="card"><div class="in"><h2>Account</h2><p class="muted">Manage account-level options here. Use the logout button in the top bar to end the session.</p><div class="item"><b>Saved browser login</b><p class="muted">'+(savedToken()?"Enabled on this browser":"Not saved on this browser")+'</p></div></div></section></div>'}app.innerHTML=h;bind()}function bind(){document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>tab(b.dataset.tab));let f=document.getElementById("aiForm");if(f)f.onsubmit=async e=>{e.preventDefault();let p=await api("/api/records/plan",{method:"POST",body:JSON.stringify(Object.fromEntries(new FormData(f)))});await refresh("crm");openPlan(p.plan.planId)};let filter=document.getElementById("filterBtn");if(filter)filter.onclick=async()=>{let d=await api("/api/records?q="+encodeURIComponent(document.getElementById("crmFilter").value));S.records=d.records;render()};document.querySelectorAll("[data-plan]").forEach(b=>b.onclick=()=>openPlan(b.dataset.plan))}async function refresh(nextTab){await load();if(nextTab)S.tab=nextTab;render()}function openPlan(planId){S.plan=S.plans.find(p=>p.planId===planId);if(!S.plan)return;planTitle.textContent=S.plan.summary;planBody.innerHTML=S.plan.actions.map(a=>'<label class="item" style="display:grid;grid-template-columns:auto 1fr;gap:12px"><input type="checkbox" checked value="'+a.id+'"><span><b>'+esc(a.actionType)+' '+esc(a.recordType)+'</b><p class="muted">'+esc(a.reasoning)+'</p><pre>'+esc(JSON.stringify(a.fields,null,2))+'</pre></span></label>').join("");planDialog.showModal()}async function signout(){const token=savedToken();localStorage.removeItem("constrava_session_token");if(DEMO){location.href="/";return}await fetch("/api/auth/logout",{method:"POST",headers:token?{authorization:"Bearer "+token}:{}});location.href="/"}document.getElementById("settingsButton").onclick=()=>tab("settings");document.getElementById("logoutButton").onclick=()=>signoutDialog.showModal();document.getElementById("cancelSignout").onclick=()=>signoutDialog.close();document.getElementById("confirmSignout").onclick=signout;document.getElementById("closePlan").onclick=()=>planDialog.close();document.getElementById("commitPlan").onclick=async()=>{let ids=[...document.querySelectorAll("#planBody input:checked")].map(i=>i.value);await api("/api/records/commit",{method:"POST",body:JSON.stringify({planId:S.plan.planId,actionIds:ids})});planDialog.close();await refresh("crm")};document.getElementById("aiAdd").onclick=()=>tab("crm");document.getElementById("search").onkeydown=async e=>{if(e.key==="Enter"){let d=await api("/api/search/natural",{method:"POST",body:JSON.stringify({query:search.value})});S.records=d.records;tab("crm")}};refresh("analytics");
+</style></head><body><header class="topbar"><div class="leftTools"><div class="brand">Constrava</div><nav class="tabs" aria-label="Dashboard sections"><button class="tab active" data-tab="analytics">Analytics</button><button class="tab" data-tab="crm">CRM</button><button class="tab" data-tab="resources">Connected Resources</button></nav></div><div class="rightTools"><button class="settingsIcon" id="settingsButton" title="Settings" aria-label="Settings">⚙</button><button class="logoutText" id="logoutButton">${signoutCopy}</button></div></header><main class="shell"><section class="workspace"><div><p class="muted" id="workspaceLabel">${esc(workspaceLabel)}</p><h1 id="pageTitle">Analytics</h1></div><div><input id="search" placeholder="Search records, tasks, leads..."> <button class="primary" id="aiAdd">AI Add</button></div></section><section id="app"></section></main><dialog id="signoutDialog"><div class="modalHead"><h2>Are you sure?</h2></div><div class="modalBody"><p class="muted">This will ${demo ? "leave the demo" : "log you out"} and return you to the public homepage.</p></div><div class="modalFoot"><button class="secondary" id="cancelSignout">Cancel</button><button class="primary" id="confirmSignout">${signoutCopy}</button></div></dialog><dialog id="planDialog"><div class="modalHead"><h2 id="planTitle"></h2></div><div class="modalBody" id="planBody"></div><div class="modalFoot"><button class="secondary" id="closePlan">Cancel</button><button class="primary" id="commitPlan">Commit selected</button></div></dialog><script>
+localStorage.removeItem("constrava_session_token");const DEMO=${JSON.stringify(demo)};const API_SUFFIX=${JSON.stringify(apiSuffix)};const WORKSPACE_LABEL=${JSON.stringify(workspaceLabel)};let S={tab:"analytics",records:[],plans:[],plan:null,summary:null};const esc=function(v){return String(v==null?"":v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")};function url(p){return API_SUFFIX?p+(p.includes("?")?"&":"?")+API_SUFFIX:p}async function api(p,o){o=o||{};const r=await fetch(url(p),{...o,credentials:"include",headers:{"content-type":"application/json",...(o.headers||{})}});const d=await r.json();if(r.status===401){location.href="/signin";return null}if(!r.ok)throw Error(d.error||"Request failed");return d}function money(v){return Number(v||0).toLocaleString(undefined,{style:"currency",currency:"USD",maximumFractionDigits:0})}function metric(n,v,t){return '<div class="card"><div class="in"><p class="muted">'+n+'</p><div class="metricValue">'+v+'</div><p class="muted">'+t+'</p></div></div>'}function row(r){return '<div class="item"><div class="row"><div><span class="pill">'+esc(r.type)+'</span> <b>'+esc(r.title)+'</b><p class="muted">'+esc((r.priorityReasons||[])[0]||"")+'</p></div><span class="pill hot">'+Math.round(r.priorityScore||0)+'</span></div></div>'}async function load(){let out=await Promise.all([api("/api/dashboard/summary"),api("/api/records"),api("/api/sources"),api("/api/plans"),api("/api/reports"),api("/api/analytics/events")]);S.summary=out[0];S.records=out[1].records;S.sources=out[2].sources;S.snippet=out[2].snippet;S.plans=out[3].plans;S.reports=out[4].reports;S.events=out[5].events}function tab(name){S.tab=name;document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===name));document.getElementById("settingsButton").classList.toggle("active",name==="settings");pageTitle.textContent=name==="crm"?"CRM":name==="resources"?"Connected Resources":name==="settings"?"Settings":"Analytics";render()}function render(){let h="",m=S.summary.metrics;if(S.tab==="analytics"){h='<div class="grid metrics">'+metric("New leads",m.newLeads,"Intakes and contacts")+metric("Active deals",m.activeDeals,money(m.revenueOpportunity))+metric("Traffic events",m.trafficEvents,"Captured activity")+metric("AI-created",m.aiCreatedRecords,"Committed records")+'</div><div class="grid two" style="margin-top:16px"><section class="card"><div class="in"><h2>Recommended actions</h2>'+S.summary.recommendedActions.map(a=>'<div class="item"><b>'+esc(a.title)+'</b><p class="muted">'+esc(a.reason)+'</p></div>').join("")+'</div></section><section class="card"><div class="in"><h2>Recent analytics events</h2>'+S.events.slice(0,8).map(e=>'<div class="item"><b>'+esc(e.type)+'</b><p class="muted">'+esc(e.sourceUrl||e.siteId||"")+'</p></div>').join("")+'</div></section></div>'}if(S.tab==="crm"){h='<div class="toolbar"><input id="crmFilter" placeholder="Filter CRM records"><button class="primary" id="filterBtn">Apply</button></div><div class="grid three">'+["Person","Company","Deal","Task","Intake","Note"].map(t=>'<section class="card"><div class="in"><h2>'+t+'</h2>'+S.records.filter(r=>r.type===t).map(row).join("")+'</div></section>').join("")+'</div><section class="card" style="margin-top:16px"><div class="in stack"><h2>AI record creation</h2><form id="aiForm"><textarea name="rawText" required placeholder="Paste a lead, email, form submission, or messy note"></textarea><button class="primary">Create AI plan</button></form></div></section>'}if(S.tab==="resources"){h='<div class="grid two"><section class="card"><div class="in"><h2>Outside resources</h2>'+S.sources.map(s=>'<div class="item resource"><div class="resourceIcon">'+(s.type.includes("email")?"✉":s.type.includes("website")?"⌁":"●")+'</div><div><b>'+esc(s.name)+'</b><p class="muted">'+esc(s.type)+' · '+esc(s.status)+'</p></div><button class="secondary">Configure</button></div>').join("")+'</div></section><section class="card"><div class="in"><h2>Website tracker</h2><p class="muted">Use this snippet on an outside website to send analytics events into the demo source.</p><pre>'+esc(S.snippet)+'</pre></div></section></div><section class="card" style="margin-top:16px"><div class="in"><h2>Recent plans</h2>'+S.plans.slice(0,8).map(p=>'<div class="item"><b>'+esc(p.summary)+'</b><p class="muted">'+esc(p.aiProvider)+' · '+p.actions.length+' actions</p><button class="secondary" data-plan="'+esc(p.planId)+'">Review</button></div>').join("")+'</div></section>'}if(S.tab==="settings"){h='<div class="grid two"><section class="card"><div class="in stack"><h2>Workspace settings</h2><label>Workspace</label><input value="'+esc(WORKSPACE_LABEL)+'"><label>Theme</label><select><option>White and dark blue</option></select><button class="primary">Save settings</button></div></section><section class="card"><div class="in"><h2>Account</h2><p class="muted">Your login is now kept by a persistent browser cookie. Reloading the page should keep this dashboard open until you log out.</p><div class="item"><b>Session</b><p class="muted">Saved in this browser for up to 30 days.</p></div></div></section></div>'}app.innerHTML=h;bind()}function bind(){document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>tab(b.dataset.tab));let f=document.getElementById("aiForm");if(f)f.onsubmit=async e=>{e.preventDefault();let p=await api("/api/records/plan",{method:"POST",body:JSON.stringify(Object.fromEntries(new FormData(f)))});await refresh("crm");openPlan(p.plan.planId)};let filter=document.getElementById("filterBtn");if(filter)filter.onclick=async()=>{let d=await api("/api/records?q="+encodeURIComponent(document.getElementById("crmFilter").value));S.records=d.records;render()};document.querySelectorAll("[data-plan]").forEach(b=>b.onclick=()=>openPlan(b.dataset.plan))}async function refresh(nextTab){await load();if(nextTab)S.tab=nextTab;render()}function openPlan(planId){S.plan=S.plans.find(p=>p.planId===planId);if(!S.plan)return;planTitle.textContent=S.plan.summary;planBody.innerHTML=S.plan.actions.map(a=>'<label class="item" style="display:grid;grid-template-columns:auto 1fr;gap:12px"><input type="checkbox" checked value="'+a.id+'"><span><b>'+esc(a.actionType)+' '+esc(a.recordType)+'</b><p class="muted">'+esc(a.reasoning)+'</p><pre>'+esc(JSON.stringify(a.fields,null,2))+'</pre></span></label>').join("");planDialog.showModal()}async function signout(){localStorage.removeItem("constrava_session_token");if(DEMO){location.href="/";return}await fetch("/api/auth/logout",{method:"POST",credentials:"include"});location.href="/"}document.getElementById("settingsButton").onclick=()=>tab("settings");document.getElementById("logoutButton").onclick=()=>signoutDialog.showModal();document.getElementById("cancelSignout").onclick=()=>signoutDialog.close();document.getElementById("confirmSignout").onclick=signout;document.getElementById("closePlan").onclick=()=>planDialog.close();document.getElementById("commitPlan").onclick=async()=>{let ids=[...document.querySelectorAll("#planBody input:checked")].map(i=>i.value);await api("/api/records/commit",{method:"POST",body:JSON.stringify({planId:S.plan.planId,actionIds:ids})});planDialog.close();await refresh("crm")};document.getElementById("aiAdd").onclick=()=>tab("crm");document.getElementById("search").onkeydown=async e=>{if(e.key==="Enter"){let d=await api("/api/search/natural",{method:"POST",body:JSON.stringify({query:search.value})});S.records=d.records;tab("crm")}};refresh("analytics");
 </script></body></html>`;
 }
 
 async function auth(req, res, route, storeData) {
   if (req.method === "GET" && route === "/api/auth/me") {
     const user = currentUser(req, storeData);
-    const sessionId = requestSessionId(req);
-    return send(res, user ? 200 : 401, { user: publicUser(user), sessionToken: user ? sessionId : null, developerAccountConfigured: Boolean(process.env[DEV_LOGIN_KEY_ENV]) });
-  }
-  if (req.method === "POST" && route === "/api/auth/restore") {
-    const user = currentUser(req, storeData);
-    const sessionId = requestSessionId(req);
-    if (!user || !sessionId) return send(res, 401, { error: "Saved login expired. Please sign in again." });
-    await saveStore(storeData);
-    return send(res, 200, { ok: true, user: publicUser(user), sessionToken: sessionId }, { "set-cookie": sessionCookie(sessionId) });
+    return send(res, user ? 200 : 401, { user: publicUser(user), developerAccountConfigured: Boolean(process.env[DEV_LOGIN_KEY_ENV]) });
   }
   if (req.method === "POST" && route === "/api/auth/logout") {
-    const sessionId = requestSessionId(req);
+    const sessionId = sessionIdFromCookie(req);
     storeData.sessions = storeData.sessions.filter((entry) => entry.id !== sessionId);
     await saveStore(storeData);
-    return send(res, 200, { ok: true }, { "set-cookie": sessionCookie("", true) });
+    return send(res, 200, { ok: true }, { "set-cookie": sessionCookie(req, "", true) });
   }
   if (req.method === "POST" && (route === "/api/auth/signup" || route === "/api/auth/login")) {
     const body = await readBody(req);
@@ -426,10 +342,10 @@ async function auth(req, res, route, storeData) {
       ensureUserWorkspace(storeData, user);
     }
 
-    const session = { id: id("session"), userId: user.id, createdAt: new Date().toISOString() };
+    const session = { id: id("session"), userId: user.id, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString() };
     storeData.sessions.push(session);
     await saveStore(storeData);
-    return send(res, 200, { ok: true, user: publicUser(user), sessionToken: session.id }, { "set-cookie": sessionCookie(session.id) });
+    return send(res, 200, { ok: true, user: publicUser(user) }, { "set-cookie": sessionCookie(req, session.id) });
   }
   return send(res, 404, { error: "Auth route not found" });
 }
@@ -437,7 +353,7 @@ async function auth(req, res, route, storeData) {
 async function api(req, res, url, route) {
   const storeData = await loadStore();
   if (route.startsWith("/api/auth/")) return await auth(req, res, route, storeData);
-  if (req.method === "GET" && route === "/api/health") return send(res, 200, { ok: true, aiConfigured: Boolean(process.env.OPENAI_API_KEY), developerAccount: DEV_EMAIL, developerLoginKeyVariable: DEV_LOGIN_KEY_ENV, developerAccountConfigured: Boolean(process.env[DEV_LOGIN_KEY_ENV]), homepage: "/", demo: "/demo", signin: "/signin", dashboard: "/dashboard" });
+  if (req.method === "GET" && route === "/api/health") return send(res, 200, { ok: true, cookieName: COOKIE_NAME, sessionMaxAgeDays: 30, secureCookie: isSecureRequest(req), developerAccountConfigured: Boolean(process.env[DEV_LOGIN_KEY_ENV]), homepage: "/", demo: "/demo", signin: "/signin", dashboard: "/dashboard" });
 
   const ctx = requestContext(req, url, storeData);
   if (!ctx) return send(res, 401, { error: "Sign in required." });
@@ -501,19 +417,19 @@ async function api(req, res, url, route) {
 http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, ORIGIN);
-    const pathname = url.pathname.replace(/\/+$/, "") || "/";
-    if (pathname.startsWith("/api/")) return await api(req, res, url, pathname);
+    const route = url.pathname.replace(/\/+$/, "") || "/";
+    if (route.startsWith("/api/")) return await api(req, res, url, route);
 
     const storeData = await loadStore();
-    if (pathname === "/demo") return html(res, appPage({ demo: true }));
-    if (["/dashboard", "/app"].includes(pathname)) {
+    if (route === "/demo") return html(res, appPage({ demo: true }));
+    if (["/dashboard", "/app"].includes(route)) {
       const user = currentUser(req, storeData);
-      if (!user) return html(res, sessionRestorePage());
+      if (!user) return redirect(res, "/signin");
       ensureUserWorkspace(storeData, user);
       await saveStore(storeData);
       return html(res, appPage({ demo: false, user }));
     }
-    if (["/signin", "/login"].includes(pathname)) return html(res, signInPage());
+    if (["/signin", "/login"].includes(route)) return html(res, signInPage());
     return html(res, publicPage());
   } catch (error) {
     send(res, error.status || 500, { error: error.message });
