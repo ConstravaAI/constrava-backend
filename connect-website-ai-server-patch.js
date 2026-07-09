@@ -65,3 +65,38 @@ app.post("/api/connect-website-guide/chat", requireAuth, async (req, res) => {
 } else {
   console.log("connect website AI guide endpoint already present");
 }
+
+const guidePath = path.join(__dirname, "connect-website-guide.js");
+if (fs.existsSync(guidePath)) {
+  let guide = fs.readFileSync(guidePath, "utf8");
+  let changed = false;
+  function quietReplace(search, replacement) {
+    if (!guide.includes(search)) return;
+    guide = guide.replace(search, replacement);
+    changed = true;
+  }
+
+  quietReplace(
+    "'.side-tools{margin-top:auto;padding-top:22px;display:grid;gap:8px}'",
+    "'.side-tools{margin-top:auto;padding-top:18px;display:grid;gap:4px;border-top:1px solid rgba(236,253,245,.12)}'"
+  );
+  quietReplace(
+    "'.side-tool{width:100%;border:0;border-radius:15px;padding:13px 14px;text-align:left;font-weight:900;text-decoration:none;color:rgba(236,253,245,.9);background:rgba(255,255,255,.08)}'",
+    "'.side-tool{width:100%;border:0;border-radius:10px;padding:8px 10px;text-align:left;font-size:12px;font-weight:800;text-decoration:none;color:rgba(236,253,245,.62);background:transparent;box-shadow:none}'"
+  );
+  quietReplace(
+    "'.side-tool:hover,.side-tool.active{background:linear-gradient(90deg,rgba(16,185,129,.32),rgba(255,255,255,.12));box-shadow:inset 3px 0 0 #12f7a3}'",
+    "'.side-tool:hover,.side-tool.active{color:rgba(236,253,245,.92);background:rgba(255,255,255,.06);box-shadow:none}'"
+  );
+  quietReplace(
+    "'.side-tool.signout{color:#fed7aa;background:rgba(251,146,60,.1)}'",
+    "'.side-tool.signout{color:rgba(254,215,170,.68);background:transparent}'"
+  );
+
+  if (changed) {
+    fs.writeFileSync(guidePath, guide);
+    console.log("dashboard sidebar utility buttons made quieter");
+  } else {
+    console.log("dashboard sidebar utility button styles already quiet or unavailable");
+  }
+}
