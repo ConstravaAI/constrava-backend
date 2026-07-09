@@ -303,35 +303,140 @@ function publicPage() {
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Constrava</title>
   <style>
-    :root{--green:#1f6f5b;--ink:#10201a;--muted:#607069;--line:#dce6df;--bg:#f7faf6}
+    :root{--green:#1f6f5b;--green2:#79d48c;--ink:#10201a;--muted:#607069;--line:#dce6df;--bg:#f7faf6;--dark:#101713}
     *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-    main{min-height:100vh;display:grid;place-items:center;padding:28px}
-    .card{width:min(760px,100%);background:white;border:1px solid var(--line);border-radius:28px;padding:34px;box-shadow:0 24px 70px rgba(16,32,26,.10)}
-    .brand{display:flex;align-items:center;gap:12px;font-size:24px;font-weight:950;letter-spacing:-.04em}
-    .mark{width:42px;height:42px;border-radius:15px;background:linear-gradient(135deg,var(--green),#73ce8a);color:white;display:grid;place-items:center}
-    h1{font-size:clamp(36px,7vw,62px);letter-spacing:-.07em;line-height:.98;margin:28px 0 16px}
-    p{font-size:18px;line-height:1.65;color:var(--muted);margin:0 0 24px}
-    .actions{display:flex;gap:12px;flex-wrap:wrap}
-    a{color:inherit}
-    .btn{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:13px 18px;border:1px solid var(--line);text-decoration:none;font-weight:900;background:white}
+    html{scroll-behavior:smooth}
+    body{margin:0;background:radial-gradient(circle at 15% 5%,#dff7e7 0,#f7faf6 34%,#f2f6ef 100%);color:var(--ink);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.55}
+    .wrap{width:min(1100px,calc(100% - 36px));margin:auto}
+    header{position:sticky;top:0;z-index:5;background:rgba(247,250,246,.84);backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}
+    .nav{height:72px;display:flex;align-items:center;justify-content:space-between;gap:20px}
+    .brand{display:flex;align-items:center;gap:12px;font-size:24px;font-weight:950;letter-spacing:-.04em;text-decoration:none;color:var(--ink)}
+    .mark{width:42px;height:42px;border-radius:15px;background:linear-gradient(135deg,var(--green),var(--green2));color:white;display:grid;place-items:center;box-shadow:0 14px 32px rgba(31,111,91,.22)}
+    .links{display:flex;gap:18px;align-items:center}
+    .links a{color:#35463e;text-decoration:none;font-weight:850;font-size:14px}
+    .btn{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:13px 18px;border:1px solid var(--line);text-decoration:none;font-weight:950;background:white;color:var(--ink);box-shadow:0 12px 30px rgba(16,32,26,.08)}
     .btn.primary{background:var(--green);color:white;border-color:var(--green)}
-    .small{font-size:14px;color:#7b8b83;margin-top:22px}
+    .hero{padding:82px 0 56px}
+    .heroGrid{display:grid;grid-template-columns:1.05fr .95fr;gap:44px;align-items:center}
+    .eyebrow{display:inline-flex;align-items:center;border:1px solid #cfe8d8;background:#ebf8ef;color:#145243;border-radius:999px;padding:7px 12px;font-size:13px;font-weight:950}
+    h1{font-size:clamp(44px,7vw,76px);line-height:.96;letter-spacing:-.075em;margin:18px 0 18px}
+    .lead{font-size:20px;color:var(--muted);max-width:650px}
+    .actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+    .note{font-size:14px;color:#76857e;margin-top:18px}
+    .preview{background:white;border:1px solid rgba(31,111,91,.18);border-radius:34px;padding:18px;box-shadow:0 34px 90px rgba(16,32,26,.14)}
+    .chrome{background:#101713;border-radius:24px;padding:14px}
+    .dots{display:flex;gap:7px;margin-bottom:12px}
+    .dots span{width:10px;height:10px;border-radius:999px;background:#769287}
+    .screen{background:#f8fbf6;border-radius:18px;padding:18px}
+    .screenTop{display:flex;justify-content:space-between;gap:12px;align-items:center;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:14px}
+    .badge{display:inline-flex;background:#edf6f0;color:#145243;border:1px solid #cfe6d7;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:950}
+    .metricGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .metric{background:white;border:1px solid var(--line);border-radius:16px;padding:12px}
+    .metric b{display:block;font-size:24px}
+    .record{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;background:white;border:1px solid var(--line);border-radius:16px;padding:12px;margin-top:10px}
+    .score{background:#fff3d6;color:#765116;border-radius:999px;padding:5px 8px;font-weight:950}
+    section{padding:62px 0}
+    h2{font-size:clamp(32px,5vw,52px);line-height:1;letter-spacing:-.055em;margin:0 0 14px}
+    .sectionLead{font-size:18px;color:var(--muted);max-width:760px}
+    .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:24px}
+    .card{background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:24px;padding:22px;box-shadow:0 18px 48px rgba(20,37,31,.08)}
+    .card h3{margin:0 0 8px;font-size:22px}
+    .card p{margin:0;color:var(--muted)}
+    .cta{background:linear-gradient(135deg,#101713,#174b3e);color:white;border-radius:34px;padding:34px;display:flex;align-items:center;justify-content:space-between;gap:22px}
+    .cta p{color:#c9dbd2;margin:0}
+    footer{border-top:1px solid var(--line);padding:26px 0;color:#718078;font-size:14px}
+    @media(max-width:850px){.heroGrid,.cards{grid-template-columns:1fr}.links a:not(.btn){display:none}.cta{display:block}.cta .actions{margin-top:18px}.metricGrid{grid-template-columns:1fr}.record{grid-template-columns:1fr}.nav{height:auto;padding:14px 0;align-items:flex-start}}
   </style>
 </head>
 <body>
-  <main>
-    <section class="card">
-      <div class="brand"><span class="mark">C</span>Constrava</div>
-      <h1>AI-assisted business record keeping.</h1>
-      <p>Constrava is a simple workspace for turning leads, notes, forms, and business activity into organized records, deals, tasks, and follow-ups. It helps sort what matters so a business can act faster.</p>
-      <div class="actions">
-        <a class="btn primary" href="/dashboard">Sign in to dashboard</a>
+  <header>
+    <div class="wrap nav">
+      <a class="brand" href="/"><span class="mark">C</span>Constrava</a>
+      <nav class="links">
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
         <a class="btn" href="/demo">View demo</a>
+        <a class="btn primary" href="/dashboard">Sign in</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap heroGrid">
+        <div>
+          <span class="eyebrow">Simple AI workspace for business records</span>
+          <h1>Turn messy business activity into organized records.</h1>
+          <p class="lead">Constrava helps capture leads, notes, forms, and follow-ups, then organizes them into records, tasks, deals, and priorities so a business knows what to act on next.</p>
+          <div class="actions">
+            <a class="btn primary" href="/dashboard">Sign in to dashboard</a>
+            <a class="btn" href="/demo">View demo</a>
+          </div>
+          <p class="note">Demo: constravaai.com/demo · Dashboard: constravaai.com/dashboard</p>
+        </div>
+
+        <div class="preview" aria-label="Constrava dashboard preview">
+          <div class="chrome">
+            <div class="dots"><span></span><span></span><span></span></div>
+            <div class="screen">
+              <div class="screenTop">
+                <div>
+                  <span class="badge">Dashboard</span>
+                  <h3 style="margin:8px 0 0">Priority Command Center</h3>
+                </div>
+                <span class="score">AI</span>
+              </div>
+              <div class="metricGrid">
+                <div class="metric"><small>New leads</small><b>18</b></div>
+                <div class="metric"><small>Open deals</small><b>$42k</b></div>
+                <div class="metric"><small>Tasks</small><b>7</b></div>
+              </div>
+              <div class="record"><span class="badge">Deal</span><div><b>Scheduling app quote</b><br><small>Budget mentioned · follow-up needed</small></div><span class="score">90</span></div>
+              <div class="record"><span class="badge">Task</span><div><b>Follow up with new intake</b><br><small>Clear next action detected</small></div><span class="score">88</span></div>
+            </div>
+          </div>
+        </div>
       </div>
-      <p class="small">Demo: constravaai.com/demo · Dashboard: constravaai.com/dashboard</p>
+    </section>
+
+    <section id="features">
+      <div class="wrap">
+        <h2>What the tool does</h2>
+        <p class="sectionLead">Constrava is meant to be a lightweight operating dashboard for customer and business activity, not a complicated enterprise CRM.</p>
+        <div class="cards">
+          <article class="card">
+            <h3>Capture records</h3>
+            <p>Store leads, companies, people, deals, tasks, notes, and website form activity in one place.</p>
+          </article>
+          <article class="card">
+            <h3>Use AI to sort</h3>
+            <p>AI reviews messy text and suggests useful records, tags, priorities, and follow-ups.</p>
+          </article>
+          <article class="card">
+            <h3>Act faster</h3>
+            <p>The dashboard highlights high-priority records, recommended actions, and business reports.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="how">
+      <div class="wrap cta">
+        <div>
+          <h2 style="color:white;margin-bottom:10px">Try the demo or enter the dashboard.</h2>
+          <p>The public demo shows the current Constrava workspace. The dashboard link is the main app entry point for a signed-in account.</p>
+        </div>
+        <div class="actions">
+          <a class="btn primary" href="/dashboard">Dashboard</a>
+          <a class="btn" href="/demo">Demo</a>
+        </div>
+      </div>
     </section>
   </main>
+
+  <footer>
+    <div class="wrap">© 2026 Constrava · <a href="/demo">Demo</a> · <a href="/dashboard">Dashboard</a></div>
+  </footer>
 </body>
 </html>`;
 }
@@ -349,7 +454,7 @@ function signInPage() {
     h1{margin:0 0 10px;font-size:38px;letter-spacing:-.06em}
     p{color:#607069;line-height:1.55}
     input{width:100%;border:1px solid #dce6df;border-radius:14px;padding:13px;margin:8px 0 12px;font:inherit}
-    a,button{width:100%;display:flex;justify-content:center;border:0;border-radius:999px;padding:13px 16px;background:#1f6f5b;color:white;text-decoration:none;font-weight:900;font:inherit}
+    a{width:100%;display:flex;justify-content:center;border:0;border-radius:999px;padding:13px 16px;background:#1f6f5b;color:white;text-decoration:none;font-weight:900;font:inherit}
     .back{margin-top:12px;background:white;color:#10201a;border:1px solid #dce6df}
   </style>
 </head>
@@ -367,14 +472,83 @@ function signInPage() {
 }
 
 function appPage() {
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Constrava Dashboard</title><style>body{margin:0;background:#f6f7f3;color:#17201b;font-family:Inter,system-ui,sans-serif;display:grid;grid-template-columns:220px 1fr;min-height:100vh}.side{background:#101713;color:white;padding:18px;display:flex;flex-direction:column}.brand{font-size:21px;font-weight:900}.brand span{display:block;color:#aab6ad;font-size:12px}.home{color:#bdd8c7;text-decoration:none;font-size:13px;margin-top:6px;font-weight:800}.nav{display:grid;gap:5px;margin-top:18px}.nav button,.foot button{background:transparent;color:#dbe4dd;border:0;text-align:left;padding:10px;border-radius:6px}.nav button.active,.nav button:hover,.foot button:hover{background:#26332b;color:white}.foot{margin-top:auto;border-top:1px solid #334139;padding-top:12px}.top{position:sticky;top:0;background:#f6f7f3e8;border-bottom:1px solid #dfe4dc;padding:22px 28px;display:flex;justify-content:space-between;gap:12px}.content{padding:24px 28px}.grid{display:grid;gap:16px}.metrics{grid-template-columns:repeat(4,1fr)}.two{grid-template-columns:1.1fr .9fr}.three{grid-template-columns:repeat(3,1fr)}.card{background:white;border:1px solid #dfe4dc;border-radius:8px;box-shadow:0 16px 40px #20262214}.in{padding:18px}.row{display:flex;justify-content:space-between;gap:12px}.muted{color:#66706a}.metric{font-size:30px;font-weight:900}.item{padding:13px 0;border-top:1px solid #dfe4dc}.item:first-child{border-top:0}.pill{display:inline-block;padding:2px 8px;border-radius:99px;background:#eef2ed;border:1px solid #dfe4dc;font-size:12px;font-weight:800}.hot{background:#fff2d8;color:#725018}.primary{background:#1f6f5b;color:white;border:0;padding:10px 14px;font-weight:900;border-radius:6px}.secondary,input,select,textarea{border:1px solid #dfe4dc;background:white;padding:10px;border-radius:6px;font:inherit}textarea{min-height:140px;width:100%}.stack{display:grid;gap:12px}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}pre{white-space:pre-wrap;background:#111714;color:#e9f2ea;padding:14px;border-radius:8px;overflow:auto}dialog{width:min(880px,calc(100vw - 32px));border:1px solid #dfe4dc;border-radius:8px;padding:0}.dh,.da{padding:18px;border-bottom:1px solid #dfe4dc;display:flex;justify-content:space-between}.da{border-top:1px solid #dfe4dc;border-bottom:0;justify-content:flex-end}.db{padding:18px;max-height:65vh;overflow:auto}.plan{display:grid;grid-template-columns:auto 1fr;gap:12px;border:1px solid #dfe4dc;border-radius:8px;padding:12px;margin-bottom:10px}@media(max-width:850px){body{display:block}.metrics,.two,.three{grid-template-columns:1fr}.top{display:block}.side{min-height:auto}.nav{display:flex;overflow:auto}}</style></head><body><aside class="side"><div class="brand">Constrava<span>Dashboard</span></div><a class="home" href="/">← Homepage</a><nav class="nav" id="nav"></nav><div class="foot"><button onclick="view('settings')">Settings</button><button onclick="signout()">Sign out</button></div></aside><main><header class="top"><div><p class="muted">Workspace</p><h1 id="title">Dashboard</h1></div><div><input id="search" placeholder="Ask for records, tasks, leads..."> <button class="primary" onclick="view('ai')">AI Add</button></div></header><section class="content" id="app"></section></main><dialog id="dlg"><div class="dh"><h2 id="pt"></h2><button class="secondary" onclick="dlg.close()">x</button></div><div class="db" id="pb"></div><div class="da"><button class="primary" onclick="commitPlan()">Commit selected</button></div></dialog><script>
-let S={view:"dashboard",records:[],plans:[],plan:null};const views=["dashboard","sources","crm","records","deals","tasks","ai","reports","analytics","automations"];const $=q=>document.querySelector(q),api=(p,o={})=>fetch(p,{...o,headers:{"content-type":"application/json",...(o.headers||{})}}).then(async r=>{let d=await r.json();if(!r.ok)throw Error(d.error);return d}),esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
-function money(v){return Number(v||0).toLocaleString(undefined,{style:"currency",currency:"USD",maximumFractionDigits:0})}function row(r){return '<div class="item"><div class="row"><div><span class="pill">'+r.type+'</span> <b>'+esc(r.title)+'</b><p class="muted">'+esc((r.priorityReasons||[])[0]||"")+'</p></div><span class="pill hot">'+Math.round(r.priorityScore||0)+'</span></div></div>'}function metric(n,v,t){return '<div class="card"><div class="in"><p class="muted">'+n+'</p><div class="metric">'+v+'</div><p class="muted">'+t+'</p></div></div>'}
-async function load(){let [summary,records,sources,plans,reports,events]=await Promise.all([api("/api/dashboard/summary"),api("/api/records"),api("/api/sources"),api("/api/plans"),api("/api/reports"),api("/api/analytics/events")]);Object.assign(S,{summary,records:records.records,sources:sources.sources,snippet:sources.snippet,plans:plans.plans,reports:reports.reports,events:events.events})}
-function nav(){document.getElementById("nav").innerHTML=views.map(v=>'<button class="'+(S.view==v?'active':'')+'" onclick="view(\\''+v+'\\')">'+v[0].toUpperCase()+v.slice(1)+'</button>').join("")}function view(v){S.view=v;render()}async function refresh(v=S.view){await load();S.view=v;render()}
-function render(){nav();title.textContent=S.view[0].toUpperCase()+S.view.slice(1);let h="",m=S.summary.metrics;if(S.view=="dashboard")h='<div class="grid metrics">'+metric("New leads",m.newLeads,"Intakes and contacts")+metric("Active deals",m.activeDeals,money(m.revenueOpportunity))+metric("Overdue tasks",m.overdueTasks,"Tasks past due")+metric("AI-created",m.aiCreatedRecords,"Committed records")+'</div><div class="grid two" style="margin-top:16px"><section class="card"><div class="in"><h2>Recommended Actions</h2>'+S.summary.recommendedActions.map(a=>'<div class="item"><b>'+esc(a.title)+'</b><p class="muted">'+esc(a.reason)+'</p></div>').join("")+'</div></section><section class="card"><div class="in"><h2>High Priority Records</h2>'+S.summary.highPriority.map(row).join("")+'</div></section></div>';if(S.view=="sources")h='<div class="grid two"><section class="card"><div class="in"><h2>Sources</h2>'+S.sources.map(s=>'<div class="item"><b>'+esc(s.name)+'</b><p class="muted">'+s.type+' - '+s.status+'</p></div>').join("")+'</div></section><section class="card"><div class="in"><h2>Analytics Snippet</h2><pre>'+esc(S.snippet)+'</pre></div></section></div>';if(S.view=="crm")h='<div class="grid three">'+["Person","Company","Intake"].map(t=>'<section class="card"><div class="in"><h2>'+t+'</h2>'+S.records.filter(r=>r.type==t).map(row).join("")+'</div></section>').join("")+'</div>';if(S.view=="records"||S.view=="tasks")h=list(S.view=="tasks"?"Task":"");if(S.view=="deals")h='<section class="card"><div class="in"><h2>Deals</h2>'+S.records.filter(r=>r.type=="Deal").map(row).join("")+'</div></section>';if(S.view=="ai")h='<div class="grid two"><section class="card"><div class="in stack"><h2>AI Add From Text</h2><form id="ai"><textarea name="rawText" required placeholder="Paste a lead, email, form submission, or messy note"></textarea><button class="primary">Create AI plan</button></form></div></section><section class="card"><div class="in"><h2>Recent Plans</h2>'+S.plans.map(p=>'<div class="item"><b>'+esc(p.summary)+'</b><p class="muted">'+p.aiProvider+' - '+p.actions.length+' actions</p><button class="secondary" onclick="openPlan(\\''+p.planId+'\\')">Review</button></div>').join("")+'</div></section></div>';if(S.view=="reports")h='<button class="primary" onclick="report()">Generate report</button>'+S.reports.map(r=>'<section class="card"><div class="in"><h2>'+esc(r.title)+'</h2>'+(r.content.factualSummary||[]).map(x=>'<p class="muted">- '+esc(x)+'</p>').join("")+'</div></section>').join("");if(S.view=="analytics")h='<section class="card"><div class="in"><h2>Events</h2>'+S.events.map(e=>'<div class="item"><b>'+esc(e.type)+'</b><p class="muted">'+esc(e.sourceUrl||e.siteId)+'</p></div>').join("")+'</div></section>';if(S.view=="automations")h='<div class="grid three">'+["Duplicate Scan","Stale Lead Alert","Deal Next Step"].map(x=>'<section class="card"><div class="in"><h2>'+x+'</h2><p class="muted">Ready for scheduled jobs.</p></div></section>').join("")+'</div>';if(S.view=="settings")h='<section class="card"><div class="in stack"><h2>Settings</h2><input value="Constrava Demo Workspace"><button class="primary">Save settings</button><button class="secondary" onclick="signout()">Sign out</button></div></section>';app.innerHTML=h;bind()}
-function list(t){let r=t?S.records.filter(x=>x.type==t):S.records;return '<div class="toolbar"><input id="q" placeholder="Filter"><button class="primary" onclick="filter()">Apply</button></div><section class="card"><div class="in"><h2>Records</h2>'+r.map(row).join("")+'</div></section>'}async function filter(){let d=await api("/api/records?q="+encodeURIComponent(q.value));S.records=d.records;render()}function bind(){let f=$("#ai");if(f)f.onsubmit=async e=>{e.preventDefault();let p=await api("/api/records/plan",{method:"POST",body:JSON.stringify(Object.fromEntries(new FormData(f)))});await refresh("ai");openPlan(p.plan.planId)}}function openPlan(id){S.plan=S.plans.find(p=>p.planId==id);pt.textContent=S.plan.summary;pb.innerHTML=S.plan.actions.map(a=>'<label class="plan"><input type="checkbox" checked value="'+a.id+'"><div><b>'+a.actionType+' '+a.recordType+'</b><p class="muted">'+esc(a.reasoning)+'</p><pre>'+esc(JSON.stringify(a.fields,null,2))+'</pre></div></label>').join("");dlg.showModal()}async function commitPlan(){let ids=[...document.querySelectorAll("#pb input:checked")].map(i=>i.value);await api("/api/records/commit",{method:"POST",body:JSON.stringify({planId:S.plan.planId,actionIds:ids})});dlg.close();await refresh("records")}async function report(){await api("/api/reports/generate",{method:"POST",body:"{}"});await refresh("reports")}search.onkeydown=async e=>{if(e.key=="Enter"){let d=await api("/api/search/natural",{method:"POST",body:JSON.stringify({query:search.value})});S.records=d.records;view("records")}}function signout(){location.href="/signin"}refresh();
-</script></body></html>`;
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Constrava Dashboard</title>
+  <style>
+    body{margin:0;background:#f6f7f3;color:#17201b;font-family:Inter,system-ui,sans-serif;display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+    .side{background:#101713;color:white;padding:18px;display:flex;flex-direction:column}
+    .brand{font-size:21px;font-weight:900}.brand span{display:block;color:#aab6ad;font-size:12px}
+    .home{color:#bdd8c7;text-decoration:none;font-size:13px;margin-top:6px;font-weight:800}
+    .nav{display:grid;gap:5px;margin-top:18px}.nav button,.foot button{background:transparent;color:#dbe4dd;border:0;text-align:left;padding:10px;border-radius:6px;cursor:pointer}
+    .nav button.active,.nav button:hover,.foot button:hover{background:#26332b;color:white}.foot{margin-top:auto;border-top:1px solid #334139;padding-top:12px}
+    .top{position:sticky;top:0;background:#f6f7f3e8;border-bottom:1px solid #dfe4dc;padding:22px 28px;display:flex;justify-content:space-between;gap:12px}
+    .content{padding:24px 28px}.grid{display:grid;gap:16px}.metrics{grid-template-columns:repeat(4,1fr)}.two{grid-template-columns:1.1fr .9fr}.three{grid-template-columns:repeat(3,1fr)}
+    .card{background:white;border:1px solid #dfe4dc;border-radius:8px;box-shadow:0 16px 40px #20262214}.in{padding:18px}
+    .row{display:flex;justify-content:space-between;gap:12px}.muted{color:#66706a}.metric{font-size:30px;font-weight:900}
+    .item{padding:13px 0;border-top:1px solid #dfe4dc}.item:first-child{border-top:0}
+    .pill{display:inline-block;padding:2px 8px;border-radius:99px;background:#eef2ed;border:1px solid #dfe4dc;font-size:12px;font-weight:800}.hot{background:#fff2d8;color:#725018}
+    .primary{background:#1f6f5b;color:white;border:0;padding:10px 14px;font-weight:900;border-radius:6px;cursor:pointer}.secondary,input,select,textarea{border:1px solid #dfe4dc;background:white;padding:10px;border-radius:6px;font:inherit}
+    textarea{min-height:140px;width:100%}.stack{display:grid;gap:12px}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+    pre{white-space:pre-wrap;background:#111714;color:#e9f2ea;padding:14px;border-radius:8px;overflow:auto}
+    dialog{width:min(880px,calc(100vw - 32px));border:1px solid #dfe4dc;border-radius:8px;padding:0}.dh,.da{padding:18px;border-bottom:1px solid #dfe4dc;display:flex;justify-content:space-between}.da{border-top:1px solid #dfe4dc;border-bottom:0;justify-content:flex-end}.db{padding:18px;max-height:65vh;overflow:auto}.plan{display:grid;grid-template-columns:auto 1fr;gap:12px;border:1px solid #dfe4dc;border-radius:8px;padding:12px;margin-bottom:10px}
+    @media(max-width:850px){body{display:block}.metrics,.two,.three{grid-template-columns:1fr}.top{display:block}.side{min-height:auto}.nav{display:flex;overflow:auto}}
+  </style>
+</head>
+<body>
+  <aside class="side">
+    <div class="brand">Constrava<span>Dashboard</span></div>
+    <a class="home" href="/">← Homepage</a>
+    <nav class="nav" id="nav"></nav>
+    <div class="foot"><button onclick="view('settings')">Settings</button><button onclick="signout()">Sign out</button></div>
+  </aside>
+  <main>
+    <header class="top">
+      <div><p class="muted">Workspace</p><h1 id="title">Dashboard</h1></div>
+      <div><input id="search" placeholder="Ask for records, tasks, leads..."> <button class="primary" onclick="view('ai')">AI Add</button></div>
+    </header>
+    <section class="content" id="app"></section>
+  </main>
+  <dialog id="dlg"><div class="dh"><h2 id="pt"></h2><button class="secondary" onclick="dlg.close()">x</button></div><div class="db" id="pb"></div><div class="da"><button class="primary" onclick="commitPlan()">Commit selected</button></div></dialog>
+<script>
+let S={view:"dashboard",records:[],plans:[],plan:null,summary:null};
+const views=["dashboard","sources","crm","records","deals","tasks","ai","reports","analytics","automations"];
+const esc=function(v){return String(v==null?"":v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")};
+const api=function(p,o){o=o||{};return fetch(p,{...o,headers:{"content-type":"application/json",...(o.headers||{})}}).then(async function(r){let d=await r.json();if(!r.ok)throw Error(d.error||"Request failed");return d})};
+function money(v){return Number(v||0).toLocaleString(undefined,{style:"currency",currency:"USD",maximumFractionDigits:0})}
+function metric(n,v,t){return '<div class="card"><div class="in"><p class="muted">'+n+'</p><div class="metric">'+v+'</div><p class="muted">'+t+'</p></div></div>'}
+function row(r){return '<div class="item"><div class="row"><div><span class="pill">'+esc(r.type)+'</span> <b>'+esc(r.title)+'</b><p class="muted">'+esc((r.priorityReasons||[])[0]||"")+'</p></div><span class="pill hot">'+Math.round(r.priorityScore||0)+'</span></div></div>'}
+async function load(){let out=await Promise.all([api("/api/dashboard/summary"),api("/api/records"),api("/api/sources"),api("/api/plans"),api("/api/reports"),api("/api/analytics/events")]);S.summary=out[0];S.records=out[1].records;S.sources=out[2].sources;S.snippet=out[2].snippet;S.plans=out[3].plans;S.reports=out[4].reports;S.events=out[5].events}
+function renderNav(){document.getElementById("nav").innerHTML=views.map(function(v){return '<button class="'+(S.view===v?'active':'')+'" onclick="view(\\''+v+'\\')">'+v[0].toUpperCase()+v.slice(1)+'</button>'}).join("")}
+function view(v){S.view=v;render()}
+async function refresh(v){await load();S.view=v||S.view;render()}
+function bind(){let f=document.getElementById("aiForm");if(f)f.onsubmit=async function(e){e.preventDefault();let p=await api("/api/records/plan",{method:"POST",body:JSON.stringify(Object.fromEntries(new FormData(f)))});await refresh("ai");openPlan(p.plan.planId)}}
+function list(t){let r=t?S.records.filter(function(x){return x.type===t}):S.records;return '<div class="toolbar"><input id="q" placeholder="Filter"><button class="primary" onclick="filter()">Apply</button></div><section class="card"><div class="in"><h2>Records</h2>'+r.map(row).join("")+'</div></section>'}
+async function filter(){let d=await api("/api/records?q="+encodeURIComponent(document.getElementById("q").value));S.records=d.records;render()}
+function render(){renderNav();document.getElementById("title").textContent=S.view[0].toUpperCase()+S.view.slice(1);let h="",m=S.summary.metrics;
+ if(S.view==="dashboard")h='<div class="grid metrics">'+metric("New leads",m.newLeads,"Intakes and contacts")+metric("Active deals",m.activeDeals,money(m.revenueOpportunity))+metric("Overdue tasks",m.overdueTasks,"Tasks past due")+metric("AI-created",m.aiCreatedRecords,"Committed records")+'</div><div class="grid two" style="margin-top:16px"><section class="card"><div class="in"><h2>Recommended Actions</h2>'+S.summary.recommendedActions.map(function(a){return '<div class="item"><b>'+esc(a.title)+'</b><p class="muted">'+esc(a.reason)+'</p></div>'}).join("")+'</div></section><section class="card"><div class="in"><h2>High Priority Records</h2>'+S.summary.highPriority.map(row).join("")+'</div></section></div>';
+ if(S.view==="sources")h='<div class="grid two"><section class="card"><div class="in"><h2>Sources</h2>'+S.sources.map(function(s){return '<div class="item"><b>'+esc(s.name)+'</b><p class="muted">'+esc(s.type)+' - '+esc(s.status)+'</p></div>'}).join("")+'</div></section><section class="card"><div class="in"><h2>Analytics Snippet</h2><pre>'+esc(S.snippet)+'</pre></div></section></div>';
+ if(S.view==="crm")h='<div class="grid three">'+["Person","Company","Intake"].map(function(t){return '<section class="card"><div class="in"><h2>'+t+'</h2>'+S.records.filter(function(r){return r.type===t}).map(row).join("")+'</div></section>'}).join("")+'</div>';
+ if(S.view==="records"||S.view==="tasks")h=list(S.view==="tasks"?"Task":"");
+ if(S.view==="deals")h='<section class="card"><div class="in"><h2>Deals</h2>'+S.records.filter(function(r){return r.type==="Deal"}).map(row).join("")+'</div></section>';
+ if(S.view==="ai")h='<div class="grid two"><section class="card"><div class="in stack"><h2>AI Add From Text</h2><form id="aiForm"><textarea name="rawText" required placeholder="Paste a lead, email, form submission, or messy note"></textarea><button class="primary">Create AI plan</button></form></div></section><section class="card"><div class="in"><h2>Recent Plans</h2>'+S.plans.map(function(p){return '<div class="item"><b>'+esc(p.summary)+'</b><p class="muted">'+esc(p.aiProvider)+' - '+p.actions.length+' actions</p><button class="secondary" onclick="openPlan(\\''+p.planId+'\\')">Review</button></div>'}).join("")+'</div></section></div>';
+ if(S.view==="reports")h='<button class="primary" onclick="report()">Generate report</button>'+S.reports.map(function(r){return '<section class="card"><div class="in"><h2>'+esc(r.title)+'</h2>'+(r.content.factualSummary||[]).map(function(x){return '<p class="muted">- '+esc(x)+'</p>'}).join("")+'</div></section>'}).join("");
+ if(S.view==="analytics")h='<section class="card"><div class="in"><h2>Events</h2>'+S.events.map(function(e){return '<div class="item"><b>'+esc(e.type)+'</b><p class="muted">'+esc(e.sourceUrl||e.siteId)+'</p></div>'}).join("")+'</div></section>';
+ if(S.view==="automations")h='<div class="grid three">'+["Duplicate Scan","Stale Lead Alert","Deal Next Step"].map(function(x){return '<section class="card"><div class="in"><h2>'+x+'</h2><p class="muted">Ready for scheduled jobs.</p></div></section>'}).join("")+'</div>';
+ if(S.view==="settings")h='<section class="card"><div class="in stack"><h2>Settings</h2><input value="Constrava Demo Workspace"><button class="primary">Save settings</button><button class="secondary" onclick="signout()">Sign out</button></div></section>';
+ document.getElementById("app").innerHTML=h;bind()}
+function openPlan(id){S.plan=S.plans.find(function(p){return p.planId===id});document.getElementById("pt").textContent=S.plan.summary;document.getElementById("pb").innerHTML=S.plan.actions.map(function(a){return '<label class="plan"><input type="checkbox" checked value="'+a.id+'"><div><b>'+esc(a.actionType)+' '+esc(a.recordType)+'</b><p class="muted">'+esc(a.reasoning)+'</p><pre>'+esc(JSON.stringify(a.fields,null,2))+'</pre></div></label>'}).join("");dlg.showModal()}
+async function commitPlan(){let ids=[...document.querySelectorAll("#pb input:checked")].map(function(i){return i.value});await api("/api/records/commit",{method:"POST",body:JSON.stringify({planId:S.plan.planId,actionIds:ids})});dlg.close();await refresh("records")}
+async function report(){await api("/api/reports/generate",{method:"POST",body:"{}"});await refresh("reports")}
+document.getElementById("search").onkeydown=async function(e){if(e.key==="Enter"){let d=await api("/api/search/natural",{method:"POST",body:JSON.stringify({query:search.value})});S.records=d.records;view("records")}}
+function signout(){location.href="/signin"}
+refresh("dashboard");
+</script>
+</body>
+</html>`;
 }
 
 async function api(req, res, url) {
