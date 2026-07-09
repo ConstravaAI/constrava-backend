@@ -49,7 +49,7 @@ const manualRecordServerCode = String.raw`function manualRecordFromBody(body, wo
     title,
     status: clean(body.status || (type === "Task" || type === "Deal" ? "open" : "active")),
     priorityScore: priorityMap[level] || priorityMap.normal,
-    priorityReasons: [level === "highest" ? "Manually marked highest priority" : `Manual ${level || "normal"} priority`],
+    priorityReasons: [level === "highest" ? "Manually marked highest priority" : "Manual " + (level || "normal") + " priority"],
     tags,
     fields,
     relationships: [],
