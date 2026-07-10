@@ -9,12 +9,13 @@ const trackerRuntimePath = path.join(here, ".server-fonts-tracker.js");
 let source = await fs.readFile(fontSourcePath, "utf8");
 
 const crmSearchRuntimePatch = `
-const crmSearchResponsiveNeedle = 'let responsive = await fs.readFile(responsiveSourcePath, "utf8");';
+const crmSearchResponsiveNeedle = "let responsive = await fs.readFile(responsiveSourcePath, \\"utf8\\");";
 if (source.includes(crmSearchResponsiveNeedle)) {
-  source = source.replace(
-    crmSearchResponsiveNeedle,
-    crmSearchResponsiveNeedle + '\nresponsive = responsive.replace("#search{display:none!important}", "#search{display:block!important}");\nresponsive = responsive.replace(".workspace input{min-width:min(420px,100%)}", ".workspace input{min-width:min(420px,100%)}.crmToolbar input{display:block!important}.crmToolbar{display:flex!important}");\n'
-  );
+  const crmSearchCssPatch = [
+    'responsive = responsive.replace("#search{display:none!important}", "#search{display:block!important}");',
+    'responsive = responsive.replace(".workspace input{min-width:min(420px,100%)}", ".workspace input{min-width:min(420px,100%)}.crmToolbar input{display:block!important}.crmToolbar{display:flex!important}");'
+  ].join("\\n") + "\\n";
+  source = source.replace(crmSearchResponsiveNeedle, crmSearchResponsiveNeedle + "\\n" + crmSearchCssPatch);
 }
 `;
 
