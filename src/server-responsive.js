@@ -20,11 +20,23 @@ let runtime = await fs.readFile(sourceRuntimePath, "utf8");
 runtime = runtime
   .replaceAll("['edit','Edit Records']", "['edit','Add Record']")
   .replaceAll("<h2>Edit Records</h2>", "<h2>Add Record</h2>")
-  .replaceAll(">Edit Records</button>", ">Add Record</button>");
+  .replaceAll(">Edit Records</button>", ">Add Record</button>")
+  .replaceAll('if(!r.ok)throw new Error(data.error||"Authentication failed");location.href="/dashboard/"', 'if(!r.ok)throw new Error(data.error||"Authentication failed");if(data.sessionId){var cookieSecure=location.protocol==="https:"?"; SameSite=None; Secure":"; SameSite=Lax";document.cookie="constrava_session="+encodeURIComponent(data.sessionId)+"; Path=/; Max-Age="+(data.sessionMaxAgeSeconds||2592000)+cookieSecure;}location.href="/dashboard/"');
 
 const styleNeedle = "</style>\n</head>";
 const styleReplacement = responsiveCss + "\n</style>\n</head>";
-const injection = "source = source.replace(" + JSON.stringify(styleNeedle) + ", " + JSON.stringify(styleReplacement) + ");\n";
+const sourcePatches = [
+  [
+    'function sessionCookie(req, sessionId, clear = false) {\n  const secure = isSecure(req) ? "; Secure" : "";\n  if (clear) return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=0`;\n  return `${COOKIE_NAME}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=${SESSION_MAX_AGE_SECONDS}`;\n}',
+    'function sessionCookie(req, sessionId, clear = false) {\n  const secureRequest = isSecure(req);\n  const secure = secureRequest ? "; Secure" : "";\n  const sameSite = secureRequest ? "; SameSite=None" : "; SameSite=Lax";\n  if (clear) return `${COOKIE_NAME}=; Path=/; HttpOnly${sameSite}${secure}; Max-Age=0`;\n  return `${COOKIE_NAME}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly${sameSite}${secure}; Max-Age=${SESSION_MAX_AGE_SECONDS}`;\n}'
+  ],
+  [
+    'return send(res, 200, { ok: true, user: publicUser(user) }, { "set-cookie": sessionCookie(req, session.id) });',
+    'return send(res, 200, { ok: true, user: publicUser(user), sessionId: session.id, sessionMaxAgeSeconds: SESSION_MAX_AGE_SECONDS }, { "set-cookie": sessionCookie(req, session.id) });'
+  ],
+  [styleNeedle, styleReplacement]
+];
+const injection = "for (const [needle, replacement] of " + JSON.stringify(sourcePatches) + ") source = source.replace(needle, replacement);\n";
 runtime = runtime.replace("await fs.writeFile(runtimePath, source);", injection + "await fs.writeFile(runtimePath, source);");
 await fs.writeFile(responsiveRuntimePath, runtime);
 await import(`${pathToFileURL(responsiveRuntimePath).href}?v=${Date.now()}`);
