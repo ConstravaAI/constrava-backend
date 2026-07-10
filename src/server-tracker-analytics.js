@@ -8,6 +8,21 @@ const trackerRuntimePath = path.join(here, ".server-fonts-tracker.js");
 
 let source = await fs.readFile(fontSourcePath, "utf8");
 
+const crmSearchRuntimePatch = `
+const crmSearchResponsiveNeedle = 'let responsive = await fs.readFile(responsiveSourcePath, "utf8");';
+if (source.includes(crmSearchResponsiveNeedle)) {
+  source = source.replace(
+    crmSearchResponsiveNeedle,
+    crmSearchResponsiveNeedle + '\nresponsive = responsive.replace("#search{display:none!important}", "#search{display:block!important}");\nresponsive = responsive.replace(".workspace input{min-width:min(420px,100%)}", ".workspace input{min-width:min(420px,100%)}.crmToolbar input{display:block!important}.crmToolbar{display:flex!important}");\n'
+  );
+}
+`;
+
+source = source.replace(
+  'let source = await fs.readFile(analyticsSourcePath, "utf8");',
+  'let source = await fs.readFile(analyticsSourcePath, "utf8");\n' + crmSearchRuntimePatch
+);
+
 const helperNeedle = "function analyticsCutoff(){return Date.now()-analyticsRangeDays()*86400000}\n";
 const helperPatch = `function analyticsCutoff(){return Date.now()-analyticsRangeDays()*86400000}
 function analyticsIsTrackerEvent(e){const m=e.metadata||{};const source=String(e.source||e.sourceType||e.sourceKind||m.source||m.sourceType||m.sourceKind||m.tracker||'').toLowerCase();return Boolean(e.siteId||e.sessionId||e.sourceUrl||e.referrer||source.includes('tracker')||source.includes('website')||source.includes('site'))}
