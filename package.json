@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node src/server-wide.js",
-    "dev": "node src/server-wide.js",
-    "check": "node --check src/server.js && node --check src/server-runtime.js && node --check src/server-responsive.js && node --check src/server-wide.js"
+    "start": "node src/server-analytics.js",
+    "dev": "node src/server-analytics.js",
+    "check": "node --check src/server.js && node --check src/server-runtime.js && node --check src/server-responsive.js && node --check src/server-wide.js && node --check src/server-analytics.js"
   },
   "engines": {
     "node": ">=20"
