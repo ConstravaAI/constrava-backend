@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node src/server-tracker-analytics.js",
     "dev": "node src/server-tracker-analytics.js",
-    "check": "node --check src/server.js && node --check src/server-runtime.js && node --check src/server-responsive.js && node --check src/server-analytics.js && node --check src/server-fonts.js && node --check src/server-account-persistence.js && node --check src/server-tracker-analytics.js"
+    "check": "node --check src/server.js && node --check src/server-runtime.js && node --check src/server-responsive.js && node --check src/server-analytics.js && node --check src/server-fonts.js && node --check src/server-account-persistence.js && node --check src/server-crm-actions-scope.js && node --check src/server-tracker-analytics.js"
   },
   "engines": {
     "node": ">=20"
