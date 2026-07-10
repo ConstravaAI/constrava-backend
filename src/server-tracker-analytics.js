@@ -6,7 +6,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const fontSourcePath = path.join(here, "server-fonts.js");
 const trackerRuntimePath = path.join(here, ".server-fonts-tracker.js");
 
-const crmUiClientCode = String.raw`function crmUiSyncHeaderTools(){const isCrm=S.tab==='crm';const topSearch=document.getElementById('search');if(topSearch){topSearch.value='';topSearch.hidden=true;topSearch.style.display='none';topSearch.setAttribute('aria-hidden','true')}['priorityCheck','aiAdd'].forEach(function(id){const el=document.getElementById(id);if(!el)return;el.hidden=!isCrm;el.style.display=isCrm?'inline-flex':'none';el.setAttribute('aria-hidden',isCrm?'false':'true')});const ai=document.getElementById('aiAdd');if(ai&&isCrm){ai.textContent='Edit Records';if(!ai.dataset.crmUiEditBound){ai.dataset.crmUiEditBound='1';ai.addEventListener('click',function(){S.tab='crm';S.crmView='edit';render()})}}}
+const crmUiClientCode = String.raw`function crmUiSyncHeaderTools(){const isCrm=S.tab==='crm';const topSearch=document.getElementById('search');if(topSearch){topSearch.value='';topSearch.hidden=true;topSearch.style.display='none';topSearch.setAttribute('aria-hidden','true')}['priorityCheck','aiAdd'].forEach(function(id){const el=document.getElementById(id);if(!el)return;el.hidden=!isCrm;el.style.display=isCrm?'inline-flex':'none';el.setAttribute('aria-hidden',isCrm?'false':'true')});const ai=document.getElementById('aiAdd');if(ai&&isCrm&&!ai.dataset.crmUiEditBound){ai.dataset.crmUiEditBound='1';ai.addEventListener('click',function(e){if(S.tab==='crm'){e.preventDefault();e.stopImmediatePropagation();S.crmView='edit';render()}},true)}}
 function crmSearchValue(){S.crmSearchByView ||= {};return S.crmSearchByView[S.crmView]||''}
 function crmSetSearch(value){S.crmSearchByView ||= {};S.crmSearchByView[S.crmView]=value||''}
 function crmSortValue(){S.crmSortByView ||= {};return S.crmSortByView[S.crmView]||'priority'}
@@ -47,13 +47,16 @@ source = source.replace(
   'let source = await fs.readFile(analyticsSourcePath, "utf8");\n' + trackerRuntimePatch
 );
 
-const crmUiConstNeedle = "const injectionReplacementNeedle = ";
-if (!source.includes(crmUiConstNeedle)) throw new Error("Could not find font analytics injection constant.");
-source = source.replace(crmUiConstNeedle, "const crmUiGeneratedPatch = " + JSON.stringify(crmUiGeneratedPatch) + ";\n\n" + crmUiConstNeedle);
+const fontConstNeedle = "const injectionReplacementNeedle = ";
+if (source.includes(fontConstNeedle)) {
+  source = source.replace(fontConstNeedle, "const crmUiGeneratedPatch = " + JSON.stringify(crmUiGeneratedPatch) + ";\n\n" + fontConstNeedle);
+}
 
-const crmUiUseNeedle = 'JSON.stringify(generatedAnalyticsPatch) + ";\\\\n"';
-if (!source.includes(crmUiUseNeedle)) throw new Error("Could not find font analytics injection use.");
-source = source.replace(crmUiUseNeedle, 'JSON.stringify(generatedAnalyticsPatch + crmUiGeneratedPatch) + ";\\\\n"');
+const fontReplacementNeedle = "source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + \"const analyticsInjection = \" + JSON.stringify(generatedAnalyticsPatch) + \";\\\\n\" + injectionNeedle + \"analyticsInjection + \");');";
+const fontReplacementValue = "source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + \"const analyticsInjection = \" + JSON.stringify(generatedAnalyticsPatch + crmUiGeneratedPatch) + \";\\\\n\" + injectionNeedle + \"analyticsInjection + \" );');";
+if (source.includes(fontReplacementNeedle)) {
+  source = source.replace(fontReplacementNeedle, fontReplacementValue.replace(' + \" );', ' + \");'));
+}
 
 const helperNeedle = "function analyticsCutoff(){return Date.now()-analyticsRangeDays()*86400000}\n";
 const helperPatch = `function analyticsCutoff(){return Date.now()-analyticsRangeDays()*86400000}
