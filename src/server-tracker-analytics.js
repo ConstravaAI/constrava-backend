@@ -36,7 +36,12 @@ if (source.includes(crmSearchResponsiveNeedle)) {
   const crmSearchCssPatch = [
     'responsive = responsive.replace("#search{display:block!important}", "#search{display:none!important}");',
     'responsive = responsive.replace("#search{display:none!important}", "#search{display:none!important}#priorityCheck,#aiAdd{display:none}");',
-    'responsive = responsive.replace(".workspace input{min-width:min(420px,100%)}", ".workspace input{min-width:min(420px,100%)}.crmToolbar input{display:block!important}.crmToolbar{display:flex!important}");'
+    'responsive = responsive.replace(".workspace input{min-width:min(420px,100%)}", ".workspace input{min-width:min(420px,100%)}.crmToolbar input{display:block!important}.crmToolbar{display:flex!important}");',
+    'const appFooterCss = ".appFooter{margin:26px 0 4px;padding:18px 0 4px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:13px}.appFooter b{color:var(--blue);font-weight:950}.appFooter div{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.appFooter span{white-space:normal}";',
+    'responsive = responsive.replace("@media(max-width:1100px)", appFooterCss + "\\n@media(max-width:1100px)");',
+    'responsive = responsive.replace(".workspace h1{font-size:32px}", ".workspace h1{font-size:32px}.appFooter{display:block;text-align:left}.appFooter div{margin-top:8px}");',
+    'const appShellPatches = "  [" + JSON.stringify("<p class=\\\"muted\\\">${esc(workspaceLabel)}</p><h1 id=\\\"pageTitle\\\">Analytics</h1>") + ", " + JSON.stringify("<h1 id=\\\"pageTitle\\\">Analytics</h1>") + "],\\n  [" + JSON.stringify("<section id=\\\"app\\\"></section></main>") + ", " + JSON.stringify("<section id=\\\"app\\\"></section><footer class=\\\"appFooter\\\"><div><b>Constrava</b><span>AI-powered records, CRM, and website analytics.</span></div><div><span>© 2026 Constrava</span><span>Built for organized follow-up.</span></div></footer></main>") + "],\\n";',
+    'responsive = responsive.replace("const sourcePatches = [", "const sourcePatches = [\\n" + appShellPatches);'
   ].join("\\n") + "\\n";
   source = source.replace(crmSearchResponsiveNeedle, crmSearchResponsiveNeedle + "\\n" + crmSearchCssPatch);
 }
