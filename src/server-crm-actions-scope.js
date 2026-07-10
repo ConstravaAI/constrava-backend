@@ -4,20 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const runtimeWrapperPath = path.join(here, "server-runtime.js");
-const marker = "dashboard-section-tabs-v3";
-
-let source = await fs.readFile(runtimeWrapperPath, "utf8");
-
-if (!source.includes(marker)) {
-  const writeNeedle = "await fs.writeFile(runtimePath, source);";
-  const patch = String.raw`
-// dashboard-section-tabs-v3
-const crmActionVisibilityCode = "function syncCrmActionButtons(){var show=S.tab==='crm';['priorityCheck','aiAdd'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display=show?'':'none'})}";
-if (!source.includes("function syncCrmActionButtons()")) {
-  source = source.replace("function render(){", crmActionVisibilityCode + "\nfunction render(){");
-  source = source.replace("app.innerHTML=h;bind();syncNotifications()", "app.innerHTML=h;bind();syncNotifications();syncCrmActionButtons()");
-  source = source.replace("document.getElementById('aiAdd').onclick=function(){S.crmView='edit';tab('crm')};", "document.getElementById('aiAdd').onclick=function(){S.crmView='edit';tab('crm')};syncCrmActionButtons();");
-}
+const marker = "dashboard-section-tabs-v4";
 
 const analyticsTabbedClientCode = String.raw`function analyticsContent(){
   S.analyticsRange=S.analyticsRange||'30';
@@ -45,9 +32,23 @@ const analyticsTabbedClientCode = String.raw`function analyticsContent(){
   if(S.analyticsView==='pages')body=analyticsSection('Pages','Which tracked pages are receiving activity and how dense that activity is.','<section class="analyticsGrid">'+analyticsPagesTable(events)+analyticsRows('Top paths',analyticsCounts(events,function(e){return analyticsPath(e.sourceUrl)}),10,'Pages ranked by captured tracker events.')+'</section>');
   if(S.analyticsView==='events')body=analyticsSection('Events','Recent raw tracker events for debugging and quick inspection.','<section class="analyticsGrid">'+analyticsEventStream(events)+analyticsRows('Event types',analyticsCounts(events,function(e){return e.type||'unknown'}),10,'Events currently matching the active filters.')+'</section>');
   if(S.analyticsView==='audience')body=analyticsSection('Audience context','Device, browser, and environment context from event metadata.','<section class="analyticsFooterGrid">'+analyticsRows('Browsers',analyticsCounts(events,analyticsBrowser),6,'Browser mix detected from event metadata.')+analyticsDeviceCards(events)+analyticsRows('Referrers',analyticsCounts(events,analyticsReferrer),6,'Top traffic sources in this section.')+'</section>');
-  return '<div class="crmShell analyticsShell analyticsTabbedShell">'+nav+'<div>'+hero+body+'</div></div>'
+  return '<div class="crmShell analyticsShell analyticsTabbedShell">'+nav+'<div>'+hero+body+'</div></div>';
 }`;
 
+let source = await fs.readFile(runtimeWrapperPath, "utf8");
+
+if (!source.includes(marker)) {
+  const writeNeedle = "await fs.writeFile(runtimePath, source);";
+  const patch = String.raw`
+// dashboard-section-tabs-v4
+const crmActionVisibilityCode = "function syncCrmActionButtons(){var show=S.tab==='crm';['priorityCheck','aiAdd'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display=show?'':'none'})}";
+if (!source.includes("function syncCrmActionButtons()")) {
+  source = source.replace("function render(){", crmActionVisibilityCode + "\nfunction render(){");
+  source = source.replace("app.innerHTML=h;bind();syncNotifications()", "app.innerHTML=h;bind();syncNotifications();syncCrmActionButtons()");
+  source = source.replace("document.getElementById('aiAdd').onclick=function(){S.crmView='edit';tab('crm')};", "document.getElementById('aiAdd').onclick=function(){S.crmView='edit';tab('crm')};syncCrmActionButtons();");
+}
+
+const analyticsTabbedClientCode = ${JSON.stringify(analyticsTabbedClientCode)};
 if (source.includes("function analyticsContent()") && !source.includes("analyticsTabbedShell")) {
   source = source.replace("function render(){", analyticsTabbedClientCode + "\nfunction render(){");
   source = source.replace("let analyticsRange=document.getElementById('analyticsRange');", "document.querySelectorAll('[data-analytics]').forEach(function(b){b.onclick=function(){S.analyticsView=b.dataset.analytics;render()}});let analyticsRange=document.getElementById('analyticsRange');");
