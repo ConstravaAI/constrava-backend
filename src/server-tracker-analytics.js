@@ -53,9 +53,9 @@ if (source.includes(fontConstNeedle)) {
 }
 
 const fontReplacementNeedle = "source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + \"const analyticsInjection = \" + JSON.stringify(generatedAnalyticsPatch) + \";\\\\n\" + injectionNeedle + \"analyticsInjection + \");');";
-const fontReplacementValue = "source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + \"const analyticsInjection = \" + JSON.stringify(generatedAnalyticsPatch + crmUiGeneratedPatch) + \";\\\\n\" + injectionNeedle + \"analyticsInjection + \" );');";
+const fontReplacementValue = "source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + \"const analyticsInjection = \" + JSON.stringify(generatedAnalyticsPatch + crmUiGeneratedPatch) + \";\\\\n\" + injectionNeedle + \"analyticsInjection + \");');";
 if (source.includes(fontReplacementNeedle)) {
-  source = source.replace(fontReplacementNeedle, fontReplacementValue.replace(' + \" );', ' + \");'));
+  source = source.replace(fontReplacementNeedle, fontReplacementValue);
 }
 
 const helperNeedle = "function analyticsCutoff(){return Date.now()-analyticsRangeDays()*86400000}\n";
