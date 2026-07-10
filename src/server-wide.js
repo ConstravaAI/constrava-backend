@@ -15,12 +15,12 @@ html,body{min-height:100%}.shell{width:calc(100% - 18px)!important;max-width:non
 `;
 
 let responsive = await fs.readFile(responsiveSourcePath, "utf8");
-const marker = "`;
+const marker = "`;\n\nconst crmContentNeedle";
 
-const crmContentNeedle";
 if (!responsive.includes(marker)) {
   throw new Error("Could not find responsiveCss closing marker in src/server-responsive.js");
 }
+
 responsive = responsive.replace(marker, "\n" + wideCss + "\n`;\n\nconst crmContentNeedle");
 await fs.writeFile(wideRuntimePath, responsive);
 await import(`${pathToFileURL(wideRuntimePath).href}?v=${Date.now()}`);
