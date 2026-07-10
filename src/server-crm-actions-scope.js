@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const runtimeWrapperPath = path.join(here, "server-runtime.js");
-const marker = "analytics-horizontal-tabs-v5";
+const marker = "remove-workspace-label-v1";
 
 const analyticsHorizontalTabsClientCode = String.raw`function analyticsContent(){
   S.analyticsRange=S.analyticsRange||'30';
@@ -40,7 +40,9 @@ let source = await fs.readFile(runtimeWrapperPath, "utf8");
 if (!source.includes(marker)) {
   const writeNeedle = "await fs.writeFile(runtimePath, source);";
   const patch = String.raw`
-// analytics-horizontal-tabs-v5
+// remove-workspace-label-v1
+source = source.replace(${JSON.stringify('<p class="muted">${esc(workspaceLabel)}</p><h1 id="pageTitle">')}, ${JSON.stringify('<h1 id="pageTitle">')});
+
 const crmActionVisibilityCode = "function syncCrmActionButtons(){var show=S.tab==='crm';['priorityCheck','aiAdd'].forEach(function(id){var el=document.getElementById(id);if(el)el.style.display=show?'':'none'})}";
 if (!source.includes("function syncCrmActionButtons()")) {
   source = source.replace("function render(){", crmActionVisibilityCode + "\nfunction render(){");
