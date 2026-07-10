@@ -8,19 +8,14 @@ const trackerRuntimePath = path.join(here, ".server-fonts-tracker.js");
 
 let source = await fs.readFile(fontSourcePath, "utf8");
 
-const oldCrmToolbar = "function crmToolbar(){if(S.crmView==='edit')return '';const sort=crmSortValue();const selected=function(v){return sort===v?' selected':''};return '<div class=\"crmToolbar\"><input id=\"crmSearch\" placeholder=\"Search this CRM section...\" value=\"'+esc(crmSearchValue())+'\"><label>Sort by <select id=\"crmSort\"><option value=\"priority\"'+selected('priority')+'>Priority</option><option value=\"dateAdded\"'+selected('dateAdded')+'>Date added</option><option value=\"dateEdited\"'+selected('dateEdited')+'>Date edited</option><option value=\"az\"'+selected('az')+'>A-Z</option></select></label><p class=\"muted\" id=\"crmShownCount\">'+crmVisibleRows().length+' shown</p></div>'}";
-const newCrmToolbar = "function crmToolbar(){if(S.crmView==='edit')return '';const sort=crmSortValue();const selected=function(v){return sort===v?' selected':''};return '<div class=\"crmToolbar\"><input id=\"crmSearch\" placeholder=\"Search '+esc(crmTitleForView())+'...\" value=\"'+esc(crmSearchValue())+'\"><label class=\"crmSortLabel\">Sort: <select id=\"crmSort\"><option value=\"priority\"'+selected('priority')+'>Highest priority</option><option value=\"az\"'+selected('az')+'>A-Z</option><option value=\"dateAdded\"'+selected('dateAdded')+'>Date added</option><option value=\"dateEdited\"'+selected('dateEdited')+'>Last edited</option></select></label><div class=\"crmActionButtons\"><button class=\"secondary\" onclick=\"(async()=>{this.disabled=true;this.textContent=\\\'Checking...\\\';await api(\\\'/api/records/priority-check\\\',{method:\\\'POST\\\',body:\\\'{}\\\'});await load();render()})().catch(function(err){alert(err.message||err)})\">AI Priority Check</button><button class=\"primary\" onclick=\"S.crmView=\\\'edit\\\';render()\">Edit Records</button></div><p class=\"muted\" id=\"crmShownCount\">'+crmVisibleRows().length+' shown</p></div>'}";
-
-const crmGeneratedPatch = [
-  "responsive = responsive.replace(\"#search{display:none!important}\", \"#search{display:none!important}.workspace #priorityCheck,.workspace #aiAdd{display:none!important}.crmToolbar input{display:block!important}.crmToolbar{display:flex!important}.crmToolbar select{border-radius:999px}.crmSortLabel{white-space:nowrap}.crmActionButtons{display:flex;gap:8px;flex-wrap:wrap}.crmActionButtons button{white-space:nowrap}\");",
-  "responsive = responsive.replace(" + JSON.stringify(oldCrmToolbar) + ", " + JSON.stringify(newCrmToolbar) + ");"
-].join("\n") + "\n";
-
 const crmSearchRuntimePatch = `
-const crmControlsNeedle = "let responsive = await fs.readFile(responsiveSourcePath, \\"utf8\\");";
-if (source.includes(crmControlsNeedle)) {
-  const crmGeneratedPatch = ${JSON.stringify(crmGeneratedPatch)};
-  source = source.replace(crmControlsNeedle, crmControlsNeedle + "\\n" + crmGeneratedPatch);
+const crmSearchResponsiveNeedle = "let responsive = await fs.readFile(responsiveSourcePath, \\"utf8\\");";
+if (source.includes(crmSearchResponsiveNeedle)) {
+  const crmSearchCssPatch = [
+    'responsive = responsive.replace("#search{display:none!important}", "#search{display:block!important}");',
+    'responsive = responsive.replace(".workspace input{min-width:min(420px,100%)}", ".workspace input{min-width:min(420px,100%)}.crmToolbar input{display:block!important}.crmToolbar{display:flex!important}");'
+  ].join("\\n") + "\\n";
+  source = source.replace(crmSearchResponsiveNeedle, crmSearchResponsiveNeedle + "\\n" + crmSearchCssPatch);
 }
 `;
 
