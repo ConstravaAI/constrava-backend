@@ -20,7 +20,10 @@ runtime = runtime
   .replaceAll("['edit','Edit Records']", "['edit','Add Record']")
   .replaceAll("<h2>Edit Records</h2>", "<h2>Add Record</h2>")
   .replaceAll(">Edit Records</button>", ">Add Record</button>");
-const injection = `source = source.replace("</style>\n</head>", ${JSON.stringify(responsiveCss)} + "\n</style>\n</head>");\n`;
+
+const styleNeedle = "</style>\n</head>";
+const styleReplacement = responsiveCss + "\n</style>\n</head>";
+const injection = "source = source.replace(" + JSON.stringify(styleNeedle) + ", " + JSON.stringify(styleReplacement) + ");\n";
 runtime = runtime.replace("await fs.writeFile(runtimePath, source);", injection + "await fs.writeFile(runtimePath, source);");
 await fs.writeFile(responsiveRuntimePath, runtime);
 await import(`${pathToFileURL(responsiveRuntimePath).href}?v=${Date.now()}`);
