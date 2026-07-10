@@ -47,15 +47,18 @@ source = source.replace(
   'let source = await fs.readFile(analyticsSourcePath, "utf8");\n' + trackerRuntimePatch
 );
 
-const fontConstNeedle = "const injectionReplacementNeedle = ";
-if (source.includes(fontConstNeedle)) {
-  source = source.replace(fontConstNeedle, "const crmUiGeneratedPatch = " + JSON.stringify(crmUiGeneratedPatch) + ";\n\n" + fontConstNeedle);
-}
-
-const fontReplacementNeedle = "source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + \"const analyticsInjection = \" + JSON.stringify(generatedAnalyticsPatch) + \";\\\\n\" + injectionNeedle + \"analyticsInjection + \");');";
-const fontReplacementValue = "source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + \"const analyticsInjection = \" + JSON.stringify(generatedAnalyticsPatch + crmUiGeneratedPatch) + \";\\\\n\" + injectionNeedle + \"analyticsInjection + \");');";
-if (source.includes(fontReplacementNeedle)) {
-  source = source.replace(fontReplacementNeedle, fontReplacementValue);
+const fontReplacementNeedle = "source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + \"const analyticsInjection = \" + JSON.stringify(generatedAnalyticsPatch) + \";\\\\n\" + injectionNeedle + \"analyticsInjection + \" );');";
+const fontReplacementNeedleAlt = "source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + \"const analyticsInjection = \" + JSON.stringify(generatedAnalyticsPatch) + \";\\\\n\" + injectionNeedle + \"analyticsInjection + \"\);');";
+const fontReplacementNeedleCurrent = "source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + \"const analyticsInjection = \" + JSON.stringify(generatedAnalyticsPatch) + \";\\\\n\" + injectionNeedle + \"analyticsInjection + \"\);');";
+const fontReplacementNeedleOriginal = "source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + \"const analyticsInjection = \" + JSON.stringify(generatedAnalyticsPatch) + \";\\\\n\" + injectionNeedle + \"analyticsInjection + \" );');";
+const fontReplacementNeedleExact = "source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + \"const analyticsInjection = \" + JSON.stringify(generatedAnalyticsPatch) + \";\\\\n\" + injectionNeedle + \"analyticsInjection + \" );');";
+const fontReplacementNeedleFromFile = "source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + \"const analyticsInjection = \" + JSON.stringify(generatedAnalyticsPatch) + \";\\\\n\" + injectionNeedle + \"analyticsInjection + \" );');";
+const fontReplacementNeedleReal = "source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + \"const analyticsInjection = \" + JSON.stringify(generatedAnalyticsPatch) + \";\\n\" + injectionNeedle + \"analyticsInjection + \" );');";
+const fontNeedleInServerFonts = "source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + \"const analyticsInjection = \" + JSON.stringify(generatedAnalyticsPatch) + \";\\\\n\" + injectionNeedle + \"analyticsInjection + \" );');";
+const fontNeedleActual = `source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + "const analyticsInjection = " + JSON.stringify(generatedAnalyticsPatch) + ";\\n" + injectionNeedle + "analyticsInjection + ");');`;
+const fontValueActual = `source = source.replace(injectionReplacementNeedle, 'responsive = responsive.replace(injectionNeedle, generatedFontHeadPatch + "const analyticsInjection = " + JSON.stringify(generatedAnalyticsPatch + ${JSON.stringify(crmUiGeneratedPatch)}) + ";\\n" + injectionNeedle + "analyticsInjection + ");');`;
+if (source.includes(fontNeedleActual)) {
+  source = source.replace(fontNeedleActual, fontValueActual);
 }
 
 const helperNeedle = "function analyticsCutoff(){return Date.now()-analyticsRangeDays()*86400000}\n";
