@@ -9,4 +9,4 @@ let source = await fs.readFile(serverPath, "utf8");
 source = source.replace(">🔔<span class=\"notifyDot\"", ">○<span class=\"notifyDot\"");
 await fs.writeFile(serverPath, source);
 
-await import("./server-crm-actions-scope.js");
+await import("./server-analytics-selector-inside.js");
