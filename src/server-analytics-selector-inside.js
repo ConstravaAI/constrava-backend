@@ -12,9 +12,13 @@ if (!encoded) throw new Error("Could not find encoded dashboard wrapper.");
 
 let generated = Buffer.from(encoded, "base64").toString("utf8");
 
+const integratedAnalyticsTabs = `function analyticsModeTabs(){const items=[['overview','Overview'],['traffic','Traffic'],['sources','Sources'],['pages','Pages'],['events','Events'],['audience','Audience']];return items.map(function(item){const active=S.analyticsView===item[0];return '<button onclick="S.analyticsView=\\''+item[0]+'\\';render()" class="'+(active?'primary':'secondary')+'" style="border-radius:999px;padding:10px 14px;font-weight:950">'+item[1]+'</button>'}).join('')}function analyticsLiveControl`;
+
+generated = generated.replace(/function analyticsModeTabs\(\)\{[\s\S]*?\}function analyticsLiveControl/, integratedAnalyticsTabs);
+
 generated = generated.replace(
   "+'</div><div style=\"display:flex;gap:8px;flex-wrap:wrap;margin-top:12px\">'+analyticsLiveControl()",
-  "+'</div>'+analyticsModeTabs()+'<div style=\"display:flex;gap:8px;flex-wrap:wrap;margin-top:12px\">'+analyticsLiveControl()"
+  "+'</div><div style=\"display:flex;gap:8px;flex-wrap:wrap;margin-top:12px\">'+analyticsLiveControl()+analyticsModeTabs()"
 );
 
 generated = generated
