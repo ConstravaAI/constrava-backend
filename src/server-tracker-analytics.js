@@ -1,2 +1,2 @@
-// Startup wrapper: use simpler notification icon, then existing dashboard/runtime wrappers
-import "./server-notification-icon.js";
+// Startup wrapper: remove Analytics page title, then existing dashboard/runtime wrappers
+import "./server-remove-analytics-title.js";
