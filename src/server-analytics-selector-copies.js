@@ -16,9 +16,40 @@ try {
     const replacement = "+'</div>'+analyticsModeTabs()+'<div style=\"display:flex;gap:8px;flex-wrap:wrap;margin-top:12px\">'+analyticsLiveControl()";
     if (generated.includes(needle)) {
       generated = generated.replace(needle, replacement);
-      await fs.writeFile(generatedPath, generated);
-      patched = true;
     }
+
+    const analyticsTextStyles = `
+      .analyticsShell,
+      .analyticsShell * {
+        color:#071629 !important;
+        -webkit-text-fill-color:currentColor !important;
+      }
+      .analyticsShell .muted,
+      .analyticsShell p,
+      .analyticsShell small {
+        color:#607089 !important;
+      }
+      .analyticsShell button.primary,
+      .analyticsShell button.primary * {
+        color:#fff !important;
+        -webkit-text-fill-color:#fff !important;
+      }
+      .analyticsShell .metricValue,
+      .analyticsShell h1,
+      .analyticsShell h2,
+      .analyticsShell h3,
+      .analyticsShell strong,
+      .analyticsShell b {
+        color:#061a33 !important;
+      }
+    `;
+
+    if (!generated.includes(".analyticsShell * {")) {
+      generated = generated.replace("</style>", analyticsTextStyles + "</style>");
+    }
+
+    await fs.writeFile(generatedPath, generated);
+    patched = true;
   }
 } catch (error) {
   patched = false;
