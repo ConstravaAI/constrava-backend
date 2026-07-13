@@ -19,32 +19,55 @@ try {
     }
 
     const analyticsTextStyles = `
+      /* analytics-overview-visible-text-v2 */
       .analyticsShell,
       .analyticsShell * {
+        opacity:1 !important;
+        visibility:visible !important;
         color:#071629 !important;
-        -webkit-text-fill-color:currentColor !important;
+        -webkit-text-fill-color:#071629 !important;
+        background-image:none !important;
+        -webkit-background-clip:border-box !important;
+        background-clip:border-box !important;
+        text-shadow:none !important;
       }
-      .analyticsShell .muted,
       .analyticsShell p,
-      .analyticsShell small {
+      .analyticsShell small,
+      .analyticsShell .muted,
+      .analyticsShell [class*="muted"],
+      .analyticsShell [class*="label"],
+      .analyticsShell [class*="caption"],
+      .analyticsShell [class*="sub"] {
         color:#607089 !important;
+        -webkit-text-fill-color:#607089 !important;
+      }
+      .analyticsShell h1,
+      .analyticsShell h2,
+      .analyticsShell h3,
+      .analyticsShell h4,
+      .analyticsShell strong,
+      .analyticsShell b,
+      .analyticsShell .metricValue,
+      .analyticsShell [class*="value"],
+      .analyticsShell [class*="number"] {
+        color:#061a33 !important;
+        -webkit-text-fill-color:#061a33 !important;
       }
       .analyticsShell button.primary,
       .analyticsShell button.primary * {
         color:#fff !important;
         -webkit-text-fill-color:#fff !important;
+        background-image:none !important;
       }
-      .analyticsShell .metricValue,
-      .analyticsShell h1,
-      .analyticsShell h2,
-      .analyticsShell h3,
-      .analyticsShell strong,
-      .analyticsShell b {
-        color:#061a33 !important;
+      .analyticsShell [class*="positive"],
+      .analyticsShell [class*="success"],
+      .analyticsShell [class*="trend"] {
+        color:#168a52 !important;
+        -webkit-text-fill-color:#168a52 !important;
       }
     `;
 
-    if (!generated.includes(".analyticsShell * {")) {
+    if (!generated.includes("analytics-overview-visible-text-v2")) {
       generated = generated.replace("</style>", analyticsTextStyles + "</style>");
     }
 
