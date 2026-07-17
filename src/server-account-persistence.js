@@ -16,31 +16,6 @@ const replacements = [
     next: "const SESSION_MAX_AGE_SECONDS = Number(process.env.SESSION_MAX_AGE_SECONDS || 60 * 60 * 24 * 90);"
   },
   {
-    old: `async function saveStore(storeData) {
-  await fs.mkdir(path.dirname(storeFile), { recursive: true });
-  await fs.writeFile(storeFile, \`\${JSON.stringify(normalize(storeData), null, 2)}\\n\`);
-}`,
-    next: `let saveStoreQueue = Promise.resolve();
-
-async function writeStoreFile(content) {
-  await fs.mkdir(path.dirname(storeFile), { recursive: true });
-  const tempFile = storeFile + "." + process.pid + "." + Date.now() + ".tmp";
-  try {
-    await fs.writeFile(tempFile, content);
-    await fs.rename(tempFile, storeFile);
-  } catch (error) {
-    await fs.unlink(tempFile).catch(() => {});
-    throw error;
-  }
-}
-
-async function saveStore(storeData) {
-  const content = JSON.stringify(normalize(storeData), null, 2) + "\\n";
-  saveStoreQueue = saveStoreQueue.then(() => writeStoreFile(content), () => writeStoreFile(content));
-  return saveStoreQueue;
-}`
-  },
-  {
     old: `function ensureUserWorkspace(storeData, user) {
   if (!user.workspaceId) user.workspaceId = \`workspace_\${user.id}\`;
   if (!storeData.records.some((record) => record.workspaceId === user.workspaceId)) storeData.records.push(...starterRecords(user.workspaceId));
