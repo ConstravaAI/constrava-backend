@@ -47,6 +47,15 @@ function analyticsPulseHeader(events,pages){analyticsSyncStickyCommandCenter();c
       generated = generated.replace(tabsAfterHeaderNeedle, tabsInsideHeaderReplacement);
     }
 
+    const overviewKpisPattern = /body='<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'</section>'\+analyticsSection\('Overview'/;
+    if (overviewKpisPattern.test(generated)) {
+      generated = generated.replace(overviewKpisPattern, "body=analyticsSection('Overview'");
+    }
+    const inlineKpisPattern = /'<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'</section>'\+analyticsSection\('Overview'/;
+    if (inlineKpisPattern.test(generated)) {
+      generated = generated.replace(inlineKpisPattern, "analyticsSection('Overview'");
+    }
+
     const dedicatedKpiLabelCode = String.raw`function analyticsKpiTextColor(){return '#061a33'}
 function analyticsKpiCard(content){return '<div class="analyticsKpi" style="background:#fff;border:1px solid #d9e3f2;border-radius:16px;padding:14px">'+content+'</div>'}
 function analyticsKpiLabel(label){const color=analyticsKpiTextColor();return '<p style="margin:0;color:'+color+';-webkit-text-fill-color:'+color+';font-size:12px;font-weight:950;text-transform:uppercase;letter-spacing:.07em">'+esc(label)+'</p>'}
