@@ -47,6 +47,25 @@ function analyticsPulseHeader(events,pages){analyticsSyncStickyCommandCenter();c
       generated = generated.replace(tabsAfterHeaderNeedle, tabsInsideHeaderReplacement);
     }
 
+    const readableKpiLabelCode = String.raw`function analyticsKpi(label,value,now,prev,note){return '<div class="analyticsKpi" style="background:#fff;border:1px solid #d9e3f2;border-radius:16px;padding:14px"><p style="margin:0;color:#061a33;-webkit-text-fill-color:#061a33;font-size:12px;font-weight:950;text-transform:uppercase;letter-spacing:.07em">'+esc(label)+'</p><b style="display:block;color:#061a33;-webkit-text-fill-color:#061a33;font-size:30px;margin:5px 0;font-weight:950">'+esc(value)+'</b><span class="analyticsDelta '+(now>=prev?'up':'down')+'" style="display:inline-flex;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:950;color:#061a33;-webkit-text-fill-color:#061a33;background:#d9f8e8">'+analyticsPct(now,prev)+'</span><p style="margin:6px 0 0;color:#061a33;-webkit-text-fill-color:#061a33;font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.07em">'+esc(note||analyticsRangeLabel())+'</p></div>'}`;
+    const readableKpiNameCode = String.raw`function analyticsKpi(name,value,current,previous,note){return '<div class="analyticsKpi" style="background:#fff;border:1px solid #d9e3f2;border-radius:16px;padding:14px"><p style="margin:0;color:#061a33;-webkit-text-fill-color:#061a33;font-size:12px;font-weight:950;text-transform:uppercase;letter-spacing:.07em">'+esc(name)+'</p><b style="display:block;color:#061a33;-webkit-text-fill-color:#061a33;font-size:30px;margin:5px 0;font-weight:950">'+esc(value)+'</b><span class="analyticsDelta '+analyticsDeltaClass(current,previous)+'" style="display:inline-flex;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:950;color:#061a33;-webkit-text-fill-color:#061a33;background:#d9f8e8">'+analyticsPct(current,previous)+'</span><p style="margin:6px 0 0;color:#061a33;-webkit-text-fill-color:#061a33;font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.07em">'+esc(note||analyticsRangeLabel())+'</p></div>'}`;
+    const kpiLabelNextFunctions = ["analyticsSection", "analyticsRows", "analyticsOptions", "analyticsSourceOptions"];
+    for (const nextName of kpiLabelNextFunctions) {
+      const labelPattern = new RegExp("function analyticsKpi\\(label,value,now,prev,note\\)\\{[\\s\\S]*?\\}function " + nextName + "\\(");
+      if (labelPattern.test(generated)) {
+        generated = generated.replace(labelPattern, readableKpiLabelCode + "\nfunction " + nextName + "(");
+        break;
+      }
+    }
+    const kpiNameNextFunctions = ["analyticsSourceOptions", "analyticsControls", "analyticsRows", "analyticsSection"];
+    for (const nextName of kpiNameNextFunctions) {
+      const namePattern = new RegExp("function analyticsKpi\\(name,value,current,previous,note\\)\\{[\\s\\S]*?\\}function " + nextName + "\\(");
+      if (namePattern.test(generated)) {
+        generated = generated.replace(namePattern, readableKpiNameCode + "\nfunction " + nextName + "(");
+        break;
+      }
+    }
+
     const analyticsTextStyles = `
       /* analytics-kpi-readable-text-v3 */
       .analyticsStickyCommandCenter {
