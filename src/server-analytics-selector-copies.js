@@ -127,6 +127,18 @@ function analyticsPulseHeader(events,pages){analyticsSyncStickyCommandCenter();c
         color:#168a52 !important;
         -webkit-text-fill-color:#168a52 !important;
       }
+      .analyticsShell .analyticsKpis,
+      .analyticsShell .analyticsKpis *,
+      .analyticsShell [class*="analyticsKpi"],
+      .analyticsShell [class*="analyticsKpi"] *,
+      .analyticsShell [class*="Kpi"],
+      .analyticsShell [class*="Kpi"] * {
+        color:#061a33 !important;
+        -webkit-text-fill-color:#061a33 !important;
+        opacity:1 !important;
+        visibility:visible !important;
+        text-shadow:none !important;
+      }
     `;
 
     if (!generated.includes("analytics-overview-visible-text-v2")) {
