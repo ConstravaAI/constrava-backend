@@ -63,7 +63,9 @@ function analyticsKpiNote(note){const color=analyticsKpiTextColor();return '<p s
 function analyticsKpi(name,value,current,previous,note){return analyticsKpiCard(analyticsKpiLabel(name)+analyticsKpiValue(value)+analyticsKpiDelta(current,previous)+analyticsKpiNote(note||analyticsRangeLabel()))}`;
     const kpiLabelNextFunctions = ["analyticsSection", "analyticsRows", "analyticsOptions", "analyticsSourceOptions"];
     for (const nextName of kpiLabelNextFunctions) {
-      const labelPattern = new RegExp("function analyticsKpi(?:TextColor|Card|Label|Value|Delta|Note)?[\\s\\S]*?function analyticsKpi\\(label,value,now,prev,note\\)\\{[\\s\\S]*?\\}function " + nextName + "\\(");
+      const originalLabelPattern = new RegExp("function analyticsKpi\\(label,value,now,prev,note\\)\\{[\\s\\S]*?\\}function " + nextName + "\\(");
+      const splitLabelPattern = new RegExp("function analyticsKpiTextColor\\(\\)\\{[\\s\\S]*?function analyticsKpi\\(label,value,now,prev,note\\)\\{[\\s\\S]*?\\}function " + nextName + "\\(");
+      const labelPattern = splitLabelPattern.test(generated) ? splitLabelPattern : originalLabelPattern;
       if (labelPattern.test(generated)) {
         generated = generated.replace(labelPattern, dedicatedKpiLabelCode + "\nfunction " + nextName + "(");
         break;
@@ -71,7 +73,9 @@ function analyticsKpi(name,value,current,previous,note){return analyticsKpiCard(
     }
     const kpiNameNextFunctions = ["analyticsSourceOptions", "analyticsControls", "analyticsRows", "analyticsSection"];
     for (const nextName of kpiNameNextFunctions) {
-      const namePattern = new RegExp("function analyticsKpi(?:TextColor|Card|Label|Value|Delta|Note)?[\\s\\S]*?function analyticsKpi\\(name,value,current,previous,note\\)\\{[\\s\\S]*?\\}function " + nextName + "\\(");
+      const originalNamePattern = new RegExp("function analyticsKpi\\(name,value,current,previous,note\\)\\{[\\s\\S]*?\\}function " + nextName + "\\(");
+      const splitNamePattern = new RegExp("function analyticsKpiTextColor\\(\\)\\{[\\s\\S]*?function analyticsKpi\\(name,value,current,previous,note\\)\\{[\\s\\S]*?\\}function " + nextName + "\\(");
+      const namePattern = splitNamePattern.test(generated) ? splitNamePattern : originalNamePattern;
       if (namePattern.test(generated)) {
         generated = generated.replace(namePattern, dedicatedKpiNameCode + "\nfunction " + nextName + "(");
         break;
