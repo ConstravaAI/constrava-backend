@@ -48,7 +48,7 @@ function analyticsPulseHeader(events,pages){analyticsSyncStickyCommandCenter();c
     }
 
     const analyticsTextStyles = `
-      /* analytics-overview-visible-text-v2 */
+      /* analytics-kpi-readable-text-v3 */
       .analyticsStickyCommandCenter {
         width:calc(100% + 48px) !important;
         max-width:none !important;
@@ -127,6 +127,8 @@ function analyticsPulseHeader(events,pages){analyticsSyncStickyCommandCenter();c
         color:#168a52 !important;
         -webkit-text-fill-color:#168a52 !important;
       }
+      .analyticsShell section.analyticsKpis,
+      .analyticsShell section.analyticsKpis *,
       .analyticsShell .analyticsKpis,
       .analyticsShell .analyticsKpis *,
       .analyticsShell [class*="analyticsKpi"],
@@ -138,10 +140,13 @@ function analyticsPulseHeader(events,pages){analyticsSyncStickyCommandCenter();c
         opacity:1 !important;
         visibility:visible !important;
         text-shadow:none !important;
+        background-image:none !important;
+        -webkit-background-clip:border-box !important;
+        background-clip:border-box !important;
       }
     `;
 
-    if (!generated.includes("analytics-overview-visible-text-v2")) {
+    if (!generated.includes("analytics-kpi-readable-text-v3")) {
       generated = generated.replace("</style>", analyticsTextStyles + "</style>");
     }
 
