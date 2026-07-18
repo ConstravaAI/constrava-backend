@@ -33,10 +33,16 @@ function analyticsModeTabs(){return '<div class="analyticsLooseModeTabs" style="
 
     const separatedPulseHeaderCode = String.raw`function analyticsLiveControl(){return '<button class="'+(S.analyticsLive?'primary':'secondary')+'" type="button" onclick="analyticsToggleLive()" style="border-radius:8px;padding:8px 10px;font-weight:900;box-shadow:none">'+(S.analyticsLive?'Live updating':'Live paused')+'</button>'}
 function analyticsStatusItem(text){return '<span class="analyticsStatusItem" style="color:#607089;font-size:13px;font-weight:850;line-height:1.4">'+text+'</span>'}
-function analyticsPulseHeader(events,pages){const last=events.length?[...events].sort(function(a,b){return analyticsTime(b)-analyticsTime(a)})[0]:null;return '<section class="analyticsHero analyticsStickyCommandCenter" style="position:sticky;top:84px;z-index:20"><div class="analyticsTop"><div><div class="analyticsEyebrow">'+(S.analyticsLive?'Live analytics':'Manual refresh')+'</div><h2>Analytics command center</h2><p>Website tracker activity organized into traffic, sources, pages, events, and audience context.</p></div>'+analyticsControls()+'</div><div class="analyticsStatusLine" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:12px">'+analyticsLiveControl()+analyticsStatusItem('Last event: '+esc(last?(last.createdAt||'').slice(5,16).replace('T',' '):'none yet'))+analyticsStatusItem(pages.size+' active pages')+'</div></section>'}`;
+function analyticsPulseHeader(events,pages){const last=events.length?[...events].sort(function(a,b){return analyticsTime(b)-analyticsTime(a)})[0]:null;return '<section class="analyticsHero analyticsStickyCommandCenter" style="position:sticky;top:84px;z-index:20"><div class="analyticsTop"><div><div class="analyticsEyebrow">'+(S.analyticsLive?'Live analytics':'Manual refresh')+'</div><h2>Analytics command center</h2><p>Website tracker activity organized into traffic, sources, pages, events, and audience context.</p>'+analyticsModeTabs()+'</div>'+analyticsControls()+'</div><div class="analyticsStatusLine" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:12px">'+analyticsLiveControl()+analyticsStatusItem('Last event: '+esc(last?(last.createdAt||'').slice(5,16).replace('T',' '):'none yet'))+analyticsStatusItem(pages.size+' active pages')+'</div></section>'}`;
     const pulseHeaderPattern = /function analyticsLiveControl\(\)\{[\s\S]*?\}function analyticsPulseHeader\(events,pages\)\{[\s\S]*?\}function analyticsContent\(\)/;
     if (pulseHeaderPattern.test(generated)) {
       generated = generated.replace(pulseHeaderPattern, separatedPulseHeaderCode + "\nfunction analyticsContent()");
+    }
+
+    const tabsAfterHeaderNeedle = "+analyticsPulseHeader(events,pages)+analyticsModeTabs()+'<div class=\"analyticsToolPanel\">";
+    const tabsInsideHeaderReplacement = "+analyticsPulseHeader(events,pages)+'<div class=\"analyticsToolPanel\">";
+    if (generated.includes(tabsAfterHeaderNeedle)) {
+      generated = generated.replace(tabsAfterHeaderNeedle, tabsInsideHeaderReplacement);
     }
 
     const analyticsTextStyles = `
