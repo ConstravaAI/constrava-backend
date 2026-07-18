@@ -18,6 +18,19 @@ try {
       generated = generated.replace(needle, replacement);
     }
 
+    const separatedModeTabsCode = String.raw`function analyticsModeTab(key,label){const active=S.analyticsView===key;return '<button onclick="S.analyticsView=\\''+key+'\\';render()" class="'+(active?'primary':'secondary')+'" style="border-radius:999px;padding:10px 14px;font-weight:950">'+label+'</button>'}
+function analyticsOverviewTab(){return analyticsModeTab('overview','Overview')}
+function analyticsTrafficTab(){return analyticsModeTab('traffic','Traffic')}
+function analyticsSourcesTab(){return analyticsModeTab('sources','Sources')}
+function analyticsPagesTab(){return analyticsModeTab('pages','Pages')}
+function analyticsEventsTab(){return analyticsModeTab('events','Events')}
+function analyticsAudienceTab(){return analyticsModeTab('audience','Audience')}
+function analyticsModeTabs(){return '<div class="analyticsLooseModeTabs" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px">'+analyticsOverviewTab()+analyticsTrafficTab()+analyticsSourcesTab()+analyticsPagesTab()+analyticsEventsTab()+analyticsAudienceTab()+'</div>'}`;
+    const modeTabsPattern = /function analyticsModeTabs\(\)\{[\s\S]*?\}function analyticsLiveControl\(\)/;
+    if (modeTabsPattern.test(generated)) {
+      generated = generated.replace(modeTabsPattern, separatedModeTabsCode + "\nfunction analyticsLiveControl()");
+    }
+
     const analyticsTextStyles = `
       /* analytics-overview-visible-text-v2 */
       .analyticsShell,
