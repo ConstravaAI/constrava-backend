@@ -47,11 +47,11 @@ function analyticsPulseHeader(events,pages){analyticsSyncStickyCommandCenter();c
       generated = generated.replace(tabsAfterHeaderNeedle, tabsInsideHeaderReplacement);
     }
 
-    const overviewKpisPattern = /body='<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'</section>'\+analyticsSection\('Overview'/;
+    const overviewKpisPattern = /body='<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'<\/section>'\+analyticsSection\('Overview'/;
     if (overviewKpisPattern.test(generated)) {
       generated = generated.replace(overviewKpisPattern, "body=analyticsSection('Overview'");
     }
-    const inlineKpisPattern = /'<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'</section>'\+analyticsSection\('Overview'/;
+    const inlineKpisPattern = /'<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'<\/section>'\+analyticsSection\('Overview'/;
     if (inlineKpisPattern.test(generated)) {
       generated = generated.replace(inlineKpisPattern, "analyticsSection('Overview'");
     }
