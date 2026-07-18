@@ -33,7 +33,7 @@ function analyticsModeTabs(){return '<div class="analyticsLooseModeTabs" style="
 
     const separatedPulseHeaderCode = String.raw`function analyticsLiveControl(){return '<button class="'+(S.analyticsLive?'primary':'secondary')+'" type="button" onclick="analyticsToggleLive()" style="border-radius:8px;padding:8px 10px;font-weight:900;box-shadow:none">'+(S.analyticsLive?'Live updating':'Live paused')+'</button>'}
 function analyticsStatusItem(text){return '<span class="analyticsStatusItem" style="color:#607089;font-size:13px;font-weight:850;line-height:1.4">'+text+'</span>'}
-function analyticsPulseHeader(events,pages){const last=events.length?[...events].sort(function(a,b){return analyticsTime(b)-analyticsTime(a)})[0]:null;return '<section class="analyticsHero analyticsStickyCommandCenter" style="position:sticky;top:84px;z-index:20;width:calc(100% + 48px);max-width:none;box-sizing:border-box;margin:-1px -24px 0 -24px;border-radius:0"><div class="analyticsTop"><div><div class="analyticsEyebrow">'+(S.analyticsLive?'Live analytics':'Manual refresh')+'</div><h2>Analytics command center</h2><p>Website tracker activity organized into traffic, sources, pages, events, and audience context.</p>'+analyticsModeTabs()+'</div>'+analyticsControls()+'</div><div class="analyticsStatusLine" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:12px">'+analyticsLiveControl()+analyticsStatusItem('Last event: '+esc(last?(last.createdAt||'').slice(5,16).replace('T',' '):'none yet'))+analyticsStatusItem(pages.size+' active pages')+'</div></section>'}`;
+function analyticsPulseHeader(events,pages){const last=events.length?[...events].sort(function(a,b){return analyticsTime(b)-analyticsTime(a)})[0]:null;return '<section class="analyticsHero analyticsStickyCommandCenter" style="position:sticky;top:69px;z-index:20;width:calc(100% + 48px);max-width:none;box-sizing:border-box;margin:-25px -24px 0 -24px;border-radius:0"><div class="analyticsTop"><div><div class="analyticsEyebrow">'+(S.analyticsLive?'Live analytics':'Manual refresh')+'</div><h2>Analytics command center</h2><p>Website tracker activity organized into traffic, sources, pages, events, and audience context.</p>'+analyticsModeTabs()+'</div>'+analyticsControls()+'</div><div class="analyticsStatusLine" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:12px">'+analyticsLiveControl()+analyticsStatusItem('Last event: '+esc(last?(last.createdAt||'').slice(5,16).replace('T',' '):'none yet'))+analyticsStatusItem(pages.size+' active pages')+'</div></section>'}`;
     const pulseHeaderPattern = /function analyticsLiveControl\(\)\{[\s\S]*?\}function analyticsPulseHeader\(events,pages\)\{[\s\S]*?\}function analyticsContent\(\)/;
     if (pulseHeaderPattern.test(generated)) {
       generated = generated.replace(pulseHeaderPattern, separatedPulseHeaderCode + "\nfunction analyticsContent()");
@@ -51,14 +51,14 @@ function analyticsPulseHeader(events,pages){const last=events.length?[...events]
         width:calc(100% + 48px) !important;
         max-width:none !important;
         box-sizing:border-box !important;
-        margin:-1px -24px 0 -24px !important;
+        margin:-25px -24px 0 -24px !important;
         border-radius:0 !important;
         overflow:visible !important;
       }
       @media (max-width:760px) {
         .analyticsStickyCommandCenter {
           width:calc(100% + 32px) !important;
-          margin:-1px -16px 0 -16px !important;
+          margin:-25px -16px 0 -16px !important;
           border-radius:0 !important;
         }
       }
