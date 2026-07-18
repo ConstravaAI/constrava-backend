@@ -18,7 +18,7 @@ try {
       generated = generated.replace(needle, replacement);
     }
 
-    const separatedModeTabsCode = String.raw`function analyticsModeTab(key,label){const active=S.analyticsView===key;return '<button onclick="S.analyticsView=\\''+key+'\\';render()" class="'+(active?'primary':'secondary')+'" style="border-radius:999px;padding:10px 14px;font-weight:950">'+label+'</button>'}
+    const separatedModeTabsCode = String.raw`function analyticsModeTab(key,label){const active=S.analyticsView===key;return '<button onclick="S.analyticsView=&quot;'+key+'&quot;;render()" class="'+(active?'primary':'secondary')+'" style="border-radius:999px;padding:10px 14px;font-weight:950">'+label+'</button>'}
 function analyticsOverviewTab(){return analyticsModeTab('overview','Overview')}
 function analyticsTrafficTab(){return analyticsModeTab('traffic','Traffic')}
 function analyticsSourcesTab(){return analyticsModeTab('sources','Sources')}
