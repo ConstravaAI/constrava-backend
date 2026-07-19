@@ -60,8 +60,13 @@ function analyticsDedicatedMetrics(){return analyticsMetricTray(analyticsUniqueS
     generated = generated.replace(/body='<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'<\/section>'\+analyticsSection\('Overview'/, "body=analyticsSection('Overview'");
     generated = generated.replace(/'<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'<\/section>'\+analyticsSection\('Overview'/, "analyticsSection('Overview'");
 
+    const commandCenterBlueGradient = `
+          radial-gradient(circle at 12% 0%, rgba(18,58,99,.32), transparent 34%),
+          radial-gradient(circle at 88% 18%, rgba(34,86,142,.24), transparent 30%),
+          linear-gradient(135deg, #020817 0%, #071a33 56%, #123a63 100%) !important`;
+
     const analyticsTextStyles = `
-      /* analytics-command-center-blue-gradient-v1 */
+      /* analytics-command-center-blue-gradient-v2 */
       .analyticsStickyCommandCenter {
         width:calc(100% + 48px) !important;
         max-width:none !important;
@@ -71,10 +76,7 @@ function analyticsDedicatedMetrics(){return analyticsMetricTray(analyticsUniqueS
         overflow:visible !important;
         padding:18px 14px 20px !important;
         min-height:auto !important;
-        background:
-          radial-gradient(circle at 12% 0%, rgba(31,76,136,.26), transparent 34%),
-          radial-gradient(circle at 88% 18%, rgba(42,95,158,.20), transparent 30%),
-          linear-gradient(135deg, #020b18 0%, #06172c 56%, #0b2b4d 100%) !important;
+        background:${commandCenterBlueGradient};
       }
       .analyticsStickyCommandCenter h2 {
         font-size:clamp(34px,3vw,48px) !important;
@@ -99,6 +101,9 @@ function analyticsDedicatedMetrics(){return analyticsMetricTray(analyticsUniqueS
         -webkit-background-clip:border-box !important;
         background-clip:border-box !important;
         text-shadow:none !important;
+      }
+      .analyticsShell .analyticsStickyCommandCenter {
+        background:${commandCenterBlueGradient};
       }
       .analyticsShell p,
       .analyticsShell small,
@@ -151,7 +156,7 @@ function analyticsDedicatedMetrics(){return analyticsMetricTray(analyticsUniqueS
       }
     `;
 
-    if (!generated.includes("analytics-command-center-blue-gradient-v1")) {
+    if (!generated.includes("analytics-command-center-blue-gradient-v2")) {
       generated = generated.replace("</style>", analyticsTextStyles + "</style>");
     }
 
