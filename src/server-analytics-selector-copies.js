@@ -37,29 +37,31 @@ function analyticsMetricRangeLabel(range){return range==='day'?'Day':range==='we
 function analyticsMetricEventsFor(key){const range=analyticsMetricRange(key);const days=analyticsMetricRangeDays(range);const rows=S.events||[];if(days>=99999)return rows;const cutoff=Date.now()-days*86400000;return rows.filter(function(e){return (Date.parse(e.createdAt||0)||0)>=cutoff})}
 function analyticsSetMetricRange(key,value){S.analyticsMetricRanges=S.analyticsMetricRanges||analyticsMetricRangeDefaults();S.analyticsMetricRanges[key]=value;render()}
 function analyticsRefreshMetric(key){S.analyticsMetricRefreshing=key;render();const done=function(){S.analyticsMetricRefreshing=null;if(typeof analyticsEnsureLive==='function')analyticsEnsureLive();render()};try{if(typeof load==='function'){Promise.resolve(load()).then(done).catch(done)}else{done()}}catch(error){done()}}
-function analyticsMetricRangeSelect(key){const current=analyticsMetricRange(key);const opts=[['day','Day'],['week','Week'],['month','Month'],['quarter','3 months'],['all','All']];return '<select class="analyticsMetricSelect" onchange="analyticsSetMetricRange(&quot;'+key+'&quot;,this.value)">'+opts.map(function(o){return '<option value="'+o[0]+'" '+(current===o[0]?'selected':'')+'>'+o[1]+'</option>'}).join('')+'</select>'}
-function analyticsMetricRefreshButton(key){return '<button class="analyticsMetricRefresh secondary" type="button" onclick="analyticsRefreshMetric(&quot;'+key+'&quot;)">'+(S.analyticsMetricRefreshing===key?'Updating':'Refresh')+'</button>'}
+function analyticsMetricRangeSelect(key){const current=analyticsMetricRange(key);const opts=[['day','Day'],['week','Week'],['month','Month'],['quarter','3 months'],['all','All']];return '<select class="analyticsMetricSelect" style="min-height:28px;border-radius:7px;border:1px solid #cbd8ea;background:#f8fbff;color:#061a33;font-size:11px;font-weight:850;padding:4px 7px;max-width:100%" onchange="analyticsSetMetricRange(&quot;'+key+'&quot;,this.value)">'+opts.map(function(o){return '<option value="'+o[0]+'" '+(current===o[0]?'selected':'')+'>'+o[1]+'</option>'}).join('')+'</select>'}
+function analyticsMetricRefreshButton(key){return '<button class="analyticsMetricRefresh secondary" type="button" style="min-height:28px;border-radius:7px;border:1px solid #cbd8ea;background:#f8fbff;color:#061a33;font-size:11px;font-weight:850;padding:4px 7px;box-shadow:none" onclick="analyticsRefreshMetric(&quot;'+key+'&quot;)">'+(S.analyticsMetricRefreshing===key?'Updating':'Refresh')+'</button>'}
 function analyticsMetricControls(key){return analyticsMetricRangeSelect(key)}
-function analyticsMetricShell(key,title,value,note,controls){return '<section class="analyticsMetricCard"><div class="analyticsMetricCardTop"><p>'+esc(title)+'</p><div class="analyticsMetricControls">'+(controls||'')+analyticsMetricRefreshButton(key)+'</div></div><b>'+esc(value)+'</b><span>'+esc(note)+'</span></section>'}
+function analyticsMetricTray(cards){return '<section class="analyticsMetricsTray" style="display:flex;flex-direction:row;flex-wrap:nowrap;align-items:stretch;gap:10px;width:100%;max-width:100%;box-sizing:border-box;margin:14px 0 0;overflow-x:auto;overflow-y:hidden;padding:0 0 5px;scrollbar-width:thin">'+cards+'</section>'}
+function analyticsMetricShell(key,title,value,note,controls){return '<section class="analyticsMetricCard" style="flex:1 1 0;min-width:142px;background:#fff;border:1px solid #d9e3f2;border-radius:8px;box-shadow:0 10px 28px rgba(6,26,51,.07);padding:12px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;gap:10px"><div style="display:grid;gap:8px;align-items:start"><p style="margin:0;color:#061a33;font-size:11px;font-weight:950;letter-spacing:.06em;line-height:1.15;text-transform:uppercase">'+esc(title)+'</p><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+(controls||'')+analyticsMetricRefreshButton(key)+'</div></div><div><b style="display:block;color:#061a33;font-size:30px;line-height:1;margin:0 0 6px;font-weight:950">'+esc(value)+'</b><span style="color:#607089;font-size:12px;font-weight:850">'+esc(note)+'</span></div></section>'}
 function analyticsUniqueSessionsMetric(){const rows=analyticsMetricEventsFor('unique');const sessions=new Set(rows.map(function(e){return e.sessionId||''}).filter(Boolean));return analyticsMetricShell('unique','Unique sessions',sessions.size,analyticsMetricRangeLabel(analyticsMetricRange('unique')),analyticsMetricControls('unique'))}
 function analyticsTotalEventsMetric(){const rows=analyticsMetricEventsFor('events');return analyticsMetricShell('events','Total events',rows.length,analyticsMetricRangeLabel(analyticsMetricRange('events')),analyticsMetricControls('events'))}
 function analyticsPageViewsMetric(){const rows=analyticsMetricEventsFor('pageViews').filter(function(e){return e.type==='page_view'});return analyticsMetricShell('pageViews','Page views',rows.length,analyticsMetricRangeLabel(analyticsMetricRange('pageViews')),analyticsMetricControls('pageViews'))}
 function analyticsFormSubmitsMetric(){const rows=analyticsMetricEventsFor('forms').filter(function(e){return e.type==='form_submission'});return analyticsMetricShell('forms','Form submits',rows.length,analyticsMetricRangeLabel(analyticsMetricRange('forms')),analyticsMetricControls('forms'))}
 function analyticsConversionRateMetric(){const rows=analyticsFilteredEvents();const views=rows.filter(function(e){return e.type==='page_view'}).length;const forms=rows.filter(function(e){return e.type==='form_submission'}).length;const rate=views?Math.round(forms/views*100):0;return analyticsMetricShell('conversion','Conversion rate',rate+'%','Forms / views','')}
 function analyticsActivePagesMetric(){const rows=analyticsFilteredEvents();const pages=new Set(rows.map(function(e){return analyticsPath(e.sourceUrl)}).filter(Boolean));return analyticsMetricShell('activePages','Active pages',pages.size,'Current view','')}
-function analyticsDedicatedMetrics(){return '<section class="analyticsDedicatedMetrics">'+analyticsUniqueSessionsMetric()+analyticsTotalEventsMetric()+analyticsPageViewsMetric()+analyticsFormSubmitsMetric()+analyticsConversionRateMetric()+analyticsActivePagesMetric()+'</section>'}`;
-    if (!generated.includes("function analyticsDedicatedMetrics()")) {
+function analyticsDedicatedMetrics(){return analyticsMetricTray(analyticsUniqueSessionsMetric()+analyticsTotalEventsMetric()+analyticsPageViewsMetric()+analyticsFormSubmitsMetric()+analyticsConversionRateMetric()+analyticsActivePagesMetric())}`;
+    if (!generated.includes("function analyticsMetricTray(")) {
       generated = generated.replace("function analyticsContent(){", dedicatedMetricsCode + "\nfunction analyticsContent(){");
     }
 
     generated = generated.replace("+analyticsPulseHeader(events,pages)+analyticsModeTabs()+'<div class=\"analyticsToolPanel\">", "+analyticsPulseHeader(events,pages)+'<div class=\"analyticsToolPanel\">");
+    generated = generated.replace("+analyticsPulseHeader(events,pages)+analyticsDedicatedMetrics()+'<div class=\"analyticsToolPanel\">", "+analyticsPulseHeader(events,pages)+'<div class=\"analyticsToolPanel\">");
     generated = generated.replace("+analyticsPulseHeader(events,pages)+'<div class=\"analyticsToolPanel\">", "+analyticsPulseHeader(events,pages)+analyticsDedicatedMetrics()+'<div class=\"analyticsToolPanel\">");
 
     generated = generated.replace(/body='<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'<\/section>'\+analyticsSection\('Overview'/, "body=analyticsSection('Overview'");
     generated = generated.replace(/'<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'<\/section>'\+analyticsSection\('Overview'/, "analyticsSection('Overview'");
 
     const analyticsTextStyles = `
-      /* analytics-horizontal-metrics-v1 */
+      /* analytics-metrics-tray-v2 */
       .analyticsStickyCommandCenter {
         width:calc(100% + 48px) !important;
         max-width:none !important;
@@ -122,84 +124,17 @@ function analyticsDedicatedMetrics(){return '<section class="analyticsDedicatedM
         -webkit-text-fill-color:#fff !important;
         background-image:none !important;
       }
-      .analyticsDedicatedMetrics {
+      .analyticsMetricsTray {
         display:flex !important;
+        flex-direction:row !important;
         flex-wrap:nowrap !important;
         align-items:stretch !important;
-        gap:10px !important;
-        width:100% !important;
-        max-width:100% !important;
-        box-sizing:border-box !important;
-        margin:16px 0 0 !important;
-        overflow-x:auto !important;
-        overflow-y:hidden !important;
-        padding-bottom:4px !important;
-        scrollbar-width:thin !important;
       }
-      .analyticsMetricCard {
+      .analyticsMetricsTray .analyticsMetricCard {
         flex:1 1 0 !important;
-        min-width:150px !important;
-        background:#fff !important;
-        border:1px solid #d9e3f2 !important;
-        border-radius:8px !important;
-        box-shadow:0 10px 28px rgba(6,26,51,.07) !important;
-        padding:12px !important;
-        box-sizing:border-box !important;
-        display:flex !important;
-        flex-direction:column !important;
-        justify-content:space-between !important;
-      }
-      .analyticsMetricCardTop {
-        display:grid !important;
-        gap:8px !important;
-        align-items:start !important;
-      }
-      .analyticsMetricCard p {
-        margin:0 !important;
-        color:#061a33 !important;
-        -webkit-text-fill-color:#061a33 !important;
-        font-size:11px !important;
-        font-weight:950 !important;
-        letter-spacing:.06em !important;
-        line-height:1.15 !important;
-        text-transform:uppercase !important;
-      }
-      .analyticsMetricCard b {
-        display:block !important;
-        color:#061a33 !important;
-        -webkit-text-fill-color:#061a33 !important;
-        font-size:30px !important;
-        line-height:1 !important;
-        margin:12px 0 6px !important;
-        font-weight:950 !important;
-      }
-      .analyticsMetricCard span {
-        color:#607089 !important;
-        -webkit-text-fill-color:#607089 !important;
-        font-size:12px !important;
-        font-weight:850 !important;
-      }
-      .analyticsMetricControls {
-        display:flex !important;
-        gap:6px !important;
-        flex-wrap:wrap !important;
-      }
-      .analyticsMetricSelect,
-      .analyticsMetricRefresh {
-        min-height:30px !important;
-        border-radius:7px !important;
-        border:1px solid #cbd8ea !important;
-        background:#f8fbff !important;
-        color:#061a33 !important;
-        -webkit-text-fill-color:#061a33 !important;
-        font-size:12px !important;
-        font-weight:850 !important;
-        padding:5px 8px !important;
-        box-shadow:none !important;
-        max-width:100% !important;
       }
       @media (max-width:900px) {
-        .analyticsMetricCard { flex:0 0 170px !important; }
+        .analyticsMetricsTray .analyticsMetricCard { flex:0 0 170px !important; }
       }
       @media (max-width:760px) {
         .analyticsStickyCommandCenter {
@@ -208,11 +143,11 @@ function analyticsDedicatedMetrics(){return '<section class="analyticsDedicatedM
           border-radius:0 !important;
           padding:16px 12px 18px !important;
         }
-        .analyticsMetricCard { flex:0 0 210px !important; }
+        .analyticsMetricsTray .analyticsMetricCard { flex:0 0 210px !important; }
       }
     `;
 
-    if (!generated.includes("analytics-horizontal-metrics-v1")) {
+    if (!generated.includes("analytics-metrics-tray-v2")) {
       generated = generated.replace("</style>", analyticsTextStyles + "</style>");
     }
 
