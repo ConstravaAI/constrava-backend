@@ -27,9 +27,12 @@ function analyticsModeTabs(){return '<div class="analyticsLooseModeTabs" style="
 
     const separatedPulseHeaderCode = String.raw`function analyticsTopBarBottom(){try{const labels=['Analytics','CRM','Connected Resources'];const nodes=[...document.querySelectorAll('header,nav,[role="navigation"],body>div,body>section,body>main,div')];let best=null;nodes.forEach(function(el){const text=(el.innerText||'').replace(/\s+/g,' ');if(!labels.every(function(label){return text.includes(label)}))return;const r=el.getBoundingClientRect();if(r.width<window.innerWidth*.5||r.height<32||r.height>120||r.top>4)return;if(!best||r.height<best.height)best={bottom:Math.round(r.bottom),height:r.height}});return best?best.bottom:69}catch(error){return 69}}
 function analyticsSyncStickyCommandCenter(){requestAnimationFrame(function(){try{const banner=document.querySelector('.analyticsStickyCommandCenter');if(!banner)return;const top=analyticsTopBarBottom();document.documentElement.style.setProperty('--analytics-sticky-top',top+'px');document.documentElement.style.setProperty('--analytics-command-pull','0px');requestAnimationFrame(function(){try{const currentTop=Math.round(banner.getBoundingClientRect().top);const pull=Math.max(0,currentTop-top);document.documentElement.style.setProperty('--analytics-command-pull',pull+'px')}catch(error){}})}catch(error){}});return ''}
+function analyticsCommandCenterFull(){return S.analyticsCommandCenterLite!==true}
+function analyticsToggleCommandCenter(){S.analyticsCommandCenterLite=analyticsCommandCenterFull();render()}
+function analyticsCommandCenterToggle(){return '<button class="secondary" type="button" onclick="analyticsToggleCommandCenter()" style="border-radius:8px;padding:7px 10px;font-weight:900;box-shadow:none;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.12);color:#fff">'+(analyticsCommandCenterFull()?'Lite view':'Full view')+'</button>'}
 function analyticsLiveControl(){return '<button class="'+(S.analyticsLive?'primary':'secondary')+'" type="button" onclick="analyticsToggleLive()" style="border-radius:8px;padding:7px 10px;font-weight:900;box-shadow:none">'+(S.analyticsLive?'Live updating':'Live paused')+'</button>'}
 function analyticsStatusItem(text){return '<span class="analyticsStatusItem" style="color:#c7d6ea;font-size:13px;font-weight:850;line-height:1.4">'+text+'</span>'}
-function analyticsPulseHeader(events,pages){analyticsSyncStickyCommandCenter();const last=events.length?[...events].sort(function(a,b){return analyticsTime(b)-analyticsTime(a)})[0]:null;const commandBg='${commandCenterBlueGradient}';return '<section class="analyticsHero analyticsStickyCommandCenter" style="position:sticky;top:var(--analytics-sticky-top,69px);z-index:20;width:calc(100% + 48px);max-width:none;box-sizing:border-box;margin:calc(-1 * var(--analytics-command-pull, 0px)) -24px 0 -24px;border-radius:0;background:'+commandBg+' !important;background-image:'+commandBg+' !important"><div class="analyticsTop"><div><div class="analyticsEyebrow">'+(S.analyticsLive?'Live analytics':'Manual refresh')+'</div><h2>Analytics command center</h2>'+analyticsModeTabs()+'</div>'+analyticsControls()+'</div><div class="analyticsStatusLine" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:10px">'+analyticsLiveControl()+analyticsStatusItem('Last event: '+esc(last?(last.createdAt||'').slice(5,16).replace('T',' '):'none yet'))+analyticsStatusItem(pages.size+' active pages')+'</div></section>'}`;
+function analyticsPulseHeader(events,pages){analyticsSyncStickyCommandCenter();const commandBg='${commandCenterBlueGradient}';const full=analyticsCommandCenterFull();if(!full){return '<section class="analyticsHero analyticsStickyCommandCenter analyticsCommandCenterLite" style="position:sticky;top:var(--analytics-sticky-top,69px);z-index:20;width:calc(100% + 48px);max-width:none;box-sizing:border-box;margin:calc(-1 * var(--analytics-command-pull, 0px)) -24px 0 -24px;border-radius:0;padding:10px 14px;background:'+commandBg+' !important;background-image:'+commandBg+' !important"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><h2 style="margin:0;color:#fff;font-size:24px;line-height:1;font-weight:950">Analytics command center</h2><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+analyticsLiveControl()+analyticsCommandCenterToggle()+'</div></div></section>'}const last=events.length?[...events].sort(function(a,b){return analyticsTime(b)-analyticsTime(a)})[0]:null;return '<section class="analyticsHero analyticsStickyCommandCenter" style="position:sticky;top:var(--analytics-sticky-top,69px);z-index:20;width:calc(100% + 48px);max-width:none;box-sizing:border-box;margin:calc(-1 * var(--analytics-command-pull, 0px)) -24px 0 -24px;border-radius:0;background:'+commandBg+' !important;background-image:'+commandBg+' !important"><div class="analyticsTop"><div><div class="analyticsEyebrow">'+(S.analyticsLive?'Live analytics':'Manual refresh')+'</div><h2>Analytics command center</h2>'+analyticsModeTabs()+'</div>'+analyticsControls()+'</div><div class="analyticsStatusLine" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:10px">'+analyticsLiveControl()+analyticsCommandCenterToggle()+analyticsStatusItem('Last event: '+esc(last?(last.createdAt||'').slice(5,16).replace('T',' '):'none yet'))+analyticsStatusItem(pages.size+' active pages')+'</div></section>'}`;
     generated = generated.replace(/function analyticsLiveControl\(\)\{[\s\S]*?\}function analyticsPulseHeader\(events,pages\)\{[\s\S]*?\}function analyticsContent\(\)/, separatedPulseHeaderCode + "\nfunction analyticsContent()");
 
     const dedicatedMetricsCode = String.raw`function analyticsMetricRangeDefaults(){return {unique:'month',events:'month',pageViews:'month',forms:'month'}}
@@ -64,7 +67,7 @@ function analyticsDedicatedMetrics(){return analyticsMetricTray(analyticsUniqueS
     generated = generated.replace(/'<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'<\/section>'\+analyticsSection\('Overview'/, "analyticsSection('Overview'");
 
     const analyticsTextStyles = `
-      /* analytics-metrics-tray-collapsible-v1 */
+      /* analytics-command-center-lite-v1 */
       .analyticsStickyCommandCenter,
       .analyticsShell .analyticsStickyCommandCenter,
       section.analyticsHero.analyticsStickyCommandCenter {
@@ -81,10 +84,17 @@ function analyticsDedicatedMetrics(){return analyticsMetricTray(analyticsUniqueS
         padding:18px 14px 20px !important;
         min-height:auto !important;
       }
+      .analyticsCommandCenterLite {
+        padding:10px 14px !important;
+      }
       .analyticsStickyCommandCenter h2 {
         font-size:clamp(34px,3vw,48px) !important;
         line-height:1 !important;
         margin:8px 0 0 !important;
+      }
+      .analyticsCommandCenterLite h2 {
+        font-size:24px !important;
+        margin:0 !important;
       }
       .analyticsStickyCommandCenter .analyticsTop {
         gap:16px !important;
@@ -110,6 +120,9 @@ function analyticsDedicatedMetrics(){return analyticsMetricTray(analyticsUniqueS
           margin:calc(-1 * var(--analytics-command-pull, 0px)) -16px 0 -16px !important;
           border-radius:0 !important;
           padding:16px 12px 18px !important;
+        }
+        .analyticsCommandCenterLite {
+          padding:10px 12px !important;
         }
         .analyticsMetricsTray .analyticsMetricCard { flex:0 0 210px !important; }
       }
