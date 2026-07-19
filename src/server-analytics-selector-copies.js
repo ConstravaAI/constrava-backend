@@ -12,11 +12,6 @@ try {
   const encoded = wrapper.match(/const encoded = "([\s\S]*?)";/)?.[1];
   if (encoded) {
     let generated = Buffer.from(encoded, "base64").toString("utf8");
-    const needle = "+'</div><div style=\"display:flex;gap:8px;flex-wrap:wrap;margin-top:12px\">'+analyticsLiveControl()";
-    const replacement = "+'</div>'+analyticsModeTabs()+'<div style=\"display:flex;gap:8px;flex-wrap:wrap;margin-top:12px\">'+analyticsLiveControl()";
-    if (generated.includes(needle)) {
-      generated = generated.replace(needle, replacement);
-    }
 
     const separatedModeTabsCode = String.raw`function analyticsModeTab(key,label){const active=S.analyticsView===key;return '<button onclick="S.analyticsView=&quot;'+key+'&quot;;render()" class="'+(active?'primary':'secondary')+'" style="border-radius:999px;padding:9px 13px;font-weight:950">'+label+'</button>'}
 function analyticsOverviewTab(){return analyticsModeTab('overview','Overview')}
@@ -26,20 +21,14 @@ function analyticsPagesTab(){return analyticsModeTab('pages','Pages')}
 function analyticsEventsTab(){return analyticsModeTab('events','Events')}
 function analyticsAudienceTab(){return analyticsModeTab('audience','Audience')}
 function analyticsModeTabs(){return '<div class="analyticsLooseModeTabs" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px">'+analyticsOverviewTab()+analyticsTrafficTab()+analyticsSourcesTab()+analyticsPagesTab()+analyticsEventsTab()+analyticsAudienceTab()+'</div>'}`;
-    const modeTabsPattern = /function analyticsModeTabs\(\)\{[\s\S]*?\}function analyticsLiveControl\(\)/;
-    if (modeTabsPattern.test(generated)) {
-      generated = generated.replace(modeTabsPattern, separatedModeTabsCode + "\nfunction analyticsLiveControl()");
-    }
+    generated = generated.replace(/function analyticsModeTabs\(\)\{[\s\S]*?\}function analyticsLiveControl\(\)/, separatedModeTabsCode + "\nfunction analyticsLiveControl()");
 
     const separatedPulseHeaderCode = String.raw`function analyticsTopBarBottom(){try{const labels=['Analytics','CRM','Connected Resources'];const nodes=[...document.querySelectorAll('header,nav,[role="navigation"],body>div,body>section,body>main,div')];let best=null;nodes.forEach(function(el){const text=(el.innerText||'').replace(/\s+/g,' ');if(!labels.every(function(label){return text.includes(label)}))return;const r=el.getBoundingClientRect();if(r.width<window.innerWidth*.5||r.height<32||r.height>120||r.top>4)return;if(!best||r.height<best.height)best={bottom:Math.round(r.bottom),height:r.height}});return best?best.bottom:69}catch(error){return 69}}
 function analyticsSyncStickyCommandCenter(){requestAnimationFrame(function(){try{const banner=document.querySelector('.analyticsStickyCommandCenter');if(!banner)return;const top=analyticsTopBarBottom();document.documentElement.style.setProperty('--analytics-sticky-top',top+'px');document.documentElement.style.setProperty('--analytics-command-pull','0px');requestAnimationFrame(function(){try{const currentTop=Math.round(banner.getBoundingClientRect().top);const pull=Math.max(0,currentTop-top);document.documentElement.style.setProperty('--analytics-command-pull',pull+'px')}catch(error){}})}catch(error){}});return ''}
 function analyticsLiveControl(){return '<button class="'+(S.analyticsLive?'primary':'secondary')+'" type="button" onclick="analyticsToggleLive()" style="border-radius:8px;padding:7px 10px;font-weight:900;box-shadow:none">'+(S.analyticsLive?'Live updating':'Live paused')+'</button>'}
 function analyticsStatusItem(text){return '<span class="analyticsStatusItem" style="color:#607089;font-size:13px;font-weight:850;line-height:1.4">'+text+'</span>'}
 function analyticsPulseHeader(events,pages){analyticsSyncStickyCommandCenter();const last=events.length?[...events].sort(function(a,b){return analyticsTime(b)-analyticsTime(a)})[0]:null;return '<section class="analyticsHero analyticsStickyCommandCenter" style="position:sticky;top:var(--analytics-sticky-top,69px);z-index:20;width:calc(100% + 48px);max-width:none;box-sizing:border-box;margin:calc(-1 * var(--analytics-command-pull, 0px)) -24px 0 -24px;border-radius:0"><div class="analyticsTop"><div><div class="analyticsEyebrow">'+(S.analyticsLive?'Live analytics':'Manual refresh')+'</div><h2>Analytics command center</h2>'+analyticsModeTabs()+'</div>'+analyticsControls()+'</div><div class="analyticsStatusLine" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-top:10px">'+analyticsLiveControl()+analyticsStatusItem('Last event: '+esc(last?(last.createdAt||'').slice(5,16).replace('T',' '):'none yet'))+analyticsStatusItem(pages.size+' active pages')+'</div></section>'}`;
-    const pulseHeaderPattern = /function analyticsLiveControl\(\)\{[\s\S]*?\}function analyticsPulseHeader\(events,pages\)\{[\s\S]*?\}function analyticsContent\(\)/;
-    if (pulseHeaderPattern.test(generated)) {
-      generated = generated.replace(pulseHeaderPattern, separatedPulseHeaderCode + "\nfunction analyticsContent()");
-    }
+    generated = generated.replace(/function analyticsLiveControl\(\)\{[\s\S]*?\}function analyticsPulseHeader\(events,pages\)\{[\s\S]*?\}function analyticsContent\(\)/, separatedPulseHeaderCode + "\nfunction analyticsContent()");
 
     const dedicatedMetricsCode = String.raw`function analyticsMetricRangeDefaults(){return {unique:'month',events:'month',pageViews:'month',forms:'month'}}
 function analyticsMetricRange(key){S.analyticsMetricRanges=S.analyticsMetricRanges||analyticsMetricRangeDefaults();return S.analyticsMetricRanges[key]||analyticsMetricRangeDefaults()[key]||'month'}
@@ -63,64 +52,14 @@ function analyticsDedicatedMetrics(){return '<section class="analyticsDedicatedM
       generated = generated.replace("function analyticsContent(){", dedicatedMetricsCode + "\nfunction analyticsContent(){");
     }
 
-    const tabsAfterHeaderNeedle = "+analyticsPulseHeader(events,pages)+analyticsModeTabs()+'<div class=\"analyticsToolPanel\">";
-    const tabsInsideHeaderReplacement = "+analyticsPulseHeader(events,pages)+'<div class=\"analyticsToolPanel\">";
-    if (generated.includes(tabsAfterHeaderNeedle)) {
-      generated = generated.replace(tabsAfterHeaderNeedle, tabsInsideHeaderReplacement);
-    }
+    generated = generated.replace("+analyticsPulseHeader(events,pages)+analyticsModeTabs()+'<div class=\"analyticsToolPanel\">", "+analyticsPulseHeader(events,pages)+'<div class=\"analyticsToolPanel\">");
+    generated = generated.replace("+analyticsPulseHeader(events,pages)+'<div class=\"analyticsToolPanel\">", "+analyticsPulseHeader(events,pages)+analyticsDedicatedMetrics()+'<div class=\"analyticsToolPanel\">");
 
-    const metricsAfterHeaderNeedle = "+analyticsPulseHeader(events,pages)+'<div class=\"analyticsToolPanel\">";
-    const metricsAfterHeaderReplacement = "+analyticsPulseHeader(events,pages)+analyticsDedicatedMetrics()+'<div class=\"analyticsToolPanel\">";
-    if (generated.includes(metricsAfterHeaderNeedle)) {
-      generated = generated.replace(metricsAfterHeaderNeedle, metricsAfterHeaderReplacement);
-    }
-
-    const overviewKpisPattern = /body='<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'<\/section>'\+analyticsSection\('Overview'/;
-    if (overviewKpisPattern.test(generated)) {
-      generated = generated.replace(overviewKpisPattern, "body=analyticsSection('Overview'");
-    }
-    const inlineKpisPattern = /'<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'<\/section>'\+analyticsSection\('Overview'/;
-    if (inlineKpisPattern.test(generated)) {
-      generated = generated.replace(inlineKpisPattern, "analyticsSection('Overview'");
-    }
-
-    const dedicatedKpiLabelCode = String.raw`function analyticsKpiTextColor(){return '#061a33'}
-function analyticsKpiCard(content){return '<div class="analyticsKpi" style="background:#fff;border:1px solid #d9e3f2;border-radius:16px;padding:14px">'+content+'</div>'}
-function analyticsKpiLabel(label){const color=analyticsKpiTextColor();return '<p style="margin:0;color:'+color+';-webkit-text-fill-color:'+color+';font-size:12px;font-weight:950;text-transform:uppercase;letter-spacing:.07em">'+esc(label)+'</p>'}
-function analyticsKpiValue(value){const color=analyticsKpiTextColor();return '<b style="display:block;color:'+color+';-webkit-text-fill-color:'+color+';font-size:30px;margin:5px 0;font-weight:950">'+esc(value)+'</b>'}
-function analyticsKpiDelta(now,prev){const color=analyticsKpiTextColor();return '<span class="analyticsDelta '+(now>=prev?'up':'down')+'" style="display:inline-flex;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:950;color:'+color+';-webkit-text-fill-color:'+color+';background:#d9f8e8">'+analyticsPct(now,prev)+'</span>'}
-function analyticsKpiNote(note){const color=analyticsKpiTextColor();return '<p style="margin:6px 0 0;color:'+color+';-webkit-text-fill-color:'+color+';font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.07em">'+esc(note)+'</p>'}
-function analyticsKpi(label,value,now,prev,note){return analyticsKpiCard(analyticsKpiLabel(label)+analyticsKpiValue(value)+analyticsKpiDelta(now,prev)+analyticsKpiNote(note||analyticsRangeLabel()))}`;
-    const dedicatedKpiNameCode = String.raw`function analyticsKpiTextColor(){return '#061a33'}
-function analyticsKpiCard(content){return '<div class="analyticsKpi" style="background:#fff;border:1px solid #d9e3f2;border-radius:16px;padding:14px">'+content+'</div>'}
-function analyticsKpiLabel(name){const color=analyticsKpiTextColor();return '<p style="margin:0;color:'+color+';-webkit-text-fill-color:'+color+';font-size:12px;font-weight:950;text-transform:uppercase;letter-spacing:.07em">'+esc(name)+'</p>'}
-function analyticsKpiValue(value){const color=analyticsKpiTextColor();return '<b style="display:block;color:'+color+';-webkit-text-fill-color:'+color+';font-size:30px;margin:5px 0;font-weight:950">'+esc(value)+'</b>'}
-function analyticsKpiDelta(current,previous){const color=analyticsKpiTextColor();return '<span class="analyticsDelta '+analyticsDeltaClass(current,previous)+'" style="display:inline-flex;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:950;color:'+color+';-webkit-text-fill-color:'+color+';background:#d9f8e8">'+analyticsPct(current,previous)+'</span>'}
-function analyticsKpiNote(note){const color=analyticsKpiTextColor();return '<p style="margin:6px 0 0;color:'+color+';-webkit-text-fill-color:'+color+';font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.07em">'+esc(note)+'</p>'}
-function analyticsKpi(name,value,current,previous,note){return analyticsKpiCard(analyticsKpiLabel(name)+analyticsKpiValue(value)+analyticsKpiDelta(current,previous)+analyticsKpiNote(note||analyticsRangeLabel()))}`;
-    const kpiLabelNextFunctions = ["analyticsSection", "analyticsRows", "analyticsOptions", "analyticsSourceOptions"];
-    for (const nextName of kpiLabelNextFunctions) {
-      const originalLabelPattern = new RegExp("function analyticsKpi\\(label,value,now,prev,note\\)\\{[\\s\\S]*?\\}function " + nextName + "\\(");
-      const splitLabelPattern = new RegExp("function analyticsKpiTextColor\\(\\)\\{[\\s\\S]*?function analyticsKpi\\(label,value,now,prev,note\\)\\{[\\s\\S]*?\\}function " + nextName + "\\(");
-      const labelPattern = splitLabelPattern.test(generated) ? splitLabelPattern : originalLabelPattern;
-      if (labelPattern.test(generated)) {
-        generated = generated.replace(labelPattern, dedicatedKpiLabelCode + "\nfunction " + nextName + "(");
-        break;
-      }
-    }
-    const kpiNameNextFunctions = ["analyticsSourceOptions", "analyticsControls", "analyticsRows", "analyticsSection"];
-    for (const nextName of kpiNameNextFunctions) {
-      const originalNamePattern = new RegExp("function analyticsKpi\\(name,value,current,previous,note\\)\\{[\\s\\S]*?\\}function " + nextName + "\\(");
-      const splitNamePattern = new RegExp("function analyticsKpiTextColor\\(\\)\\{[\\s\\S]*?function analyticsKpi\\(name,value,current,previous,note\\)\\{[\\s\\S]*?\\}function " + nextName + "\\(");
-      const namePattern = splitNamePattern.test(generated) ? splitNamePattern : originalNamePattern;
-      if (namePattern.test(generated)) {
-        generated = generated.replace(namePattern, dedicatedKpiNameCode + "\nfunction " + nextName + "(");
-        break;
-      }
-    }
+    generated = generated.replace(/body='<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'<\/section>'\+analyticsSection\('Overview'/, "body=analyticsSection('Overview'");
+    generated = generated.replace(/'<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'<\/section>'\+analyticsSection\('Overview'/, "analyticsSection('Overview'");
 
     const analyticsTextStyles = `
-      /* analytics-kpi-readable-text-v3 */
+      /* analytics-horizontal-metrics-v1 */
       .analyticsStickyCommandCenter {
         width:calc(100% + 48px) !important;
         max-width:none !important;
@@ -140,86 +79,9 @@ function analyticsKpi(name,value,current,previous,note){return analyticsKpiCard(
         gap:16px !important;
         align-items:flex-start !important;
       }
-      .analyticsStickyCommandCenter .analyticsLooseModeTabs {
-        margin-top:10px !important;
-      }
+      .analyticsStickyCommandCenter .analyticsLooseModeTabs,
       .analyticsStickyCommandCenter .analyticsStatusLine {
         margin-top:10px !important;
-      }
-      @media (max-width:760px) {
-        .analyticsStickyCommandCenter {
-          width:calc(100% + 32px) !important;
-          margin:calc(-1 * var(--analytics-command-pull, 0px)) -16px 0 -16px !important;
-          border-radius:0 !important;
-          padding:16px 12px 18px !important;
-        }
-      }
-      .analyticsDedicatedMetrics {
-        display:grid !important;
-        grid-template-columns:repeat(6,minmax(0,1fr)) !important;
-        gap:10px !important;
-        margin:16px 0 0 !important;
-      }
-      .analyticsMetricCard {
-        background:#fff !important;
-        border:1px solid #d9e3f2 !important;
-        border-radius:8px !important;
-        box-shadow:0 10px 28px rgba(6,26,51,.07) !important;
-        padding:12px !important;
-        min-width:0 !important;
-      }
-      .analyticsMetricCardTop {
-        display:grid !important;
-        gap:8px !important;
-        align-items:start !important;
-      }
-      .analyticsMetricCard p {
-        margin:0 !important;
-        color:#061a33 !important;
-        -webkit-text-fill-color:#061a33 !important;
-        font-size:11px !important;
-        font-weight:950 !important;
-        letter-spacing:.06em !important;
-        text-transform:uppercase !important;
-      }
-      .analyticsMetricCard b {
-        display:block !important;
-        color:#061a33 !important;
-        -webkit-text-fill-color:#061a33 !important;
-        font-size:30px !important;
-        line-height:1 !important;
-        margin:12px 0 6px !important;
-        font-weight:950 !important;
-      }
-      .analyticsMetricCard span {
-        color:#607089 !important;
-        -webkit-text-fill-color:#607089 !important;
-        font-size:12px !important;
-        font-weight:850 !important;
-      }
-      .analyticsMetricControls {
-        display:flex !important;
-        gap:6px !important;
-        flex-wrap:wrap !important;
-      }
-      .analyticsMetricSelect,
-      .analyticsMetricRefresh {
-        min-height:30px !important;
-        border-radius:7px !important;
-        border:1px solid #cbd8ea !important;
-        background:#f8fbff !important;
-        color:#061a33 !important;
-        -webkit-text-fill-color:#061a33 !important;
-        font-size:12px !important;
-        font-weight:850 !important;
-        padding:5px 8px !important;
-        box-shadow:none !important;
-      }
-      @media (max-width:1250px) {
-        .analyticsDedicatedMetrics { grid-template-columns:repeat(3,minmax(0,1fr)) !important; }
-      }
-      @media (max-width:760px) {
-        .analyticsDedicatedMetrics { grid-template-columns:1fr !important; }
       }
       .analyticsShell,
       .analyticsShell * {
@@ -260,32 +122,97 @@ function analyticsKpi(name,value,current,previous,note){return analyticsKpiCard(
         -webkit-text-fill-color:#fff !important;
         background-image:none !important;
       }
-      .analyticsShell [class*="positive"],
-      .analyticsShell [class*="success"],
-      .analyticsShell [class*="trend"] {
-        color:#168a52 !important;
-        -webkit-text-fill-color:#168a52 !important;
+      .analyticsDedicatedMetrics {
+        display:flex !important;
+        flex-wrap:nowrap !important;
+        align-items:stretch !important;
+        gap:10px !important;
+        width:100% !important;
+        max-width:100% !important;
+        box-sizing:border-box !important;
+        margin:16px 0 0 !important;
+        overflow-x:auto !important;
+        overflow-y:hidden !important;
+        padding-bottom:4px !important;
+        scrollbar-width:thin !important;
       }
-      .analyticsShell section.analyticsKpis,
-      .analyticsShell section.analyticsKpis *,
-      .analyticsShell .analyticsKpis,
-      .analyticsShell .analyticsKpis *,
-      .analyticsShell [class*="analyticsKpi"],
-      .analyticsShell [class*="analyticsKpi"] *,
-      .analyticsShell [class*="Kpi"],
-      .analyticsShell [class*="Kpi"] * {
+      .analyticsMetricCard {
+        flex:1 1 0 !important;
+        min-width:150px !important;
+        background:#fff !important;
+        border:1px solid #d9e3f2 !important;
+        border-radius:8px !important;
+        box-shadow:0 10px 28px rgba(6,26,51,.07) !important;
+        padding:12px !important;
+        box-sizing:border-box !important;
+        display:flex !important;
+        flex-direction:column !important;
+        justify-content:space-between !important;
+      }
+      .analyticsMetricCardTop {
+        display:grid !important;
+        gap:8px !important;
+        align-items:start !important;
+      }
+      .analyticsMetricCard p {
+        margin:0 !important;
         color:#061a33 !important;
         -webkit-text-fill-color:#061a33 !important;
-        opacity:1 !important;
-        visibility:visible !important;
-        text-shadow:none !important;
-        background-image:none !important;
-        -webkit-background-clip:border-box !important;
-        background-clip:border-box !important;
+        font-size:11px !important;
+        font-weight:950 !important;
+        letter-spacing:.06em !important;
+        line-height:1.15 !important;
+        text-transform:uppercase !important;
+      }
+      .analyticsMetricCard b {
+        display:block !important;
+        color:#061a33 !important;
+        -webkit-text-fill-color:#061a33 !important;
+        font-size:30px !important;
+        line-height:1 !important;
+        margin:12px 0 6px !important;
+        font-weight:950 !important;
+      }
+      .analyticsMetricCard span {
+        color:#607089 !important;
+        -webkit-text-fill-color:#607089 !important;
+        font-size:12px !important;
+        font-weight:850 !important;
+      }
+      .analyticsMetricControls {
+        display:flex !important;
+        gap:6px !important;
+        flex-wrap:wrap !important;
+      }
+      .analyticsMetricSelect,
+      .analyticsMetricRefresh {
+        min-height:30px !important;
+        border-radius:7px !important;
+        border:1px solid #cbd8ea !important;
+        background:#f8fbff !important;
+        color:#061a33 !important;
+        -webkit-text-fill-color:#061a33 !important;
+        font-size:12px !important;
+        font-weight:850 !important;
+        padding:5px 8px !important;
+        box-shadow:none !important;
+        max-width:100% !important;
+      }
+      @media (max-width:900px) {
+        .analyticsMetricCard { flex:0 0 170px !important; }
+      }
+      @media (max-width:760px) {
+        .analyticsStickyCommandCenter {
+          width:calc(100% + 32px) !important;
+          margin:calc(-1 * var(--analytics-command-pull, 0px)) -16px 0 -16px !important;
+          border-radius:0 !important;
+          padding:16px 12px 18px !important;
+        }
+        .analyticsMetricCard { flex:0 0 210px !important; }
       }
     `;
 
-    if (!generated.includes("analytics-kpi-readable-text-v3")) {
+    if (!generated.includes("analytics-horizontal-metrics-v1")) {
       generated = generated.replace("</style>", analyticsTextStyles + "</style>");
     }
 
