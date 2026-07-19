@@ -61,7 +61,7 @@ function analyticsDedicatedMetrics(){return analyticsMetricTray(analyticsUniqueS
     generated = generated.replace(/'<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'<\/section>'\+analyticsSection\('Overview'/, "analyticsSection('Overview'");
 
     const analyticsTextStyles = `
-      /* analytics-metrics-tray-v2 */
+      /* analytics-command-center-blue-gradient-v1 */
       .analyticsStickyCommandCenter {
         width:calc(100% + 48px) !important;
         max-width:none !important;
@@ -71,6 +71,10 @@ function analyticsDedicatedMetrics(){return analyticsMetricTray(analyticsUniqueS
         overflow:visible !important;
         padding:18px 14px 20px !important;
         min-height:auto !important;
+        background:
+          radial-gradient(circle at 12% 0%, rgba(31,76,136,.26), transparent 34%),
+          radial-gradient(circle at 88% 18%, rgba(42,95,158,.20), transparent 30%),
+          linear-gradient(135deg, #020b18 0%, #06172c 56%, #0b2b4d 100%) !important;
       }
       .analyticsStickyCommandCenter h2 {
         font-size:clamp(34px,3vw,48px) !important;
@@ -147,7 +151,7 @@ function analyticsDedicatedMetrics(){return analyticsMetricTray(analyticsUniqueS
       }
     `;
 
-    if (!generated.includes("analytics-metrics-tray-v2")) {
+    if (!generated.includes("analytics-command-center-blue-gradient-v1")) {
       generated = generated.replace("</style>", analyticsTextStyles + "</style>");
     }
 
