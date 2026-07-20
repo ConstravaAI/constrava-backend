@@ -15,13 +15,14 @@ const loadingTabFunction = String.raw`function tab(name){S.tab=name;document.que
 
 const runtimePatch = `// ${marker}\nconst constravaTabLoadingClientCode = ${JSON.stringify(loadingClientCode)};\nconst constravaTabLoadingTabFunction = ${JSON.stringify(loadingTabFunction)};\nsource = source.replace(/function tab\\(name\\)\\{S\\.tab=name;document\\.querySelectorAll\\('\\.tab'\\)[\\s\\S]*?;render\\(\\)\\}/, constravaTabLoadingClientCode + "\\n" + constravaTabLoadingTabFunction);\nif (!source.includes("function constravaTabLoadingMarkup")) throw new Error("Could not install tab loading state.");\n`;
 
-const selectorInjection = `
-    const tabLoadingRuntimePatch = ${JSON.stringify(runtimePatch)};
-    const tabLoadingNeedle = "const patch = String.raw` + "`" + `\\n// live-analytics-display-v2";
-    const tabLoadingReplacement = "const patch = String.raw` + "`" + `\\n" + tabLoadingRuntimePatch + "\\n// live-analytics-display-v2";
-    if (!generated.includes(tabLoadingNeedle)) throw new Error("Could not find analytics selector patch marker for tab loading.");
-    generated = generated.replace(tabLoadingNeedle, tabLoadingReplacement);
-`;
+const selectorInjection = [
+  `    const tabLoadingRuntimePatch = ${JSON.stringify(runtimePatch)};`,
+  "    const tabLoadingBacktick = String.fromCharCode(96);",
+  "    const tabLoadingNeedle = \"const patch = String.raw\" + tabLoadingBacktick + \"\\n// live-analytics-display-v2\";",
+  "    const tabLoadingReplacement = \"const patch = String.raw\" + tabLoadingBacktick + \"\\n\" + tabLoadingRuntimePatch + \"\\n// live-analytics-display-v2\";",
+  "    if (!generated.includes(tabLoadingNeedle)) throw new Error(\"Could not find analytics selector patch marker for tab loading.\");",
+  "    generated = generated.replace(tabLoadingNeedle, tabLoadingReplacement);"
+].join("\n");
 
 let selectorSource = await fs.readFile(selectorPath, "utf8");
 if (!selectorSource.includes(marker)) {
