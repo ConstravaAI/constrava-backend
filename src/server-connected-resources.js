@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const runtimeWrapperPath = path.join(here, "server-runtime.js");
-const marker = "connected-resources-workspace-v1";
+const marker = "connected-resources-workspace-v2";
 
 const resourcesCss = String.raw`
 /* Connected resources workspace */
@@ -29,17 +29,18 @@ function resourcesContent(){return '<div class="resourceHub"><section class="res
 
 const resourcesBindCode = String.raw`document.querySelectorAll('[data-resource-config]').forEach(function(button){button.onclick=function(){S.resourceFocus=button.dataset.resourceConfig;render()}});let copyResourceSnippet=document.getElementById('copyResourceSnippet');if(copyResourceSnippet)copyResourceSnippet.onclick=async function(){const status=document.getElementById('resourceActionStatus');try{if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(S.snippet||'')}else{const temp=document.createElement('textarea');temp.value=S.snippet||'';document.body.appendChild(temp);temp.select();document.execCommand('copy');temp.remove()}if(status)status.textContent='Snippet copied.'}catch(error){if(status)status.textContent='Copy failed. Select the snippet and copy it manually.'}};let testResourceWebhook=document.getElementById('testResourceWebhook');if(testResourceWebhook)testResourceWebhook.onclick=async function(){const status=document.getElementById('resourceActionStatus');testResourceWebhook.disabled=true;if(status)status.textContent='Sending test event...';try{await api('/api/analytics/events',{method:'POST',body:JSON.stringify({type:'resource_test',siteId:'connected_resources',sessionId:'resource_test_'+Date.now(),sourceUrl:location.origin+'/dashboard/',referrer:'connected_resources',metadata:{trigger:'connected_resources_test'}})});await load();if(status)status.textContent='Test event received. Analytics will include it after refresh.';render()}catch(error){if(status)status.textContent=error.message||'Could not send test event.'}finally{let next=document.getElementById('testResourceWebhook');if(next)next.disabled=false}};let refreshResourceHub=document.getElementById('refreshResourceHub');if(refreshResourceHub)refreshResourceHub.onclick=async function(){refreshResourceHub.disabled=true;refreshResourceHub.textContent='Refreshing...';try{await load();render()}catch(error){refreshResourceHub.textContent='Refresh failed';setTimeout(function(){let b=document.getElementById('refreshResourceHub');if(b){b.disabled=false;b.textContent='Refresh'}},1600)}};let resourceQuickIntake=document.getElementById('resourceQuickIntake');if(resourceQuickIntake)resourceQuickIntake.onsubmit=async function(e){e.preventDefault();const status=document.getElementById('resourceIntakeStatus');if(status)status.textContent='Creating AI plan...';try{const payload=Object.fromEntries(new FormData(resourceQuickIntake));payload.kind='connected_resource_text';payload.sourceId=activeResource().id||'source_manual';let p=await api('/api/records/plan',{method:'POST',body:JSON.stringify(payload)});S.plan=p.plan;await load();openPlan(S.plan);render()}catch(error){if(status)status.textContent=error.message||'Could not create AI plan.'}};`;
 
-const runtimeInjection = `// ${marker}
-const connectedResourcesCss = ${JSON.stringify(resourcesCss)};
-const connectedResourcesClientCode = ${JSON.stringify(resourcesClientCode)};
-const connectedResourcesBindCode = ${JSON.stringify(resourcesBindCode)};
-source = source.replace("function render(){", connectedResourcesClientCode + "\nfunction render(){");
-source = source.replace(/if\(S\.tab==='resources'\)\{h=[\s\S]*?\}if\(S\.tab==='settings'\)/, "if(S.tab==='resources')h=resourcesContent();if(S.tab==='settings')");
-source = source.replace("let settingsForm=document.getElementById('workspaceSettingsForm');", connectedResourcesBindCode + "let settingsForm=document.getElementById('workspaceSettingsForm');");
-source = source.replace("</style>\n</head>", connectedResourcesCss + "\n</style>\n</head>");
-if (!source.includes("function resourcesContent()")) throw new Error("Connected resources content patch was not installed.");
-if (!source.includes("resourceQuickIntake")) throw new Error("Connected resources bind patch was not installed.");
-`;
+const runtimeInjection = [
+  `// ${marker}`,
+  `const connectedResourcesCss = ${JSON.stringify(resourcesCss)};`,
+  `const connectedResourcesClientCode = ${JSON.stringify(resourcesClientCode)};`,
+  `const connectedResourcesBindCode = ${JSON.stringify(resourcesBindCode)};`,
+  `source = source.replace(${JSON.stringify("function render(){")}, connectedResourcesClientCode + ${JSON.stringify("\nfunction render(){")});`,
+  `source = source.replace(/if\\(S\\.tab==='resources'\\)\\{h=[\\s\\S]*?\\}if\\(S\\.tab==='settings'\\)/, ${JSON.stringify("if(S.tab==='resources')h=resourcesContent();if(S.tab==='settings')")});`,
+  `source = source.replace(${JSON.stringify("let settingsForm=document.getElementById('workspaceSettingsForm');")}, connectedResourcesBindCode + ${JSON.stringify("let settingsForm=document.getElementById('workspaceSettingsForm');")});`,
+  `source = source.replace(${JSON.stringify("</style>\n</head>")}, connectedResourcesCss + ${JSON.stringify("\n</style>\n</head>")});`,
+  `if (!source.includes("function resourcesContent()")) throw new Error("Connected resources content patch was not installed.");`,
+  `if (!source.includes("resourceQuickIntake")) throw new Error("Connected resources bind patch was not installed.");`
+].join("\n");
 
 let wrapperSource = await fs.readFile(runtimeWrapperPath, "utf8");
 if (!wrapperSource.includes(marker)) {
