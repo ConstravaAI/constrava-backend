@@ -4,9 +4,9 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const runtimeWrapperPath = path.join(here, "server-runtime.js");
-const marker = "connect-resources-white-v2";
+const marker = "connect-resources-white-v3";
 
-const resourcesClientCode = String.raw`function syncConnectedResourcesBlank(){const isResources=S.tab==='resources';const workspace=document.querySelector('.workspace');if(workspace)workspace.style.display=isResources?'none':'';if(isResources){const app=document.getElementById('app');if(app)app.innerHTML=''}}function resourcesContent(){setTimeout(syncConnectedResourcesBlank,0);return ''}`;
+const resourcesClientCode = String.raw`function syncConnectedResourcesBlank(){const isResources=S.tab==='resources';document.body.style.background=isResources?'#fff':'';const workspace=document.querySelector('.workspace');if(workspace)workspace.style.display=isResources?'none':'';if(isResources){const app=document.getElementById('app');if(app)app.innerHTML=''}}function resourcesContent(){setTimeout(syncConnectedResourcesBlank,0);return ''}`;
 
 const oldTab = '<button class="tab" data-tab="resources">Connected Resources</button>';
 const newTab = '<button class="tab" data-tab="resources">Connect Resources</button>';
