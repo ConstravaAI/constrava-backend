@@ -124,4 +124,4 @@ if (!wrapperSource.includes(marker)) {
   await fs.writeFile(runtimeWrapperPath, wrapperSource);
 }
 
-await import("./server-fonts.js");
+await import("./server-connected-resources.js");
