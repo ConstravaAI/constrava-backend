@@ -9,4 +9,4 @@ let source = await fs.readFile(serverPath, "utf8");
 source = source.replace(">🔔<span class=\"notifyDot\"", ">○<span class=\"notifyDot\"");
 await fs.writeFile(serverPath, source);
 
-await import("./server-analytics-selector-copies.js");
+await import("./server-tab-loading-state.js");
