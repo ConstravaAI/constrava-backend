@@ -104,7 +104,8 @@ for (const fileName of (await fs.readdir(srcDir)).filter((name) => name.endsWith
 
 await assertContains("src/server-tracker-analytics.js", 'import "./server-remove-analytics-title.js";', "the analytics title wrapper handoff");
 await assertContains("src/server-remove-analytics-title.js", 'await import("./server-notification-icon.js");', "the notification wrapper handoff");
-await assertContains("src/server-notification-icon.js", 'await import("./server-analytics-selector-copies.js");', "the analytics selector wrapper handoff");
+await assertContains("src/server-notification-icon.js", 'await import("./server-tab-loading-state.js");', "the tab loading wrapper handoff");
+await assertContains("src/server-tab-loading-state.js", 'await import(`${pathToFileURL(generatedSelectorPath).href}?v=${Date.now()}`);', "the analytics selector loading handoff");
 await assertContains("src/server-analytics-selector-copies.js", 'await import("./server-crm-actions-scope.js");', "the CRM scope fallback handoff");
 await assertContains("src/server-runtime.js", "await fs.writeFile(runtimePath, source);", "the generated runtime write target");
 await assertContains("src/server-responsive.js", "await import(`${pathToFileURL(responsiveRuntimePath).href}?v=${Date.now()}`);", "the responsive runtime handoff");
