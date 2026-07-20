@@ -4,17 +4,20 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const runtimeWrapperPath = path.join(here, "server-runtime.js");
-const marker = "connected-resources-removed-v1";
+const marker = "connect-resources-blank-v1";
 
 const resourcesClientCode = String.raw`function syncConnectedResourcesBlank(){const workspace=document.querySelector('.workspace');if(workspace)workspace.style.display=S.tab==='resources'?'none':''}function resourcesContent(){syncConnectedResourcesBlank();setTimeout(syncConnectedResourcesBlank,0);return ''}`;
+
+const oldTab = '<button class="tab" data-tab="resources">Connected Resources</button>';
+const newTab = '<button class="tab" data-tab="resources">Connect Resources</button>';
 
 const runtimeInjection = [
   `// ${marker}`,
   `const connectedResourcesClientCode = ${JSON.stringify(resourcesClientCode)};`,
-  `source = source.replace(${JSON.stringify("<button class=\"tab\" data-tab=\"resources\">Connected Resources</button>")}, "");`,
+  `source = source.replace(${JSON.stringify(oldTab)}, ${JSON.stringify(newTab)});`,
   `source = source.replace(${JSON.stringify("function render(){")}, connectedResourcesClientCode + ${JSON.stringify("\nfunction render(){syncConnectedResourcesBlank();")});`,
   `source = source.replace(/if\(S\.tab==='resources'\)\{h=[\s\S]*?\}if\(S\.tab==='settings'\)/, ${JSON.stringify("if(S.tab==='resources')h=resourcesContent();if(S.tab==='settings')")});`,
-  `if (source.includes(${JSON.stringify("Connected Resources</button>")})) throw new Error("Connected resources tab button was not removed.");`
+  `if (!source.includes(${JSON.stringify(newTab)})) throw new Error("Connect Resources tab button was not installed.");`
 ].join("\n");
 
 let wrapperSource = await fs.readFile(runtimeWrapperPath, "utf8");
