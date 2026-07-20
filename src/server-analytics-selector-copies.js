@@ -47,9 +47,9 @@ function analyticsToggleMetricsTray(){S.analyticsMetricsOpen=!analyticsMetricsOp
 function analyticsMetricRangeSelect(key){const current=analyticsMetricRange(key);const opts=[['day','Day'],['week','Week'],['month','Month'],['quarter','3 months'],['all','All']];return '<select class="analyticsMetricSelect" style="min-height:28px;border-radius:7px;border:1px solid #cbd8ea;background:#f8fbff;color:#061a33;font-size:11px;font-weight:850;padding:4px 7px;max-width:100%" onchange="analyticsSetMetricRange(&quot;'+key+'&quot;,this.value)">'+opts.map(function(o){return '<option value="'+o[0]+'" '+(current===o[0]?'selected':'')+'>'+o[1]+'</option>'}).join('')+'</select>'}
 function analyticsMetricRefreshButton(key){return '<button class="analyticsMetricRefresh secondary" type="button" style="min-height:28px;border-radius:7px;border:1px solid #cbd8ea;background:#f8fbff;color:#061a33;font-size:11px;font-weight:850;padding:4px 7px;box-shadow:none" onclick="analyticsRefreshMetric(&quot;'+key+'&quot;)">'+(S.analyticsMetricRefreshing===key?'Updating':'Refresh')+'</button>'}
 function analyticsMetricControls(key){return analyticsMetricRangeSelect(key)}
-function analyticsMetricTrayHeader(open){return '<div class="analyticsMetricsTrayHeader" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border:1px solid #d9e3f2;background:#fff;border-radius:8px;padding:10px 12px;box-shadow:0 10px 28px rgba(6,26,51,.06)"><div><p style="margin:0;color:#061a33;font-size:12px;font-weight:950;letter-spacing:.06em;text-transform:uppercase">Analytics metrics tray</p><span style="display:block;margin-top:3px;color:#607089;font-size:12px;font-weight:850">'+(open?'Live counters expanded':'Live counters collapsed')+'</span></div><button class="secondary" type="button" style="min-height:32px;border-radius:7px;border:1px solid #cbd8ea;background:#f8fbff;color:#061a33;font-size:12px;font-weight:900;padding:6px 10px;box-shadow:none" onclick="analyticsToggleMetricsTray()">'+(open?'Collapse':'Expand')+'</button></div>'}
-function analyticsMetricTray(cards){const open=analyticsMetricsOpen();return '<section class="analyticsMetricsTrayMenu" style="display:grid;gap:10px;width:100%;max-width:100%;box-sizing:border-box;margin:14px 0 0">'+analyticsMetricTrayHeader(open)+(open?'<div class="analyticsMetricsTray" style="display:flex;flex-direction:row;flex-wrap:nowrap;align-items:stretch;gap:10px;width:100%;max-width:100%;box-sizing:border-box;overflow-x:auto;overflow-y:hidden;padding:0 0 5px;scrollbar-width:thin">'+cards+'</div>':'')+'</section>'}
-function analyticsMetricShell(key,title,value,note,controls){return '<section class="analyticsMetricCard" style="flex:1 1 0;min-width:142px;background:#fff;border:1px solid #d9e3f2;border-radius:8px;box-shadow:0 10px 28px rgba(6,26,51,.07);padding:12px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;gap:10px"><div style="display:grid;gap:8px;align-items:start"><p style="margin:0;color:#061a33;font-size:11px;font-weight:950;letter-spacing:.06em;line-height:1.15;text-transform:uppercase">'+esc(title)+'</p><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+(controls||'')+analyticsMetricRefreshButton(key)+'</div></div><div><b style="display:block;color:#061a33;font-size:30px;line-height:1;margin:0 0 6px;font-weight:950">'+esc(value)+'</b><span style="color:#607089;font-size:12px;font-weight:850">'+esc(note)+'</span></div></section>'}
+function analyticsMetricTrayHeader(open){return '<div class="analyticsMetricsTrayHeader" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1px solid #d9e3f2;padding:0 0 10px;margin:0 0 10px"><div><p style="margin:0;color:#061a33;font-size:12px;font-weight:950;letter-spacing:.06em;text-transform:uppercase">Analytics metrics tray</p><span style="display:block;margin-top:3px;color:#607089;font-size:12px;font-weight:850">'+(open?'Live counters expanded':'Live counters collapsed')+'</span></div><button class="secondary" type="button" style="min-height:32px;border-radius:7px;border:1px solid #cbd8ea;background:#f8fbff;color:#061a33;font-size:12px;font-weight:900;padding:6px 10px;box-shadow:none" onclick="analyticsToggleMetricsTray()">'+(open?'Collapse':'Expand')+'</button></div>'}
+function analyticsMetricTray(cards){const open=analyticsMetricsOpen();return '<section class="analyticsMetricsTrayMenu" style="display:block;width:100%;max-width:100%;box-sizing:border-box;margin:14px 0 0;border:1px solid #d9e3f2;background:#fff;border-radius:8px;padding:12px;box-shadow:0 10px 28px rgba(6,26,51,.06)">'+analyticsMetricTrayHeader(open)+(open?'<div class="analyticsMetricsTray" style="display:flex;flex-direction:row;flex-wrap:nowrap;align-items:stretch;gap:10px;width:100%;max-width:100%;box-sizing:border-box;overflow-x:auto;overflow-y:hidden;padding:0 0 5px;scrollbar-width:thin">'+cards+'</div>':'')+'</section>'}
+function analyticsMetricShell(key,title,value,note,controls){return '<section class="analyticsMetricCard" style="flex:1 1 0;min-width:142px;background:#f8fbff;border:1px solid #d9e3f2;border-radius:8px;box-shadow:none;padding:12px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between;gap:10px"><div style="display:grid;gap:8px;align-items:start"><p style="margin:0;color:#061a33;font-size:11px;font-weight:950;letter-spacing:.06em;line-height:1.15;text-transform:uppercase">'+esc(title)+'</p><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+(controls||'')+analyticsMetricRefreshButton(key)+'</div></div><div><b style="display:block;color:#061a33;font-size:30px;line-height:1;margin:0 0 6px;font-weight:950">'+esc(value)+'</b><span style="color:#607089;font-size:12px;font-weight:850">'+esc(note)+'</span></div></section>'}
 function analyticsUniqueSessionsMetric(){const rows=analyticsMetricEventsFor('unique');const sessions=new Set(rows.map(function(e){return e.sessionId||''}).filter(Boolean));return analyticsMetricShell('unique','Unique sessions',sessions.size,analyticsMetricRangeLabel(analyticsMetricRange('unique')),analyticsMetricControls('unique'))}
 function analyticsTotalEventsMetric(){const rows=analyticsMetricEventsFor('events');return analyticsMetricShell('events','Total events',rows.length,analyticsMetricRangeLabel(analyticsMetricRange('events')),analyticsMetricControls('events'))}
 function analyticsPageViewsMetric(){const rows=analyticsMetricEventsFor('pageViews').filter(function(e){return e.type==='page_view'});return analyticsMetricShell('pageViews','Page views',rows.length,analyticsMetricRangeLabel(analyticsMetricRange('pageViews')),analyticsMetricControls('pageViews'))}
@@ -67,7 +67,7 @@ function analyticsDedicatedMetrics(){return analyticsMetricTray(analyticsUniqueS
     generated = generated.replace(/'<section class="analyticsKpis">'\+analyticsKpi\('Unique sessions'[\s\S]*?\+'<\/section>'\+analyticsSection\('Overview'/, "analyticsSection('Overview'");
 
     const analyticsTextStyles = `
-      /* analytics-command-center-lite-v1 */
+      /* analytics-metrics-tray-contained-v1 */
       .analyticsStickyCommandCenter,
       .analyticsShell .analyticsStickyCommandCenter,
       section.analyticsHero.analyticsStickyCommandCenter {
@@ -84,36 +84,19 @@ function analyticsDedicatedMetrics(){return analyticsMetricTray(analyticsUniqueS
         padding:18px 14px 20px !important;
         min-height:auto !important;
       }
-      .analyticsCommandCenterLite {
-        padding:10px 14px !important;
-      }
+      .analyticsCommandCenterLite { padding:10px 14px !important; }
       .analyticsStickyCommandCenter h2 {
         font-size:clamp(34px,3vw,48px) !important;
         line-height:1 !important;
         margin:8px 0 0 !important;
       }
-      .analyticsCommandCenterLite h2 {
-        font-size:24px !important;
-        margin:0 !important;
-      }
-      .analyticsStickyCommandCenter .analyticsTop {
-        gap:16px !important;
-        align-items:flex-start !important;
-      }
+      .analyticsCommandCenterLite h2 { font-size:24px !important; margin:0 !important; }
+      .analyticsStickyCommandCenter .analyticsTop { gap:16px !important; align-items:flex-start !important; }
       .analyticsStickyCommandCenter .analyticsLooseModeTabs,
-      .analyticsStickyCommandCenter .analyticsStatusLine {
-        margin-top:10px !important;
-      }
-      .analyticsMetricsTray {
-        display:flex !important;
-        flex-direction:row !important;
-        flex-wrap:nowrap !important;
-        align-items:stretch !important;
-      }
+      .analyticsStickyCommandCenter .analyticsStatusLine { margin-top:10px !important; }
+      .analyticsMetricsTray { display:flex !important; flex-direction:row !important; flex-wrap:nowrap !important; align-items:stretch !important; }
       .analyticsMetricsTray .analyticsMetricCard { flex:1 1 0 !important; }
-      @media (max-width:900px) {
-        .analyticsMetricsTray .analyticsMetricCard { flex:0 0 170px !important; }
-      }
+      @media (max-width:900px) { .analyticsMetricsTray .analyticsMetricCard { flex:0 0 170px !important; } }
       @media (max-width:760px) {
         .analyticsStickyCommandCenter {
           width:calc(100% + 32px) !important;
@@ -121,9 +104,7 @@ function analyticsDedicatedMetrics(){return analyticsMetricTray(analyticsUniqueS
           border-radius:0 !important;
           padding:16px 12px 18px !important;
         }
-        .analyticsCommandCenterLite {
-          padding:10px 12px !important;
-        }
+        .analyticsCommandCenterLite { padding:10px 12px !important; }
         .analyticsMetricsTray .analyticsMetricCard { flex:0 0 210px !important; }
       }
     `;
