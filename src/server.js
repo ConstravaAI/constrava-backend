@@ -82,6 +82,7 @@ function seed() {
     plans: [],
     ingestionEvents: [],
     formConnections: [],
+    emailConnections: [],
     reports: [],
     users: [],
     sessions: []
@@ -115,6 +116,7 @@ function normalize(storeData) {
   storeData.plans ||= [];
   storeData.ingestionEvents ||= [];
   storeData.formConnections ||= [];
+  storeData.emailConnections ||= [];
   storeData.reports ||= [];
   storeData.users ||= [];
   storeData.sessions ||= [];
@@ -615,6 +617,7 @@ async function api(req, res, url, route) {
   if (req.method === "GET" && route === "/api/analytics/events") return send(res, 200, { events: storeData.events.filter((event) => event.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/form-connections") return send(res, 200, { connections: storeData.formConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ tokenHash, ...entry }) => entry) });
   if (req.method === "GET" && route === "/api/ingestion-events") return send(res, 200, { events: storeData.ingestionEvents.filter((entry) => entry.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
+  if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId) });
   if (req.method === "POST" && route === "/api/form-connections") {
     const body = await readBody(req);
     const token = crypto.randomBytes(24).toString("base64url");
@@ -649,6 +652,44 @@ async function api(req, res, url, route) {
     if (source) source.status = "connected";
     await saveStore(storeData);
     return send(res, 200, { connection: { ...connection, tokenHash: undefined } });
+  }
+  if (req.method === "POST" && route === "/api/email-connections") {
+    const body = await readBody(req);
+    const provider = clean(body.provider || "gmail");
+    const authorizationReady = provider === "gmail" ? Boolean(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET) : provider === "outlook" ? Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) : false;
+    const connection = { id: id("email"), workspaceId: ctx.workspaceId, sourceId: id("source_email"), name: clean(body.name || "Connected inbox"), emailAddress: clean(body.emailAddress).toLowerCase(), provider, status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, scope: body.scope || {}, automationPolicy: "review", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), lastMessageAt: "", testEventId: "" };
+    storeData.emailConnections.push(connection);
+    storeData.sources.push({ id: connection.sourceId, workspaceId: ctx.workspaceId, name: connection.name, type: "email", status: "draft", metadata: { connectionId: connection.id, provider: connection.provider, emailAddress: connection.emailAddress } });
+    await saveStore(storeData);
+    return send(res, 201, { connection });
+  }
+  const emailTestMatch = route.match(/^\/api\/email-connections\/([^/]+)\/test$/);
+  if (req.method === "POST" && emailTestMatch) {
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailTestMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Email connection not found." });
+    const body = await readBody(req);
+    const emailPayload = { from: clean(body.from), to: clean(body.to || connection.emailAddress), subject: clean(body.subject), body: clean(body.body), threadId: clean(body.threadId), messageId: clean(body.messageId), receivedAt: clean(body.receivedAt || new Date().toISOString()) };
+    const result = await processIngestion(storeData, { workspaceId: ctx.workspaceId, connection, payload: emailPayload, kind: "email", providerSubmissionId: emailPayload.messageId || id("test_message") });
+    connection.lastMessageAt = new Date().toISOString();
+    connection.testEventId = result.event.id;
+    await saveStore(storeData);
+    return send(res, 200, { accepted: true, ...result });
+  }
+  const emailActivateMatch = route.match(/^\/api\/email-connections\/([^/]+)\/activate$/);
+  if (req.method === "POST" && emailActivateMatch) {
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailActivateMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Email connection not found." });
+    if (!connection.testEventId) return send(res, 409, { error: "Process a test email before activation." });
+    const body = await readBody(req);
+    connection.scope = body.scope || connection.scope;
+    connection.automationPolicy = clean(body.automationPolicy || "review");
+    connection.status = connection.authorizationReady ? "active" : "ready_to_authorize";
+    connection.activatedAt = new Date().toISOString();
+    connection.updatedAt = connection.activatedAt;
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
+    if (source) source.status = connection.authorizationReady ? "connected" : "ready_to_authorize";
+    await saveStore(storeData);
+    return send(res, 200, { connection });
   }
   if (req.method === "POST" && route === "/api/records/plan") {
     const plan = await makePlan(await readBody(req), ctx.workspaceId);
