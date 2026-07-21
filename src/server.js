@@ -393,6 +393,7 @@ async function processIngestion(storeData, { workspaceId, connection, payload, k
   const event = { id: id("ingestion"), workspaceId, connectionId: connection?.id || "", sourceId: connection?.sourceId || "source_website", kind, provider: connection?.provider || "custom", providerSubmissionId: clean(providerSubmissionId), payload: sanitizedPayload, excludedFields, status: "classifying", createdAt: new Date().toISOString(), relevance: null, planId: "" };
   storeData.ingestionEvents.push(event);
   const relevance = await decideCrmRelevance(rawText);
+  if (excludedFields.length) relevance.riskFlags = [...new Set([...(relevance.riskFlags || []), "sensitive_fields_removed"])];
   event.relevance = relevance;
   if (["ignore", "spam", "sensitive_data_blocked"].includes(relevance.decision)) {
     event.status = relevance.decision;
