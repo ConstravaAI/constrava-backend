@@ -15,6 +15,8 @@ const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const OPENAI_API_KEY_ENV = "OPENAI_API_KEY";
 const RELEVANCE_MODEL = process.env.CONSTRAVA_RELEVANCE_MODEL || "gpt-5.6-luna";
 const RECORD_MODEL = process.env.CONSTRAVA_RECORD_MODEL || "gpt-5.6-terra";
+const EMAIL_TOKEN_KEY_ENV = "EMAIL_TOKEN_ENCRYPTION_KEY";
+const EMAIL_SYNC_INTERVAL_MS = Math.max(30_000, Number(process.env.EMAIL_SYNC_INTERVAL_MS || 60_000));
 
 const id = (prefix) => `${prefix}_${crypto.randomBytes(8).toString("hex")}`;
 const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -226,6 +228,128 @@ function responseText(response) {
   if (response.output_text) return response.output_text;
   for (const item of response.output || []) for (const content of item.content || []) if (content.type === "output_text" && content.text) return content.text;
   return "";
+}
+
+function emailTokenKey() {
+  const value = process.env[EMAIL_TOKEN_KEY_ENV];
+  return value ? crypto.createHash("sha256").update(value).digest() : null;
+}
+
+function encryptEmailTokens(tokens) {
+  const key = emailTokenKey();
+  if (!key) throw Object.assign(new Error(`${EMAIL_TOKEN_KEY_ENV} is required before connecting a live inbox.`), { status: 503 });
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(JSON.stringify(tokens), "utf8"), cipher.final()]);
+  return [iv, cipher.getAuthTag(), encrypted].map((part) => part.toString("base64url")).join(".");
+}
+
+function decryptEmailTokens(value) {
+  const key = emailTokenKey();
+  if (!key || !value) return null;
+  const [iv, tag, encrypted] = String(value).split(".").map((part) => Buffer.from(part, "base64url"));
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  return JSON.parse(Buffer.concat([decipher.update(encrypted), decipher.final()]).toString("utf8"));
+}
+
+function emailProviderConfig(provider) {
+  if (provider === "gmail") return { clientId: process.env.GMAIL_CLIENT_ID, clientSecret: process.env.GMAIL_CLIENT_SECRET, authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth", tokenUrl: "https://oauth2.googleapis.com/token", scope: "openid email https://www.googleapis.com/auth/gmail.readonly" };
+  if (provider === "outlook") return { clientId: process.env.MICROSOFT_CLIENT_ID, clientSecret: process.env.MICROSOFT_CLIENT_SECRET, authorizeUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize", tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token", scope: "openid email offline_access Mail.Read" };
+  return null;
+}
+
+async function emailProviderTokens(connection) {
+  const tokens = decryptEmailTokens(connection.oauthTokens);
+  if (!tokens) throw Object.assign(new Error("Authorize this mailbox before syncing."), { status: 409 });
+  if (!tokens.expiresAt || tokens.expiresAt > Date.now() + 60_000) return tokens;
+  const config = emailProviderConfig(connection.provider);
+  if (!tokens.refresh_token || !config) throw Object.assign(new Error("Mailbox authorization expired. Reconnect the inbox."), { status: 401 });
+  const body = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, refresh_token: tokens.refresh_token, grant_type: "refresh_token" });
+  if (connection.provider === "outlook") body.set("scope", config.scope);
+  const response = await fetch(config.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body });
+  const fresh = await response.json();
+  if (!response.ok) throw Object.assign(new Error(fresh.error_description || fresh.error || "Could not refresh mailbox authorization."), { status: 502 });
+  const next = { ...tokens, ...fresh, refresh_token: fresh.refresh_token || tokens.refresh_token, expiresAt: Date.now() + Number(fresh.expires_in || 3600) * 1000 };
+  connection.oauthTokens = encryptEmailTokens(next);
+  return next;
+}
+
+function decodeEmailBody(part) {
+  if (!part) return "";
+  if (part.mimeType === "text/plain" && part.body?.data) return Buffer.from(part.body.data, "base64url").toString("utf8");
+  const plain = (part.parts || []).map(decodeEmailBody).filter(Boolean).join("\n");
+  if (plain) return plain;
+  if (part.body?.data) return Buffer.from(part.body.data, "base64url").toString("utf8").replace(/<[^>]+>/g, " ");
+  return "";
+}
+
+async function fetchGmailMessages(connection, accessToken) {
+  const after = Math.floor(new Date(connection.syncCursor || connection.activatedAt || Date.now()).getTime() / 1000);
+  const headers = { authorization: `Bearer ${accessToken}` };
+  const messageRefs = [];
+  let pageToken = "";
+  do {
+    const listUrl = new URL("https://gmail.googleapis.com/gmail/v1/users/me/messages");
+    listUrl.searchParams.set("labelIds", "INBOX");
+    listUrl.searchParams.set("q", `after:${Math.max(0, after - 60)}`);
+    listUrl.searchParams.set("maxResults", "500");
+    if (pageToken) listUrl.searchParams.set("pageToken", pageToken);
+    const listedResponse = await fetch(listUrl, { headers });
+    const listed = await listedResponse.json();
+    if (!listedResponse.ok) throw new Error(listed.error?.message || "Could not read Gmail messages.");
+    messageRefs.push(...(listed.messages || []));
+    pageToken = listed.nextPageToken || "";
+  } while (pageToken && messageRefs.length < 5000);
+  const messages = [];
+  for (const item of messageRefs) {
+    const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(item.id)}?format=full`, { headers });
+    const message = await response.json();
+    if (!response.ok) throw new Error(message.error?.message || "Could not read a Gmail message.");
+    const header = (name) => message.payload?.headers?.find((entry) => entry.name.toLowerCase() === name)?.value || "";
+    messages.push({ from: header("from"), to: header("to"), subject: header("subject"), body: decodeEmailBody(message.payload).slice(0, 24000), threadId: message.threadId, messageId: message.id, receivedAt: new Date(Number(message.internalDate || Date.now())).toISOString() });
+  }
+  return messages;
+}
+
+async function fetchOutlookMessages(connection, accessToken) {
+  const since = new Date(connection.syncCursor || connection.activatedAt || Date.now() - 60_000).toISOString();
+  const firstUrl = new URL("https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages");
+  firstUrl.searchParams.set("$select", "id,internetMessageId,conversationId,receivedDateTime,subject,from,toRecipients,body");
+  firstUrl.searchParams.set("$filter", `receivedDateTime ge ${since}`);
+  firstUrl.searchParams.set("$orderby", "receivedDateTime asc");
+  firstUrl.searchParams.set("$top", "100");
+  const rows = [];
+  let nextUrl = firstUrl.toString(), pages = 0;
+  while (nextUrl && pages < 50) {
+    const response = await fetch(nextUrl, { headers: { authorization: `Bearer ${accessToken}`, prefer: 'outlook.body-content-type="text"' } });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || "Could not read Outlook messages.");
+    rows.push(...(data.value || []));
+    nextUrl = data["@odata.nextLink"] || "";
+    pages += 1;
+  }
+  return rows.map((message) => ({ from: message.from?.emailAddress?.address || "", to: (message.toRecipients || []).map((entry) => entry.emailAddress?.address).filter(Boolean).join(", "), subject: message.subject || "", body: clean(message.body?.content || "").slice(0, 24000), threadId: message.conversationId || "", messageId: message.internetMessageId || message.id, receivedAt: message.receivedDateTime || new Date().toISOString() }));
+}
+
+async function syncEmailConnection(storeData, connection) {
+  if (connection.status !== "active") return { processed: 0, committed: 0 };
+  const tokens = await emailProviderTokens(connection);
+  const messages = connection.provider === "gmail" ? await fetchGmailMessages(connection, tokens.access_token) : await fetchOutlookMessages(connection, tokens.access_token);
+  let processed = 0, committed = 0;
+  for (const payload of messages) {
+    const result = await processIngestion(storeData, { workspaceId: connection.workspaceId, connection, payload, kind: "email", providerSubmissionId: `${connection.provider}:${payload.messageId}` });
+    if (result.duplicate) continue;
+    processed += 1;
+    const shouldCommit = result.plan && result.relevance.decision === "create_records" && (connection.automationPolicy === "automatic" || (connection.automationPolicy === "high_confidence" && Number(result.relevance.confidence) >= 0.85 && result.plan.riskLevel !== "high"));
+    if (shouldCommit) { commitPlan(storeData, result.plan.planId, null, connection.workspaceId); committed += 1; result.event.status = "committed"; }
+  }
+  connection.syncCursor = new Date().toISOString();
+  connection.lastMessageAt = messages.at(-1)?.receivedAt || connection.lastMessageAt;
+  connection.lastSyncAt = new Date().toISOString();
+  connection.lastSyncError = "";
+  connection.syncStats = { processed, committed };
+  return { processed, committed };
 }
 
 async function structuredResponse({ model, name, schema, instructions, input }) {
@@ -607,6 +731,32 @@ async function api(req, res, url, route) {
     await saveStore(storeData);
     return send(res, 202, { accepted: true, eventId: result.event.id, decision: result.relevance.decision, duplicate: result.duplicate });
   }
+  if (req.method === "GET" && route === "/api/email/oauth/callback") {
+    const state = clean(url.searchParams.get("state"));
+    const connection = storeData.emailConnections.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
+    if (!connection) return send(res, 400, { error: "This mailbox authorization link is invalid or expired." });
+    if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
+    const code = clean(url.searchParams.get("code"));
+    const config = emailProviderConfig(connection.provider);
+    const redirectUri = `${ORIGIN}/api/email/oauth/callback`;
+    const tokenBody = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, code, redirect_uri: redirectUri, grant_type: "authorization_code" });
+    if (connection.provider === "outlook") tokenBody.set("scope", config.scope);
+    const tokenResponse = await fetch(config.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: tokenBody });
+    const tokens = await tokenResponse.json();
+    if (!tokenResponse.ok) return send(res, 502, { error: tokens.error_description || tokens.error || "Mailbox authorization failed." });
+    connection.oauthTokens = encryptEmailTokens({ ...tokens, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });
+    connection.oauthStateHash = "";
+    connection.oauthStateExpiresAt = "";
+    connection.authorizationStatus = "authorized";
+    connection.status = "active";
+    connection.syncCursor = "1970-01-01T00:00:00.000Z";
+    connection.authorizedAt = new Date().toISOString();
+    connection.updatedAt = connection.authorizedAt;
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
+    if (source) source.status = "connected";
+    await saveStore(storeData);
+    return redirect(res, "/dashboard?email_connected=1");
+  }
   const ctx = requestContext(req, url, storeData);
   if (!ctx) return send(res, 401, { error: "Sign in required." });
   if (req.method === "GET" && route === "/api/dashboard/summary") return send(res, 200, dashboardSummary(storeData, ctx.workspaceId));
@@ -617,7 +767,7 @@ async function api(req, res, url, route) {
   if (req.method === "GET" && route === "/api/analytics/events") return send(res, 200, { events: storeData.events.filter((event) => event.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/form-connections") return send(res, 200, { connections: storeData.formConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ tokenHash, ...entry }) => entry) });
   if (req.method === "GET" && route === "/api/ingestion-events") return send(res, 200, { events: storeData.ingestionEvents.filter((entry) => entry.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
-  if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId) });
+  if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ oauthTokens, oauthStateHash, ...entry }) => entry) });
   if (req.method === "POST" && route === "/api/form-connections") {
     const body = await readBody(req);
     const token = crypto.randomBytes(24).toString("base64url");
@@ -656,8 +806,8 @@ async function api(req, res, url, route) {
   if (req.method === "POST" && route === "/api/email-connections") {
     const body = await readBody(req);
     const provider = clean(body.provider || "gmail");
-    const authorizationReady = provider === "gmail" ? Boolean(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET) : provider === "outlook" ? Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) : false;
-    const connection = { id: id("email"), workspaceId: ctx.workspaceId, sourceId: id("source_email"), name: clean(body.name || "Connected inbox"), emailAddress: clean(body.emailAddress).toLowerCase(), provider, status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, scope: body.scope || {}, automationPolicy: "review", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), lastMessageAt: "", testEventId: "" };
+    const authorizationReady = Boolean(emailTokenKey()) && (provider === "gmail" ? Boolean(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET) : provider === "outlook" ? Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) : false);
+    const connection = { id: id("email"), workspaceId: ctx.workspaceId, sourceId: id("source_email"), name: clean(body.name || "Connected inbox"), emailAddress: clean(body.emailAddress).toLowerCase(), provider, status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, scope: body.scope || {}, automationPolicy: "review", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), activatedAt: "", authorizedAt: "", syncCursor: "", lastSyncAt: "", lastSyncError: "", syncStats: { processed: 0, committed: 0 }, lastMessageAt: "", testEventId: "" };
     storeData.emailConnections.push(connection);
     storeData.sources.push({ id: connection.sourceId, workspaceId: ctx.workspaceId, name: connection.name, type: "email", status: "draft", metadata: { connectionId: connection.id, provider: connection.provider, emailAddress: connection.emailAddress } });
     await saveStore(storeData);
@@ -675,6 +825,42 @@ async function api(req, res, url, route) {
     await saveStore(storeData);
     return send(res, 200, { accepted: true, ...result });
   }
+  const emailAuthorizeMatch = route.match(/^\/api\/email-connections\/([^/]+)\/authorize$/);
+  if (req.method === "POST" && emailAuthorizeMatch) {
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Email connection not found." });
+    const config = emailProviderConfig(connection.provider);
+    if (!config?.clientId || !config?.clientSecret) return send(res, 503, { error: `OAuth credentials are not configured for ${connection.provider}.` });
+    if (!emailTokenKey()) return send(res, 503, { error: `${EMAIL_TOKEN_KEY_ENV} is not configured.` });
+    const state = crypto.randomBytes(32).toString("base64url");
+    connection.oauthStateHash = hashToken(state);
+    connection.oauthStateExpiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+    connection.updatedAt = new Date().toISOString();
+    const authorizeUrl = new URL(config.authorizeUrl);
+    authorizeUrl.searchParams.set("client_id", config.clientId);
+    authorizeUrl.searchParams.set("redirect_uri", `${ORIGIN}/api/email/oauth/callback`);
+    authorizeUrl.searchParams.set("response_type", "code");
+    authorizeUrl.searchParams.set("scope", config.scope);
+    authorizeUrl.searchParams.set("state", state);
+    if (connection.provider === "gmail") { authorizeUrl.searchParams.set("access_type", "offline"); authorizeUrl.searchParams.set("prompt", "consent"); }
+    await saveStore(storeData);
+    return send(res, 200, { authorizeUrl: authorizeUrl.toString() });
+  }
+  const emailSyncMatch = route.match(/^\/api\/email-connections\/([^/]+)\/sync$/);
+  if (req.method === "POST" && emailSyncMatch) {
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailSyncMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Email connection not found." });
+    try {
+      const result = await syncEmailConnection(storeData, connection);
+      await saveStore(storeData);
+      return send(res, 200, { connection: { ...connection, oauthTokens: undefined }, ...result });
+    } catch (error) {
+      connection.lastSyncAt = new Date().toISOString();
+      connection.lastSyncError = error.message;
+      await saveStore(storeData);
+      throw error;
+    }
+  }
   const emailActivateMatch = route.match(/^\/api\/email-connections\/([^/]+)\/activate$/);
   if (req.method === "POST" && emailActivateMatch) {
     const connection = storeData.emailConnections.find((entry) => entry.id === emailActivateMatch[1] && entry.workspaceId === ctx.workspaceId);
@@ -683,11 +869,11 @@ async function api(req, res, url, route) {
     const body = await readBody(req);
     connection.scope = body.scope || connection.scope;
     connection.automationPolicy = clean(body.automationPolicy || "review");
-    connection.status = connection.authorizationReady ? "active" : "ready_to_authorize";
+    connection.status = connection.authorizationStatus === "authorized" ? "active" : "ready_to_authorize";
     connection.activatedAt = new Date().toISOString();
     connection.updatedAt = connection.activatedAt;
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
-    if (source) source.status = connection.authorizationReady ? "connected" : "ready_to_authorize";
+    if (source) source.status = connection.status === "active" ? "connected" : "ready_to_authorize";
     await saveStore(storeData);
     return send(res, 200, { connection });
   }
@@ -763,4 +949,22 @@ http.createServer(async (req, res) => {
     send(res, error.status || 500, { error: error.message });
   }
 }).listen(PORT, () => console.log(`Constrava is running at ${ORIGIN}`));
+
+let emailSyncRunning = false;
+async function syncActiveEmailConnections() {
+  if (emailSyncRunning || !emailTokenKey()) return;
+  emailSyncRunning = true;
+  try {
+    const storeData = await loadStore();
+    for (const connection of storeData.emailConnections.filter((entry) => entry.status === "active" && entry.oauthTokens)) {
+      try { await syncEmailConnection(storeData, connection); }
+      catch (error) { connection.lastSyncAt = new Date().toISOString(); connection.lastSyncError = error.message; }
+    }
+    await saveStore(storeData);
+  } finally {
+    emailSyncRunning = false;
+  }
+}
+const emailSyncTimer = setInterval(syncActiveEmailConnections, EMAIL_SYNC_INTERVAL_MS);
+emailSyncTimer.unref();
 
