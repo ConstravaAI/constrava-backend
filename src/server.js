@@ -844,8 +844,18 @@ async function api(req, res, url, route) {
   if (req.method === "GET" && emailMessagesMatch) {
     const connection = storeData.emailConnections.find((entry) => entry.id === emailMessagesMatch[1] && entry.workspaceId === ctx.workspaceId);
     if (!connection) return send(res, 404, { error: "Email connection not found." });
-    const messages = storeData.ingestionEvents
-      .filter((event) => event.workspaceId === ctx.workspaceId && event.connectionId === connection.id && event.kind === "email")
+    const view = ["new", "all", "review"].includes(url.searchParams.get("view")) ? url.searchParams.get("view") : "new";
+    const limit = Math.min(50, Math.max(1, Number(url.searchParams.get("limit")) || 50));
+    const allEvents = storeData.ingestionEvents.filter((event) => event.workspaceId === ctx.workspaceId && event.connectionId === connection.id && event.kind === "email");
+    const counts = {
+      all: allEvents.length,
+      new: allEvents.filter((event) => !event.viewedAt).length,
+      review: allEvents.filter((event) => event.status === "review_required" || event.relevance?.decision === "needs_review").length
+    };
+    const messages = allEvents
+      .filter((event) => view === "new" ? !event.viewedAt : view === "review" ? event.status === "review_required" || event.relevance?.decision === "needs_review" : true)
+      .sort((a, b) => clean(b.payload?.receivedAt || b.createdAt).localeCompare(clean(a.payload?.receivedAt || a.createdAt)))
+      .slice(0, limit)
       .map((event) => {
         const plan = storeData.plans.find((entry) => entry.planId === event.planId && entry.workspaceId === ctx.workspaceId) || null;
         const recordIds = new Set(plan?.committedRecordIds || []);
@@ -868,9 +878,8 @@ async function api(req, res, url, route) {
           plan: plan ? { planId: plan.planId, status: plan.status, actions: plan.actions || [] } : null,
           records
         };
-      })
-      .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
-    return send(res, 200, { connection: { id: connection.id, name: connection.name, emailAddress: connection.emailAddress, provider: connection.provider, status: connection.status, lastSyncAt: connection.lastSyncAt, lastSyncError: connection.lastSyncError }, messages });
+      });
+    return send(res, 200, { connection: { id: connection.id, name: connection.name, emailAddress: connection.emailAddress, provider: connection.provider, status: connection.status, lastSyncAt: connection.lastSyncAt, lastSyncError: connection.lastSyncError }, messages, counts, limit, hasMore: counts[view] > messages.length });
   }
   const emailViewedMatch = route.match(/^\/api\/email-connections\/([^/]+)\/messages\/([^/]+)\/viewed$/);
   if (req.method === "POST" && emailViewedMatch) {
