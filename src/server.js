@@ -826,6 +826,20 @@ async function api(req, res, url, route) {
   if (req.method === "GET" && route === "/api/form-connections") return send(res, 200, { connections: storeData.formConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ tokenHash, ...entry }) => entry) });
   if (req.method === "GET" && route === "/api/ingestion-events") return send(res, 200, { events: storeData.ingestionEvents.filter((entry) => entry.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ oauthTokens, oauthStateHash, ...entry }) => entry) });
+  if (req.method === "GET" && route === "/api/connected-resources") {
+    const resources = storeData.sources
+      .filter((entry) => entry.workspaceId === ctx.workspaceId && entry.status === "connected")
+      .map((entry) => ({
+        id: entry.id,
+        name: entry.name,
+        type: entry.type,
+        status: entry.status,
+        resourceId: entry.type === "email" ? "email-inbox" : entry.type === "website_form" ? "website-forms" : entry.type === "website" ? "website-tracker" : entry.type === "manual_note" ? "manual-notes" : "",
+        metadata: entry.metadata || {}
+      }))
+      .filter((entry) => entry.resourceId);
+    return send(res, 200, { resources });
+  }
   const emailMessagesMatch = route.match(/^\/api\/email-connections\/([^/]+)\/messages$/);
   if (req.method === "GET" && emailMessagesMatch) {
     const connection = storeData.emailConnections.find((entry) => entry.id === emailMessagesMatch[1] && entry.workspaceId === ctx.workspaceId);
