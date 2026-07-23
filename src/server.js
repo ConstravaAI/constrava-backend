@@ -116,6 +116,7 @@ function normalize(storeData) {
   const fresh = seed();
   storeData.sources ||= fresh.sources;
   storeData.records ||= [];
+  storeData.draftRecords ||= [];
   storeData.events ||= [];
   storeData.plans ||= [];
   storeData.ingestionEvents ||= [];
@@ -125,7 +126,7 @@ function normalize(storeData) {
   storeData.users ||= [];
   storeData.sessions ||= [];
   for (const source of fresh.sources) if (!storeData.sources.some((entry) => entry.id === source.id)) storeData.sources.push(source);
-  for (const collection of [storeData.records, storeData.events, storeData.plans, storeData.reports]) for (const item of collection) item.workspaceId ||= "demo";
+  for (const collection of [storeData.records, storeData.draftRecords, storeData.events, storeData.plans, storeData.reports]) for (const item of collection) item.workspaceId ||= "demo";
   if (!storeData.records.some((record) => record.workspaceId === "demo")) storeData.records.push(...starterRecords("demo"));
   ensureDeveloperAccount(storeData);
   return storeData;
@@ -347,8 +348,7 @@ async function syncEmailConnection(storeData, connection) {
     const hasRiskFlags = Boolean(result.relevance.riskFlags?.length);
     const threshold = connection.automationPolicy === "high_confidence" ? HIGH_CONFIDENCE_MIN_CONFIDENCE : AUTO_COMMIT_MIN_CONFIDENCE;
     const shouldCommit = result.plan && result.relevance.decision === "create_records" && connection.automationPolicy !== "review" && confidence >= threshold && result.plan.riskLevel === "low" && !hasRiskFlags;
-    if (shouldCommit) { commitPlan(storeData, result.plan.planId, null, connection.workspaceId); committed += 1; result.event.status = "committed"; }
-    else if (result.plan && result.relevance.decision === "create_records") result.event.status = "review_required";
+    if (result.plan && result.relevance.decision === "create_records") result.event.status = shouldCommit ? "draft_created" : "review_required";
   }
   connection.syncCursor = new Date().toISOString();
   connection.lastMessageAt = messages.at(-1)?.receivedAt || connection.lastMessageAt;
@@ -555,7 +555,7 @@ function emailPreflightDecision(connection, payload) {
   return null;
 }
 
-async function processIngestion(storeData, { workspaceId, connection, payload, kind = "website_form", providerSubmissionId = "" }) {
+async function processIngestion(storeData, { workspaceId, connection, payload, kind = "website_form", providerSubmissionId = "", stageDrafts = true }) {
   const excludedFields = [];
   const sanitizedPayload = sanitizeSubmission(payload, excludedFields);
   const rawText = submissionText(sanitizedPayload);
@@ -572,9 +572,91 @@ async function processIngestion(storeData, { workspaceId, connection, payload, k
   }
   const plan = await makePlan({ kind, sourceId: event.sourceId, rawText, payload: sanitizedPayload, ingestionEventId: event.id, relevance }, workspaceId, storeData);
   storeData.plans.push(plan);
+  if (stageDrafts) stagePlanDrafts(storeData, plan, workspaceId);
   event.planId = plan.planId;
-  event.status = relevance.decision === "needs_review" ? "review_required" : "plan_created";
+  event.status = relevance.decision === "needs_review" ? "review_required" : stageDrafts ? "draft_created" : "plan_created";
   return { event, relevance, plan, duplicate: false };
+}
+
+function stagePlanDrafts(storeData, plan, workspaceId) {
+  storeData.draftRecords ||= [];
+  const now = new Date().toISOString();
+  const existingActionIds = new Set(storeData.draftRecords.filter((draft) => draft.workspaceId === workspaceId && draft.metadata?.planId === plan.planId).map((draft) => draft.metadata?.actionId));
+  const drafts = [];
+  for (const action of plan.actions.filter((entry) => entry.actionType !== "ignore" && !existingActionIds.has(entry.id))) {
+    const target = action.targetRecordId ? storeData.records.find((record) => record.id === action.targetRecordId && record.workspaceId === workspaceId && record.type === action.recordType) : null;
+    const fields = { ...(target?.fields || {}), ...(action.fields || {}) };
+    const draft = {
+      id: id("draft"),
+      workspaceId,
+      type: action.recordType,
+      title: clean(fields.title || fields.name || fields.companyName || action.title || `${action.recordType} record`),
+      status: "draft",
+      priorityScore: Math.max(Number(target?.priorityScore || 0), clamp(action.priorityScore)),
+      priorityReasons: [...new Set([...(target?.priorityReasons || []), ...(action.priorityReasons || [])])],
+      tags: [...new Set([...(target?.tags || []), ...(action.tags || [])])],
+      fields,
+      relationships: action.relationships || target?.relationships || [],
+      sourceIds: [...new Set([...(target?.sourceIds || []), plan.source?.sourceId].filter(Boolean))],
+      createdAt: now,
+      updatedAt: now,
+      metadata: { planId: plan.planId, actionId: action.id, actionType: action.actionType, targetRecordId: action.targetRecordId || "", aiProvider: plan.aiProvider, aiModel: plan.aiModel || "", reasoning: action.reasoning || "", ingestionEventId: plan.source?.ingestionEventId || "" }
+    };
+    storeData.draftRecords.push(draft);
+    drafts.push(draft);
+  }
+  plan.draftRecordIds = [...new Set([...(plan.draftRecordIds || []), ...drafts.map((draft) => draft.id)])];
+  plan.status = drafts.length ? "drafted" : plan.status;
+  return drafts;
+}
+
+function updateDraftRecord(storeData, body, workspaceId) {
+  const draft = storeData.draftRecords.find((entry) => entry.id === clean(body.id) && entry.workspaceId === workspaceId);
+  if (!draft) throw Object.assign(new Error("AI record not found."), { status: 404 });
+  const allowedTypes = new Set(["Person", "Company", "Deal", "Task", "Intake", "Note"]);
+  const type = clean(body.type || draft.type);
+  if (!allowedTypes.has(type)) throw Object.assign(new Error("Choose a valid record type."), { status: 400 });
+  const title = clean(body.title || body.name || body.companyName);
+  if (!title) throw Object.assign(new Error("Title or name is required."), { status: 400 });
+  const level = clean(body.priorityLevel || "").toLowerCase();
+  const priorityMap = { low: 25, normal: 50, high: 75, highest: 95 };
+  const editable = ["description", "associatedDate", "email", "phone", "companyName", "role", "industry", "website", "contactEmail", "value", "stage", "taskType", "dueDate", "source", "category"];
+  const fields = { ...(draft.fields || {}), title };
+  for (const key of editable) if (body[key] !== undefined) fields[key] = key === "value" ? Number(String(body[key] || "").replace(/[$,\s]/g, "")) || 0 : clean(body[key]);
+  for (const key of Object.keys(fields)) if (fields[key] === "" || fields[key] === 0) delete fields[key];
+  draft.type = type;
+  draft.title = title;
+  draft.fields = fields;
+  if (priorityMap[level] !== undefined) draft.priorityScore = priorityMap[level];
+  if (body.tags !== undefined) draft.tags = clean(body.tags).split(",").map((tag) => clean(tag)).filter(Boolean);
+  draft.updatedAt = new Date().toISOString();
+  draft.metadata = { ...(draft.metadata || {}), priorityLevel: level || draft.metadata?.priorityLevel, userEdited: true };
+  return draft;
+}
+
+function publishDraftRecord(storeData, draftId, workspaceId) {
+  const index = storeData.draftRecords.findIndex((entry) => entry.id === draftId && entry.workspaceId === workspaceId);
+  if (index === -1) throw Object.assign(new Error("AI record not found."), { status: 404 });
+  const draft = storeData.draftRecords[index];
+  const now = new Date().toISOString();
+  const target = draft.metadata?.targetRecordId ? storeData.records.find((record) => record.id === draft.metadata.targetRecordId && record.workspaceId === workspaceId && record.type === draft.type) : null;
+  let record;
+  if (target) {
+    Object.assign(target, { title: draft.title, status: target.status || "active", priorityScore: draft.priorityScore, priorityReasons: draft.priorityReasons, tags: draft.tags, fields: draft.fields, relationships: draft.relationships, sourceIds: draft.sourceIds, updatedAt: now });
+    target.metadata = { ...(target.metadata || {}), planId: draft.metadata?.planId, publishedFromDraftId: draft.id, userEditedDraft: Boolean(draft.metadata?.userEdited) };
+    record = target;
+  } else {
+    record = { ...draft, id: id(draft.type.toLowerCase()), status: draft.type === "Task" || draft.type === "Deal" ? "open" : "active", createdAt: now, updatedAt: now, metadata: { ...(draft.metadata || {}), publishedFromDraftId: draft.id, userEditedDraft: Boolean(draft.metadata?.userEdited) } };
+    storeData.records.push(record);
+  }
+  storeData.draftRecords.splice(index, 1);
+  const plan = storeData.plans.find((entry) => entry.planId === draft.metadata?.planId && entry.workspaceId === workspaceId);
+  if (plan) {
+    plan.committedRecordIds = [...new Set([...(plan.committedRecordIds || []), record.id])];
+    plan.draftRecordIds = (plan.draftRecordIds || []).filter((idValue) => idValue !== draft.id);
+    if (!plan.draftRecordIds.length) { plan.status = "committed"; plan.committedAt = now; }
+  }
+  return record;
 }
 
 function commitPlan(storeData, planId, actionIds, workspaceId) {
@@ -819,6 +901,7 @@ async function api(req, res, url, route) {
   if (!ctx) return send(res, 401, { error: "Sign in required." });
   if (req.method === "GET" && route === "/api/dashboard/summary") return send(res, 200, dashboardSummary(storeData, ctx.workspaceId));
   if (req.method === "GET" && route === "/api/records") return send(res, 200, { records: filtered(storeData, Object.fromEntries(url.searchParams.entries()), ctx.workspaceId) });
+  if (req.method === "GET" && route === "/api/records/drafts") return send(res, 200, { records: storeData.draftRecords.filter((record) => record.workspaceId === ctx.workspaceId).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))) });
   if (req.method === "GET" && route === "/api/sources") return send(res, 200, { sources: storeData.sources, snippet: snippet() });
   if (req.method === "GET" && route === "/api/plans") return send(res, 200, { plans: storeData.plans.filter((plan) => plan.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/reports") return send(res, 200, { reports: storeData.reports.filter((report) => report.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
@@ -905,7 +988,7 @@ async function api(req, res, url, route) {
     const connection = storeData.formConnections.find((entry) => entry.id === formTestMatch[1] && entry.workspaceId === ctx.workspaceId);
     if (!connection) return send(res, 404, { error: "Form connection not found." });
     const body = await readBody(req);
-    const result = await processIngestion(storeData, { workspaceId: ctx.workspaceId, connection, payload: body.fields || body.payload || body, providerSubmissionId: body.providerSubmissionId || "" });
+    const result = await processIngestion(storeData, { workspaceId: ctx.workspaceId, connection, payload: body.fields || body.payload || body, providerSubmissionId: body.providerSubmissionId || "", stageDrafts: false });
     connection.lastSubmissionAt = new Date().toISOString();
     connection.testEventId = result.event.id;
     await saveStore(storeData);
@@ -942,7 +1025,7 @@ async function api(req, res, url, route) {
     if (!connection) return send(res, 404, { error: "Email connection not found." });
     const body = await readBody(req);
     const emailPayload = { from: clean(body.from), to: clean(body.to || connection.emailAddress), subject: clean(body.subject), body: clean(body.body), threadId: clean(body.threadId), messageId: clean(body.messageId), receivedAt: clean(body.receivedAt || new Date().toISOString()) };
-    const result = await processIngestion(storeData, { workspaceId: ctx.workspaceId, connection, payload: emailPayload, kind: "email", providerSubmissionId: emailPayload.messageId || id("test_message") });
+    const result = await processIngestion(storeData, { workspaceId: ctx.workspaceId, connection, payload: emailPayload, kind: "email", providerSubmissionId: emailPayload.messageId || id("test_message"), stageDrafts: false });
     connection.lastMessageAt = new Date().toISOString();
     connection.testEventId = result.event.id;
     await saveStore(storeData);
@@ -1003,8 +1086,20 @@ async function api(req, res, url, route) {
   if (req.method === "POST" && route === "/api/records/plan") {
     const plan = await makePlan(await readBody(req), ctx.workspaceId, storeData);
     storeData.plans.push(plan);
+    const drafts = stagePlanDrafts(storeData, plan, ctx.workspaceId);
     await saveStore(storeData);
-    return send(res, 200, { plan });
+    return send(res, 200, { plan, drafts });
+  }
+  if (req.method === "POST" && route === "/api/records/drafts/update") {
+    const draft = updateDraftRecord(storeData, await readBody(req), ctx.workspaceId);
+    await saveStore(storeData);
+    return send(res, 200, { record: draft });
+  }
+  if (req.method === "POST" && route === "/api/records/drafts/publish") {
+    const body = await readBody(req);
+    const record = publishDraftRecord(storeData, clean(body.id), ctx.workspaceId);
+    await saveStore(storeData);
+    return send(res, 200, { record });
   }
   if (req.method === "POST" && route === "/api/records/commit") {
     const body = await readBody(req);
@@ -1029,6 +1124,7 @@ async function api(req, res, url, route) {
     const body = await readBody(req);
     const plan = await makePlan({ kind: "upload", rawText: String(body.csv || body.text || "").split(/\r?\n/).slice(0, 100).join("\n") }, ctx.workspaceId, storeData);
     storeData.plans.push(plan);
+    stagePlanDrafts(storeData, plan, ctx.workspaceId);
     await saveStore(storeData);
     return send(res, 200, { plan });
   }
