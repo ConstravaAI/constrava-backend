@@ -826,6 +826,48 @@ async function api(req, res, url, route) {
   if (req.method === "GET" && route === "/api/form-connections") return send(res, 200, { connections: storeData.formConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ tokenHash, ...entry }) => entry) });
   if (req.method === "GET" && route === "/api/ingestion-events") return send(res, 200, { events: storeData.ingestionEvents.filter((entry) => entry.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ oauthTokens, oauthStateHash, ...entry }) => entry) });
+  const emailMessagesMatch = route.match(/^\/api\/email-connections\/([^/]+)\/messages$/);
+  if (req.method === "GET" && emailMessagesMatch) {
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailMessagesMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Email connection not found." });
+    const messages = storeData.ingestionEvents
+      .filter((event) => event.workspaceId === ctx.workspaceId && event.connectionId === connection.id && event.kind === "email")
+      .map((event) => {
+        const plan = storeData.plans.find((entry) => entry.planId === event.planId && entry.workspaceId === ctx.workspaceId) || null;
+        const recordIds = new Set(plan?.committedRecordIds || []);
+        const records = storeData.records
+          .filter((record) => record.workspaceId === ctx.workspaceId && (recordIds.has(record.id) || record.metadata?.planId === event.planId))
+          .map((record) => ({ id: record.id, type: record.type, title: record.title, status: record.status }));
+        return {
+          id: event.id,
+          from: clean(event.payload?.from),
+          to: clean(event.payload?.to),
+          subject: clean(event.payload?.subject),
+          body: clean(event.payload?.body),
+          threadId: clean(event.payload?.threadId),
+          messageId: clean(event.payload?.messageId),
+          receivedAt: clean(event.payload?.receivedAt || event.createdAt),
+          createdAt: event.createdAt,
+          viewedAt: event.viewedAt || "",
+          status: event.status,
+          relevance: event.relevance,
+          plan: plan ? { planId: plan.planId, status: plan.status, actions: plan.actions || [] } : null,
+          records
+        };
+      })
+      .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+    return send(res, 200, { connection: { id: connection.id, name: connection.name, emailAddress: connection.emailAddress, provider: connection.provider, status: connection.status, lastSyncAt: connection.lastSyncAt, lastSyncError: connection.lastSyncError }, messages });
+  }
+  const emailViewedMatch = route.match(/^\/api\/email-connections\/([^/]+)\/messages\/([^/]+)\/viewed$/);
+  if (req.method === "POST" && emailViewedMatch) {
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailViewedMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Email connection not found." });
+    const event = storeData.ingestionEvents.find((entry) => entry.id === emailViewedMatch[2] && entry.connectionId === connection.id && entry.workspaceId === ctx.workspaceId && entry.kind === "email");
+    if (!event) return send(res, 404, { error: "Email message not found." });
+    event.viewedAt = event.viewedAt || new Date().toISOString();
+    await saveStore(storeData);
+    return send(res, 200, { id: event.id, viewedAt: event.viewedAt });
+  }
   if (req.method === "POST" && route === "/api/form-connections") {
     const body = await readBody(req);
     const token = crypto.randomBytes(24).toString("base64url");
