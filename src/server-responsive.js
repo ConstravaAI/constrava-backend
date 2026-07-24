@@ -67,7 +67,7 @@ const sourcePatches = [
   [bindInsertionNeedle, bindInsertionReplacement],
   [styleNeedle, styleReplacement]
 ];
-const wizardInjection = "source = source.replace(/function editRecordsContent\\(\\)\\{[\\s\\S]*?\\nfunction aiDraftRow\\(/, " + JSON.stringify(editRecordsWizardReplacement + "\nfunction aiDraftRow(") + ");\n";
+const wizardInjection = "source = source.replace(/function editRecordsContent\\(\\)\\{[\\s\\S]*?\\nfunction aiDraftText\\(/, " + JSON.stringify(editRecordsWizardReplacement + "\nfunction aiDraftText(") + ");\n";
 const crmInjection = "source = source.replace(/function crmContent\\(\\)\\{[\\s\\S]*?\\nfunction notificationContent\\(\\)/, " + JSON.stringify(crmContentReplacement + "\nfunction notificationContent()") + ");\n";
 const injection = wizardInjection + crmInjection + "for (const [needle, replacement] of " + JSON.stringify(sourcePatches) + ") source = source.replace(needle, replacement);\n";
 runtime = runtime.replace("await fs.writeFile(runtimePath, source);", injection + "await fs.writeFile(runtimePath, source);");
