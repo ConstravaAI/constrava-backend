@@ -5,8 +5,6 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const serverPath = path.join(here, "server.js");
 
-let source = await fs.readFile(serverPath, "utf8");
-source = source.replace(">🔔<span class=\"notifyDot\"", ">○<span class=\"notifyDot\"");
-await fs.writeFile(serverPath, source);
+await fs.access(serverPath);
 
 await import("./server-tab-loading-state.js");
