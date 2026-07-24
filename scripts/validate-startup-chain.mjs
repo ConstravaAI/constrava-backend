@@ -121,6 +121,9 @@ await assertContains("src/server-account-persistence.js", 'await import("./serve
 await assertContains("src/server-connected-resources.js", "function constravaEmailConnect(state)", "the provider-aware email connection step");
 await assertContains("src/server.js", "async function fetchImapMessages(connection)", "the universal IMAP inbox adapter");
 await assertContains("src/server.js", "/imap$/", "the IMAP verification route");
+await assertContains("src/server.js", 'connection.status = "reauthorization_required";', "the Gmail permission recovery state");
+await assertContains("src/server.js", "connection.syncCursor = connection.authorizedAt;", "the new-email-only OAuth sync cursor");
+await assertContains("src/server-connected-resources.js", "Reconnect Google", "the Gmail reconnect action");
 
 await validateLocalImports("src/server-tracker-analytics.js");
 await validateEncodedScopeWrapper();
@@ -132,3 +135,4 @@ if (failures.length) {
 }
 
 console.log("Startup chain validation passed.");
+
