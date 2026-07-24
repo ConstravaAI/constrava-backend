@@ -128,6 +128,9 @@ await assertContains("src/server.js", "function upsertHiddenIdentity(", "the hid
 await assertContains("src/server.js", "function reconcilePublishedRecordIdentity(", "published CRM identity reconciliation");
 await assertContains("src/server.js", 'route === "/api/identity/reconcile"', "the incremental identity reconciliation endpoint");
 await assertContains("src/server-runtime.js", "reconcilePublishedRecordIdentity(storeData, record);", "manual CRM identity reconciliation");
+await assertContains("src/server-connected-resources.js", "function constravaHydrateEmailConnection(", "email connection refresh restoration");
+await assertContains("src/server-connected-resources.js", "function constravaPreferredEmailConnection(", "active email connection selection");
+await assertContains("src/server-runtime.js", "api('/api/email-connections')", "email connection dashboard preload");
 
 await validateLocalImports("src/server-tracker-analytics.js");
 await validateEncodedScopeWrapper();
