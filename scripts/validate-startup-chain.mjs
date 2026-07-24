@@ -133,6 +133,8 @@ await assertContains("src/server-connected-resources.js", "function constravaPre
 await assertContains("src/server-runtime.js", "api('/api/email-connections')", "email connection dashboard preload");
 await assertContains("src/server.js", "sourcePreview", "draft source preview response");
 await assertContains("src/server-runtime.js", "function aiDraftText(", "simplified AI draft text renderer");
+await assertContains("src/server.js", "durableStoreConfigured", "durable production store configuration");
+await assertContains("src/server.js", "storeWriteQueue", "serialized atomic store writes");
 
 await validateLocalImports("src/server-tracker-analytics.js");
 await validateEncodedScopeWrapper();
