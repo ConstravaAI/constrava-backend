@@ -139,6 +139,10 @@ function normalize(storeData) {
   storeData.reports ||= [];
   storeData.users ||= [];
   storeData.sessions ||= [];
+  for (const connection of storeData.emailConnections) {
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
+    if (source && connection.status === "active" && connection.authorizationStatus === "authorized") source.status = "connected";
+  }
   for (const source of fresh.sources) if (!storeData.sources.some((entry) => entry.id === source.id)) storeData.sources.push(source);
   for (const collection of [storeData.records, storeData.draftRecords, storeData.events, storeData.plans, storeData.reports]) for (const item of collection) item.workspaceId ||= "demo";
   if (!storeData.records.some((record) => record.workspaceId === "demo")) storeData.records.push(...starterRecords("demo"));
