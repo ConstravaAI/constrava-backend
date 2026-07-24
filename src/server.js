@@ -264,6 +264,25 @@ function emailProviderConfig(provider) {
   return null;
 }
 
+const GMAIL_READ_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+const GMAIL_PERMISSION_MESSAGE = "Google needs permission to read this inbox. Reconnect Google and approve read-only Gmail access.";
+
+function hasGmailReadScope(tokens) {
+  if (!tokens?.scope) return true;
+  return String(tokens.scope).split(/\s+/).includes(GMAIL_READ_SCOPE);
+}
+
+function normalizeEmailSyncError(connection, error) {
+  if (connection.provider === "gmail" && /insufficient authentication scopes|insufficient.*scope|insufficient permissions/i.test(error?.message || "")) {
+    connection.status = "reauthorization_required";
+    connection.authorizationStatus = "reauthorization_required";
+    connection.lastSyncError = GMAIL_PERMISSION_MESSAGE;
+    return Object.assign(new Error(GMAIL_PERMISSION_MESSAGE), { status: 409 });
+  }
+  connection.lastSyncError = error?.message || "Could not sync this inbox.";
+  return error;
+}
+
 function imapQuote(value) {
   return `"${String(value || "").replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\r", "").replaceAll("\n", "")}"`;
 }
@@ -856,7 +875,7 @@ function snippet() {
 }
 
 function publicPage() {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Constrava</title><style>:root{--blue:#061a33;--soft:#eaf2ff;--line:#d9e3f2;--ink:#071629;--muted:#607089}*{box-sizing:border-box}body{margin:0;background:#f7fbff;color:var(--ink);font-family:Inter,system-ui,sans-serif}.wrap{width:min(1100px,calc(100% - 36px));margin:auto}.nav{height:72px;display:flex;align-items:center;justify-content:space-between}.brand{font-size:24px;font-weight:950;color:var(--blue);text-decoration:none}.links{display:flex;gap:12px;align-items:center}.links a,.btn{color:var(--blue);font-weight:900;text-decoration:none}.btn{border:1px solid var(--line);border-radius:999px;padding:12px 16px;background:white}.primary{background:var(--blue)!important;color:white!important}.hero{padding:82px 0}.heroGrid{display:grid;grid-template-columns:1.05fr .95fr;gap:44px;align-items:center}h1{font-size:clamp(44px,7vw,76px);line-height:.96;letter-spacing:-.075em;margin:18px 0;color:var(--blue)}.lead{font-size:20px;color:var(--muted)}.actions{display:flex;gap:12px;flex-wrap:wrap}.preview,.card{background:white;border:1px solid var(--line);border-radius:28px;padding:22px;box-shadow:0 18px 48px rgba(6,26,51,.08)}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.cta{background:var(--blue);color:white;border-radius:34px;padding:34px;margin:48px 0}footer{border-top:1px solid var(--line);padding:26px 0;color:#71829b}@media(max-width:850px){.heroGrid,.cards{grid-template-columns:1fr}}</style></head><body><header><div class="wrap nav"><a class="brand" href="/">Constrava</a><nav class="links"><a href="#features">Features</a><a class="btn" href="/demo">View demo</a><a class="btn primary" href="/signin">Sign in</a></nav></div></header><main><section class="wrap hero"><div class="heroGrid"><div><p><b>Simple AI workspace for business records</b></p><h1>Turn messy business activity into organized records.</h1><p class="lead">Constrava helps capture leads, notes, forms, and follow-ups, then organizes them into records, tasks, deals, and priorities so a business knows what to act on next.</p><div class="actions"><a class="btn primary" href="/signin">Sign in to dashboard</a><a class="btn" href="/demo">View demo</a></div></div><div class="preview"><h2>Priority Command Center</h2><p>New leads Â· Open deals Â· Tasks Â· Recommended actions</p></div></div></section><section id="features" class="wrap"><h2>What the tool does</h2><div class="cards"><article class="card"><h3>Capture records</h3><p>Store leads, companies, people, deals, tasks, notes, and website form activity.</p></article><article class="card"><h3>Use AI to sort</h3><p>AI suggests records, tags, priorities, and follow-ups.</p></article><article class="card"><h3>Act faster</h3><p>The dashboard highlights what needs attention next.</p></article></div><div class="cta"><h2>Try the demo or sign in.</h2><a class="btn" href="/signin">Sign in</a> <a class="btn" href="/demo">Demo</a></div></section></main><footer><div class="wrap">Â© 2026 Constrava</div></footer></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Constrava</title><style>:root{--blue:#061a33;--soft:#eaf2ff;--line:#d9e3f2;--ink:#071629;--muted:#607089}*{box-sizing:border-box}body{margin:0;background:#f7fbff;color:var(--ink);font-family:Inter,system-ui,sans-serif}.wrap{width:min(1100px,calc(100% - 36px));margin:auto}.nav{height:72px;display:flex;align-items:center;justify-content:space-between}.brand{font-size:24px;font-weight:950;color:var(--blue);text-decoration:none}.links{display:flex;gap:12px;align-items:center}.links a,.btn{color:var(--blue);font-weight:900;text-decoration:none}.btn{border:1px solid var(--line);border-radius:999px;padding:12px 16px;background:white}.primary{background:var(--blue)!important;color:white!important}.hero{padding:82px 0}.heroGrid{display:grid;grid-template-columns:1.05fr .95fr;gap:44px;align-items:center}h1{font-size:clamp(44px,7vw,76px);line-height:.96;letter-spacing:-.075em;margin:18px 0;color:var(--blue)}.lead{font-size:20px;color:var(--muted)}.actions{display:flex;gap:12px;flex-wrap:wrap}.preview,.card{background:white;border:1px solid var(--line);border-radius:28px;padding:22px;box-shadow:0 18px 48px rgba(6,26,51,.08)}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.cta{background:var(--blue);color:white;border-radius:34px;padding:34px;margin:48px 0}footer{border-top:1px solid var(--line);padding:26px 0;color:#71829b}@media(max-width:850px){.heroGrid,.cards{grid-template-columns:1fr}}</style></head><body><header><div class="wrap nav"><a class="brand" href="/">Constrava</a><nav class="links"><a href="#features">Features</a><a class="btn" href="/demo">View demo</a><a class="btn primary" href="/signin">Sign in</a></nav></div></header><main><section class="wrap hero"><div class="heroGrid"><div><p><b>Simple AI workspace for business records</b></p><h1>Turn messy business activity into organized records.</h1><p class="lead">Constrava helps capture leads, notes, forms, and follow-ups, then organizes them into records, tasks, deals, and priorities so a business knows what to act on next.</p><div class="actions"><a class="btn primary" href="/signin">Sign in to dashboard</a><a class="btn" href="/demo">View demo</a></div></div><div class="preview"><h2>Priority Command Center</h2><p>New leads · Open deals · Tasks · Recommended actions</p></div></div></section><section id="features" class="wrap"><h2>What the tool does</h2><div class="cards"><article class="card"><h3>Capture records</h3><p>Store leads, companies, people, deals, tasks, notes, and website form activity.</p></article><article class="card"><h3>Use AI to sort</h3><p>AI suggests records, tags, priorities, and follow-ups.</p></article><article class="card"><h3>Act faster</h3><p>The dashboard highlights what needs attention next.</p></article></div><div class="cta"><h2>Try the demo or sign in.</h2><a class="btn" href="/signin">Sign in</a> <a class="btn" href="/demo">Demo</a></div></section></main><footer><div class="wrap">© 2026 Constrava</div></footer></body></html>`;
 }
 
 function signInPage() {
@@ -865,7 +884,7 @@ function signInPage() {
 }
 
 function appPage({ demo = false, user = null } = {}) {
-  const workspaceLabel = demo ? "Demo workspace" : `Personal workspace${user?.email ? " Â· " + user.email : ""}`;
+  const workspaceLabel = demo ? "Demo workspace" : `Personal workspace${user?.email ? " · " + user.email : ""}`;
   const apiSuffix = demo ? "demo=1" : "";
   const signoutCopy = demo ? "Exit demo" : "Log out";
   const notificationButton = demo ? "" : `<div class="notifyWrap"><button class="settingsIcon notifyButton" id="notificationButton" title="Notifications" aria-label="Notifications" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path><path d="M10 21h4"></path></svg><span class="notifyDot" id="notificationDot">0</span></button><div class="notificationDropdown" id="notificationDropdown" aria-hidden="true"><div class="notificationHead"><div><b>Notifications</b><p>Priority records and system messages</p></div><button class="ghostSmall" id="openNotificationTab">Open tab</button></div><div class="notificationGrid"><section><h3>Highest priority records</h3><div id="priorityNotifications"></div></section><section><h3>Messages & notifications</h3><div id="messageNotifications"></div></section></div></div></div>`;
@@ -897,8 +916,8 @@ function url(p){return API_SUFFIX?p+(p.includes("?")?"&":"?")+API_SUFFIX:p}
 async function api(p,o){o=o||{};const r=await fetch(url(p),{...o,credentials:"include",headers:{"content-type":"application/json",...(o.headers||{})}});const d=await r.json();if(r.status===401){location.href="/signin";return null}if(!r.ok)throw Error(d.error||"Request failed");return d}
 function money(v){return Number(v||0).toLocaleString(undefined,{style:"currency",currency:"USD",maximumFractionDigits:0})}
 function metric(n,v,t){return '<div class="card"><div class="in"><p class="muted">'+n+'</p><div class="metricValue">'+v+'</div><p class="muted">'+t+'</p></div></div>'}
-function recordFields(r){let f=r.fields||{};let out=[];if(f.email)out.push(f.email);if(f.companyName)out.push(f.companyName);if(f.stage)out.push('Stage: '+f.stage);if(f.value)out.push('Value: '+money(f.value));if(f.taskType)out.push('Task: '+f.taskType);if(f.rawText)out.push(f.rawText.slice(0,120));if(f.body)out.push(f.body.slice(0,120));return out.join(' Â· ')}
-function recordRow(r){return '<div class="item recordCard"><div><span class="pill">'+esc(r.type)+'</span> <b>'+esc(r.title)+'</b><div class="fieldLine">'+esc(recordFields(r)||((r.tags||[]).join(' Â· ')))+'</div><div class="fieldLine">'+esc((r.priorityReasons||[])[0]||'')+'</div></div><span class="pill">'+Math.round(r.priorityScore||0)+'</span></div>'}
+function recordFields(r){let f=r.fields||{};let out=[];if(f.email)out.push(f.email);if(f.companyName)out.push(f.companyName);if(f.stage)out.push('Stage: '+f.stage);if(f.value)out.push('Value: '+money(f.value));if(f.taskType)out.push('Task: '+f.taskType);if(f.rawText)out.push(f.rawText.slice(0,120));if(f.body)out.push(f.body.slice(0,120));return out.join(' · ')}
+function recordRow(r){return '<div class="item recordCard"><div><span class="pill">'+esc(r.type)+'</span> <b>'+esc(r.title)+'</b><div class="fieldLine">'+esc(recordFields(r)||((r.tags||[]).join(' · ')))+'</div><div class="fieldLine">'+esc((r.priorityReasons||[])[0]||'')+'</div></div><span class="pill">'+Math.round(r.priorityScore||0)+'</span></div>'}
 function list(title,rows,empty){if(!rows.length)return '<section class="card empty"><div><span class="pill">'+esc(title)+'</span><h2>'+esc(empty||'No records here yet')+'</h2><p>Add records through AI Add or connected resources when you want this section filled.</p></div></section>';return '<section class="card"><div class="in"><h2>'+esc(title)+'</h2>'+rows.map(recordRow).join('')+'</div></section>'}
 function highestPriorityRecords(){return S.records.filter(function(r){return Number(r.priorityScore||0)>=95}).slice(0,6)}
 function messageItems(){let rows=[];let pending=(S.plans||[]).filter(function(p){return p.status!=="committed"}).length;if(pending)rows.push({title:pending+' AI plan'+(pending===1?'':'s')+' waiting for review',body:'Open Connected Resources to review and commit draft record changes.'});let readySources=(S.sources||[]).filter(function(s){return s.status==='ready_to_connect'}).length;if(readySources)rows.push({title:readySources+' resource'+(readySources===1?'':'s')+' ready to connect',body:'Connect email, website, or form sources when you want automated capture.'});if(!rows.length)rows.push({title:'No new messages',body:'Messages and system notifications will appear here as activity comes in.'});return rows}
@@ -910,7 +929,7 @@ function crmCount(type){if(type==='all')return S.records.length;if(type==='overv
 function crmShell(content){const items=[['overview','Overview'],['all','All Records'],['Person','Contacts'],['Company','Companies'],['Deal','Deals'],['Task','Tasks'],['Intake','Intakes'],['Note','Notes'],['ai','AI Add']];return '<div class="crmShell"><aside class="crmSide"><div class="crmSideTitle">CRM sections</div>'+items.map(function(item){const id=item[0],label=item[1];return '<button class="crmTab '+(S.crmView===id?'active':'')+'" data-crm="'+id+'"><span>'+label+'</span><span>'+crmCount(id)+'</span></button>'}).join('')+'</aside><div>'+content+'</div></div>'}
 function crmContent(){if(S.crmView==='overview'){return crmShell('<div class="grid metrics">'+metric('All records',S.records.length,'CRM objects')+metric('Contacts',crmCount('Person'),'People')+metric('Deals',crmCount('Deal'),money(S.summary.metrics.revenueOpportunity))+metric('Tasks',crmCount('Task'),'Follow-ups')+'</div><div style="margin-top:16px">'+list('High-priority CRM records',S.summary.highPriority,'No high priority records')+'</div>')}if(S.crmView==='all')return crmShell(list('All CRM Records',S.records,'No CRM records yet'));if(S.crmView==='ai'){return crmShell('<section class="card"><div class="in"><h2>AI Add</h2><p class="muted">Paste a lead, note, email, or form submission. Constrava will draft records for review before committing them.</p><form id="aiForm"><textarea name="rawText" required placeholder="Example: Sarah from Bluebird Dental wants a website quote, budget $6,000, follow up tomorrow."></textarea><br><br><button class="primary">Create AI plan</button></form></div></section>')}return crmShell(list(({Person:'Contacts',Company:'Companies',Deal:'Deals',Task:'Tasks',Intake:'Intakes',Note:'Notes'})[S.crmView]||S.crmView,S.records.filter(function(r){return r.type===S.crmView}),'This section is empty'))}
 function notificationContent(){return '<div class="notificationPanel"><section class="card"><div class="in"><h2>Highest priority records</h2><p class="muted">Only records scored 95 or higher appear here so this stays reserved for true priority work.</p>'+noticeMarkup(highestPriorityRecords(),'No highest priority records','There are no highest priority records right now.')+'</div></section><section class="card"><div class="in"><h2>Messages & notifications</h2><p class="muted">System messages, pending AI plans, and connection notices.</p>'+noticeMarkup(messageItems(),'No new messages','Messages and notifications will appear here.')+'</div></section></div>'}
-function render(){let h='',m=S.summary.metrics;if(S.tab==='analytics'){h='<div class="grid metrics">'+metric('New leads',m.newLeads,'Intakes and contacts')+metric('Active deals',m.activeDeals,money(m.revenueOpportunity))+metric('Traffic events',m.trafficEvents,'Captured activity')+metric('AI-created',m.aiCreatedRecords,'Committed records')+'</div><div class="grid two" style="margin-top:16px"><section class="card"><div class="in"><h2>Recommended actions</h2>'+S.summary.recommendedActions.map(function(a){return '<div class="item"><b>'+esc(a.title)+'</b><p class="muted">'+esc(a.reason)+'</p></div>'}).join('')+'</div></section><section class="card"><div class="in"><h2>Recent analytics events</h2>'+S.events.slice(0,8).map(function(e){return '<div class="item"><b>'+esc(e.type)+'</b><p class="muted">'+esc(e.sourceUrl||e.siteId||'')+'</p></div>'}).join('')+'</div></section></div>'}if(S.tab==='crm')h=crmContent();if(S.tab==='resources'){h='<div class="grid two"><section class="card"><div class="in"><h2>Outside resources</h2>'+S.sources.map(function(s){return '<div class="item resource"><div class="resourceIcon">'+(s.type.includes('email')?'âœ‰':s.type.includes('website')?'âŒ':'â—')+'</div><div><b>'+esc(s.name)+'</b><p class="muted">'+esc(s.type)+' Â· '+esc(s.status)+'</p></div><button class="secondary">Configure</button></div>'}).join('')+'</div></section><section class="card"><div class="in"><h2>Website tracker</h2><p class="muted">Use this snippet on an outside website to send analytics events into the demo source.</p><pre>'+esc(S.snippet)+'</pre></div></section></div><section class="card" style="margin-top:16px"><div class="in"><h2>Recent plans</h2>'+S.plans.slice(0,8).map(function(p){return '<div class="item"><b>'+esc(p.summary)+'</b><p class="muted">'+esc(p.aiProvider)+' Â· '+p.actions.length+' actions</p><button class="secondary" data-plan="'+esc(p.planId)+'">Review</button></div>'}).join('')+'</div></section>'}if(S.tab==='settings'){h='<div class="grid two"><section class="card"><div class="in"><h2>Workspace settings</h2><label>Workspace</label><input value="'+esc(WORKSPACE_LABEL)+'"><label>Theme</label><select><option>White and dark blue</option></select><button class="primary">Save settings</button></div></section><section class="card"><div class="in"><h2>Account</h2><p class="muted">Your login is kept by a persistent browser cookie. Reloading the page should keep this dashboard open until you log out.</p><div class="item"><b>Session</b><p class="muted">Saved in this browser for up to 30 days.</p></div></div></section></div>'}if(S.tab==='notifications')h=notificationContent();app.innerHTML=h;bind();syncNotifications()}
+function render(){let h='',m=S.summary.metrics;if(S.tab==='analytics'){h='<div class="grid metrics">'+metric('New leads',m.newLeads,'Intakes and contacts')+metric('Active deals',m.activeDeals,money(m.revenueOpportunity))+metric('Traffic events',m.trafficEvents,'Captured activity')+metric('AI-created',m.aiCreatedRecords,'Committed records')+'</div><div class="grid two" style="margin-top:16px"><section class="card"><div class="in"><h2>Recommended actions</h2>'+S.summary.recommendedActions.map(function(a){return '<div class="item"><b>'+esc(a.title)+'</b><p class="muted">'+esc(a.reason)+'</p></div>'}).join('')+'</div></section><section class="card"><div class="in"><h2>Recent analytics events</h2>'+S.events.slice(0,8).map(function(e){return '<div class="item"><b>'+esc(e.type)+'</b><p class="muted">'+esc(e.sourceUrl||e.siteId||'')+'</p></div>'}).join('')+'</div></section></div>'}if(S.tab==='crm')h=crmContent();if(S.tab==='resources'){h='<div class="grid two"><section class="card"><div class="in"><h2>Outside resources</h2>'+S.sources.map(function(s){return '<div class="item resource"><div class="resourceIcon">'+(s.type.includes('email')?'✉':s.type.includes('website')?'⌁':'●')+'</div><div><b>'+esc(s.name)+'</b><p class="muted">'+esc(s.type)+' · '+esc(s.status)+'</p></div><button class="secondary">Configure</button></div>'}).join('')+'</div></section><section class="card"><div class="in"><h2>Website tracker</h2><p class="muted">Use this snippet on an outside website to send analytics events into the demo source.</p><pre>'+esc(S.snippet)+'</pre></div></section></div><section class="card" style="margin-top:16px"><div class="in"><h2>Recent plans</h2>'+S.plans.slice(0,8).map(function(p){return '<div class="item"><b>'+esc(p.summary)+'</b><p class="muted">'+esc(p.aiProvider)+' · '+p.actions.length+' actions</p><button class="secondary" data-plan="'+esc(p.planId)+'">Review</button></div>'}).join('')+'</div></section>'}if(S.tab==='settings'){h='<div class="grid two"><section class="card"><div class="in"><h2>Workspace settings</h2><label>Workspace</label><input value="'+esc(WORKSPACE_LABEL)+'"><label>Theme</label><select><option>White and dark blue</option></select><button class="primary">Save settings</button></div></section><section class="card"><div class="in"><h2>Account</h2><p class="muted">Your login is kept by a persistent browser cookie. Reloading the page should keep this dashboard open until you log out.</p><div class="item"><b>Session</b><p class="muted">Saved in this browser for up to 30 days.</p></div></div></section></div>'}if(S.tab==='notifications')h=notificationContent();app.innerHTML=h;bind();syncNotifications()}
 function bind(){document.querySelectorAll('.tab').forEach(function(b){b.onclick=function(){tab(b.dataset.tab)}});document.querySelectorAll('[data-crm]').forEach(function(b){b.onclick=function(){S.crmView=b.dataset.crm;render()}});document.querySelectorAll('[data-plan]').forEach(function(b){b.onclick=function(){openPlan(S.plans.find(function(p){return p.planId===b.dataset.plan}))}});let f=document.getElementById('aiForm');if(f)f.onsubmit=async function(e){e.preventDefault();let p=await api('/api/records/plan',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(f)))});S.plan=p.plan;openPlan(S.plan);await load();S.crmView='ai';render()}}
 async function refresh(nextTab){await load();if(nextTab)S.tab=nextTab;render()}
 function openPlan(plan){S.plan=plan;if(!S.plan)return;planTitle.textContent=S.plan.summary;planBody.innerHTML=S.plan.actions.map(function(a){return '<label class="item" style="display:grid;grid-template-columns:auto 1fr;gap:12px"><input type="checkbox" checked value="'+a.id+'"><span><b>'+esc(a.actionType)+' '+esc(a.recordType)+'</b><p class="muted">'+esc(a.reasoning)+'</p><pre>'+esc(JSON.stringify(a.fields,null,2))+'</pre></span></label>'}).join('');planDialog.showModal()}
@@ -998,13 +1017,25 @@ async function api(req, res, url, route) {
     const tokenResponse = await fetch(config.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: tokenBody });
     const tokens = await tokenResponse.json();
     if (!tokenResponse.ok) return send(res, 502, { error: tokens.error_description || tokens.error || "Mailbox authorization failed." });
+    if (connection.provider === "gmail" && !hasGmailReadScope(tokens)) {
+      connection.oauthTokens = "";
+      connection.oauthStateHash = "";
+      connection.oauthStateExpiresAt = "";
+      connection.authorizationStatus = "reauthorization_required";
+      connection.status = "reauthorization_required";
+      connection.lastSyncError = GMAIL_PERMISSION_MESSAGE;
+      connection.updatedAt = new Date().toISOString();
+      await saveStore(storeData);
+      return redirect(res, "/dashboard?email_scope_required=1");
+    }
     connection.oauthTokens = encryptEmailTokens({ ...tokens, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });
     connection.oauthStateHash = "";
     connection.oauthStateExpiresAt = "";
     connection.authorizationStatus = "authorized";
     connection.status = "active";
-    connection.syncCursor = "1970-01-01T00:00:00.000Z";
     connection.authorizedAt = new Date().toISOString();
+    connection.syncCursor = connection.authorizedAt;
+    connection.lastSyncError = "";
     connection.updatedAt = connection.authorizedAt;
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
     if (source) source.status = "connected";
@@ -1181,7 +1212,12 @@ async function api(req, res, url, route) {
     authorizeUrl.searchParams.set("response_type", "code");
     authorizeUrl.searchParams.set("scope", config.scope);
     authorizeUrl.searchParams.set("state", state);
-    if (connection.provider === "gmail") { authorizeUrl.searchParams.set("access_type", "offline"); authorizeUrl.searchParams.set("prompt", "consent"); }
+    if (connection.provider === "gmail") {
+      authorizeUrl.searchParams.set("access_type", "offline");
+      authorizeUrl.searchParams.set("prompt", "consent");
+      authorizeUrl.searchParams.set("include_granted_scopes", "false");
+      if (connection.emailAddress) authorizeUrl.searchParams.set("login_hint", connection.emailAddress);
+    }
     await saveStore(storeData);
     return send(res, 200, { authorizeUrl: authorizeUrl.toString() });
   }
@@ -1195,9 +1231,9 @@ async function api(req, res, url, route) {
       return send(res, 200, { connection: { ...connection, oauthTokens: undefined }, ...result });
     } catch (error) {
       connection.lastSyncAt = new Date().toISOString();
-      connection.lastSyncError = error.message;
+      const normalizedError = normalizeEmailSyncError(connection, error);
       await saveStore(storeData);
-      throw error;
+      throw normalizedError;
     }
   }
   const emailActivateMatch = route.match(/^\/api\/email-connections\/([^/]+)\/activate$/);
@@ -1310,7 +1346,7 @@ async function syncActiveEmailConnections() {
     const storeData = await loadStore();
     for (const connection of storeData.emailConnections.filter((entry) => entry.status === "active" && entry.oauthTokens)) {
       try { await syncEmailConnection(storeData, connection); }
-      catch (error) { connection.lastSyncAt = new Date().toISOString(); connection.lastSyncError = error.message; }
+      catch (error) { connection.lastSyncAt = new Date().toISOString(); normalizeEmailSyncError(connection, error); }
     }
     await saveStore(storeData);
   } finally {
