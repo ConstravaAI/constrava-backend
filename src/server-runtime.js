@@ -262,7 +262,8 @@ if (source.includes("function analyticsContent()") && !source.includes("analytic
 const accountPersistenceReplacements = [
   {
     "old": "const storeFile = path.join(root, \"data\", \"store.json\");",
-    "next": "const storeFile = process.env.DATA_FILE || path.join(process.env.DATA_DIR || root, \"data\", \"store.json\");"
+    "next": "const storeFile = process.env.DATA_FILE || path.join(process.env.DATA_DIR || root, \"data\", \"store.json\");",
+    "satisfiedBy": "const durableStoreConfigured"
   },
   {
     "old": "const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;",
@@ -286,11 +287,15 @@ const accountPersistenceReplacements = [
   },
   {
     "old": "  if (req.method === \"GET\" && route === \"/api/health\") return send(res, 200, { ok: true, cookieName: COOKIE_NAME, sessionMaxAgeDays: 30, secureCookie: isSecure(req), developerAccountConfigured: Boolean(process.env[DEV_LOGIN_KEY_ENV]), homepage: \"/\", demo: \"/demo\", signin: \"/signin\", dashboard: \"/dashboard\" });",
-    "next": "  if (req.method === \"GET\" && route === \"/api/health\") return send(res, 200, { ok: true, cookieName: COOKIE_NAME, sessionMaxAgeDays: Math.round(SESSION_MAX_AGE_SECONDS / 86400), secureCookie: isSecure(req), dataFile: storeFile, developerAccountConfigured: Boolean(process.env[DEV_LOGIN_KEY_ENV]), homepage: \"/\", demo: \"/demo\", signin: \"/signin\", dashboard: \"/dashboard\" });"
+    "next": "  if (req.method === \"GET\" && route === \"/api/health\") return send(res, 200, { ok: true, cookieName: COOKIE_NAME, sessionMaxAgeDays: Math.round(SESSION_MAX_AGE_SECONDS / 86400), secureCookie: isSecure(req), dataFile: storeFile, developerAccountConfigured: Boolean(process.env[DEV_LOGIN_KEY_ENV]), homepage: \"/\", demo: \"/demo\", signin: \"/signin\", dashboard: \"/dashboard\" });",
+    "satisfiedBy": "durableStoreConfigured"
   }
 ];
 for (const replacement of accountPersistenceReplacements) {
-  if (!source.includes(replacement.old)) throw new Error("Account persistence patch target was not found.");
+  if (!source.includes(replacement.old)) {
+    if (replacement.satisfiedBy && source.includes(replacement.satisfiedBy)) continue;
+    throw new Error("Account persistence patch target was not found.");
+  }
   source = source.replace(replacement.old, replacement.next);
 }
 
