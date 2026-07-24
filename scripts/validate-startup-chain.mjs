@@ -135,4 +135,3 @@ if (failures.length) {
 }
 
 console.log("Startup chain validation passed.");
-
