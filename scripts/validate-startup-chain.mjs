@@ -112,7 +112,7 @@ await assertContains("src/server-tab-loading-state.js", 'await import(`${pathToF
 await assertContains("src/server-analytics-selector-copies.js", 'await import("./server-crm-actions-scope.js");', "the CRM scope fallback handoff");
 await assertContains("src/server-runtime.js", "await fs.writeFile(runtimePath, source);", "the generated runtime write target");
 await assertContains("src/server-responsive.js", "await import(`${pathToFileURL(responsiveRuntimePath).href}?v=${Date.now()}`);", "the responsive runtime handoff");
-await assertContains("src/server-responsive.js", "function aiDraftRow\\\\(", "the AI record renderer preservation boundary");
+await assertContains("src/server-responsive.js", "function aiDraftText\\\\(", "the AI record renderer preservation boundary");
 await assertContains("src/server-runtime.js", "function aiRecordsContent()", "the AI record queue renderer");
 await assertContains("src/server-analytics.js", "await import(`${pathToFileURL(analyticsRuntimePath).href}?v=${Date.now()}`);", "the analytics runtime handoff");
 await assertContains("src/server-fonts.js", "await import(`${pathToFileURL(fontRuntimePath).href}?v=${Date.now()}`);", "the font runtime handoff");
@@ -131,6 +131,8 @@ await assertContains("src/server-runtime.js", "reconcilePublishedRecordIdentity(
 await assertContains("src/server-connected-resources.js", "function constravaHydrateEmailConnection(", "email connection refresh restoration");
 await assertContains("src/server-connected-resources.js", "function constravaPreferredEmailConnection(", "active email connection selection");
 await assertContains("src/server-runtime.js", "api('/api/email-connections')", "email connection dashboard preload");
+await assertContains("src/server.js", "sourcePreview", "draft source preview response");
+await assertContains("src/server-runtime.js", "function aiDraftText(", "simplified AI draft text renderer");
 
 await validateLocalImports("src/server-tracker-analytics.js");
 await validateEncodedScopeWrapper();
