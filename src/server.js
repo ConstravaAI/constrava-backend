@@ -7,7 +7,11 @@ import dns from "node:dns/promises";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const storeFile = path.join(root, "data", "store.json");
+const configuredDataFile = String(process.env.DATA_FILE || "").trim();
+const configuredDataDir = String(process.env.DATA_DIR || "").trim();
+const storeFile = configuredDataFile ? path.resolve(configuredDataFile) : path.join(configuredDataDir ? path.resolve(configuredDataDir) : path.join(root, "data"), "store.json");
+const storeBackupFile = `${storeFile}.backup`;
+const durableStoreConfigured = Boolean(configuredDataFile || configuredDataDir);
 const PORT = Number(process.env.PORT || 3000);
 const ORIGIN = process.env.PUBLIC_ORIGIN || `http://localhost:${PORT}`;
 const COOKIE_NAME = "constrava_session";
@@ -312,15 +316,36 @@ async function loadStore() {
   try {
     return normalize(JSON.parse(await fs.readFile(storeFile, "utf8")));
   } catch {
-    const fresh = normalize(seed());
-    await fs.writeFile(storeFile, `${JSON.stringify(fresh, null, 2)}\n`);
-    return fresh;
+    try {
+      const recovered = normalize(JSON.parse(await fs.readFile(storeBackupFile, "utf8")));
+      await fs.writeFile(storeFile, `${JSON.stringify(recovered, null, 2)}\n`);
+      return recovered;
+    } catch {
+      const fresh = normalize(seed());
+      await fs.writeFile(storeFile, `${JSON.stringify(fresh, null, 2)}\n`);
+      return fresh;
+    }
   }
 }
 
+let storeWriteQueue = Promise.resolve();
 async function saveStore(storeData) {
-  await fs.mkdir(path.dirname(storeFile), { recursive: true });
-  await fs.writeFile(storeFile, `${JSON.stringify(normalize(storeData), null, 2)}\n`);
+  const serialized = `${JSON.stringify(normalize(storeData), null, 2)}\n`;
+  const operation = storeWriteQueue.then(async () => {
+    await fs.mkdir(path.dirname(storeFile), { recursive: true });
+    const temporaryFile = `${storeFile}.${process.pid}.${crypto.randomBytes(6).toString("hex")}.tmp`;
+    await fs.writeFile(temporaryFile, serialized, { mode: 0o600 });
+    try { await fs.copyFile(storeFile, storeBackupFile); } catch {}
+    try {
+      await fs.rename(temporaryFile, storeFile);
+    } catch (error) {
+      if (process.platform !== "win32") throw error;
+      await fs.copyFile(temporaryFile, storeFile);
+      await fs.unlink(temporaryFile);
+    }
+  });
+  storeWriteQueue = operation.catch(() => {});
+  return operation;
 }
 
 async function readBody(req) {
@@ -1168,7 +1193,7 @@ async function auth(req, res, route, storeData) {
 async function api(req, res, url, route) {
   const storeData = await loadStore();
   if (route.startsWith("/api/auth/")) return await auth(req, res, route, storeData);
-  if (req.method === "GET" && route === "/api/health") return send(res, 200, { ok: true, cookieName: COOKIE_NAME, sessionMaxAgeDays: 30, secureCookie: isSecure(req), developerAccountConfigured: Boolean(process.env[DEV_LOGIN_KEY_ENV]), homepage: "/", demo: "/demo", signin: "/signin", dashboard: "/dashboard" });
+  if (req.method === "GET" && route === "/api/health") return send(res, 200, { ok: true, cookieName: COOKIE_NAME, sessionMaxAgeDays: 30, secureCookie: isSecure(req), developerAccountConfigured: Boolean(process.env[DEV_LOGIN_KEY_ENV]), durableStoreConfigured, dataStore: durableStoreConfigured ? "persistent_file" : "local_file", homepage: "/", demo: "/demo", signin: "/signin", dashboard: "/dashboard" });
   if (req.method === "POST" && route === "/api/forms/ingest") {
     const body = await readBody(req);
     const connection = storeData.formConnections.find((entry) => entry.id === clean(body.connectionId));
