@@ -135,6 +135,7 @@ await assertContains("src/server.js", "sourcePreview", "draft source preview res
 await assertContains("src/server-runtime.js", "function aiDraftText(", "simplified AI draft text renderer");
 await assertContains("src/server.js", "durableStoreConfigured", "durable production store configuration");
 await assertContains("src/server.js", "storeWriteQueue", "serialized atomic store writes");
+await assertContains("src/server-account-persistence.js", "replacement.satisfiedBy", "forward-compatible account persistence patches");
 
 await validateLocalImports("src/server-tracker-analytics.js");
 await validateEncodedScopeWrapper();
