@@ -124,6 +124,10 @@ await assertContains("src/server.js", "/imap$/", "the IMAP verification route");
 await assertContains("src/server.js", 'connection.status = "reauthorization_required";', "the Gmail permission recovery state");
 await assertContains("src/server.js", "connection.syncCursor = connection.authorizedAt;", "the new-email-only OAuth sync cursor");
 await assertContains("src/server-connected-resources.js", "Reconnect Google", "the Gmail reconnect action");
+await assertContains("src/server.js", "function upsertHiddenIdentity(", "the hidden identity upsert layer");
+await assertContains("src/server.js", "function reconcilePublishedRecordIdentity(", "published CRM identity reconciliation");
+await assertContains("src/server.js", 'route === "/api/identity/reconcile"', "the incremental identity reconciliation endpoint");
+await assertContains("src/server-runtime.js", "reconcilePublishedRecordIdentity(storeData, record);", "manual CRM identity reconciliation");
 
 await validateLocalImports("src/server-tracker-analytics.js");
 await validateEncodedScopeWrapper();

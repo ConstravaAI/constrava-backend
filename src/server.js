@@ -89,6 +89,12 @@ function seed() {
     ingestionEvents: [],
     formConnections: [],
     emailConnections: [],
+    identityEntities: [],
+    identityIdentifiers: [],
+    identityMentions: [],
+    identityRelationships: [],
+    identityRecordLinks: [],
+    identityReconciliation: {},
     reports: [],
     users: [],
     sessions: []
@@ -124,6 +130,12 @@ function normalize(storeData) {
   storeData.ingestionEvents ||= [];
   storeData.formConnections ||= [];
   storeData.emailConnections ||= [];
+  storeData.identityEntities ||= [];
+  storeData.identityIdentifiers ||= [];
+  storeData.identityMentions ||= [];
+  storeData.identityRelationships ||= [];
+  storeData.identityRecordLinks ||= [];
+  storeData.identityReconciliation ||= {};
   storeData.reports ||= [];
   storeData.users ||= [];
   storeData.sessions ||= [];
@@ -132,6 +144,163 @@ function normalize(storeData) {
   if (!storeData.records.some((record) => record.workspaceId === "demo")) storeData.records.push(...starterRecords("demo"));
   ensureDeveloperAccount(storeData);
   return storeData;
+}
+
+const IDENTITY_VERSION = 1;
+
+function identityName(value) {
+  return clean(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+}
+
+function identityEmail(value) {
+  const match = String(value || "").toLowerCase().match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}/);
+  return match?.[0] || "";
+}
+
+function identityPhone(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  return digits.length >= 7 ? digits.slice(-15) : "";
+}
+
+function identityDomain(value) {
+  const email = identityEmail(value);
+  if (email) return email.split("@")[1];
+  try { return new URL(/^https?:\/\//i.test(clean(value)) ? clean(value) : `https://${clean(value)}`).hostname.replace(/^www\./, "").toLowerCase(); } catch { return ""; }
+}
+
+function identityFingerprint(record) {
+  return crypto.createHash("sha256").update(JSON.stringify([IDENTITY_VERSION, record.type, record.title, record.fields || {}, record.updatedAt || ""])).digest("base64url");
+}
+
+function identityIdentifiersFor(type, details) {
+  const identifiers = [];
+  if (type === "Person") {
+    const email = identityEmail(details.email);
+    const phone = identityPhone(details.phone);
+    if (email) identifiers.push({ type: "email", value: email });
+    if (phone) identifiers.push({ type: "phone", value: phone });
+  }
+  if (type === "Company") {
+    const domain = identityDomain(details.website || details.domain || details.contactEmail);
+    if (domain) identifiers.push({ type: "domain", value: domain });
+  }
+  return identifiers;
+}
+
+function upsertIdentityMention(storeData, workspaceId, entityId, mention) {
+  const key = clean(mention.key || `${mention.sourceKind}:${mention.sourceId}:${identityName(mention.name)}`);
+  let row = storeData.identityMentions.find((entry) => entry.workspaceId === workspaceId && entry.key === key);
+  if (!row) {
+    row = { id: id("mention"), workspaceId, key, entityId: entityId || "", entityType: mention.entityType, name: clean(mention.name), sourceKind: clean(mention.sourceKind), sourceId: clean(mention.sourceId), context: clean(mention.context).slice(0, 1000), confidence: Number(mention.confidence || 0.75), status: entityId ? "linked" : "unresolved", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    storeData.identityMentions.push(row);
+  } else {
+    row.entityId = entityId || row.entityId;
+    row.status = row.entityId ? "linked" : "unresolved";
+    row.updatedAt = new Date().toISOString();
+  }
+  return row;
+}
+
+function upsertHiddenIdentity(storeData, workspaceId, details, mention = {}) {
+  const entityType = details.entityType;
+  const canonicalName = clean(details.name);
+  if (!["Person", "Company"].includes(entityType) || !canonicalName) return null;
+  const identifiers = identityIdentifiersFor(entityType, details);
+  const identifierMatches = [...new Set(identifiers.map((identifier) => storeData.identityIdentifiers.find((entry) => entry.workspaceId === workspaceId && entry.type === identifier.type && entry.value === identifier.value)?.entityId).filter(Boolean))];
+  const linkedEntityId = details.recordId ? storeData.identityRecordLinks.find((entry) => entry.workspaceId === workspaceId && entry.recordId === details.recordId)?.entityId : "";
+  if (linkedEntityId) identifierMatches.unshift(linkedEntityId);
+  let entity = identifierMatches.length === 1 ? storeData.identityEntities.find((entry) => entry.id === identifierMatches[0]) : null;
+  if (!entity && !identifierMatches.length) {
+    const sameName = storeData.identityEntities.filter((entry) => entry.workspaceId === workspaceId && entry.entityType === entityType && identityName(entry.canonicalName) === identityName(canonicalName));
+    if (sameName.length === 1) {
+      const candidateIdentifiers = storeData.identityIdentifiers.filter((entry) => entry.workspaceId === workspaceId && entry.entityId === sameName[0].id);
+      if (!identifiers.length || !candidateIdentifiers.length) entity = sameName[0];
+    }
+  }
+  if (identifierMatches.length > 1) {
+    upsertIdentityMention(storeData, workspaceId, "", { ...mention, entityType, name: canonicalName, confidence: 0.25 });
+    return null;
+  }
+  const now = new Date().toISOString();
+  if (!entity) {
+    entity = { id: id(entityType === "Person" ? "identity_person" : "identity_company"), workspaceId, entityType, canonicalName, normalizedName: identityName(canonicalName), aliases: [], hidden: true, status: details.recordId ? "confirmed" : "provisional", facts: {}, createdAt: now, updatedAt: now };
+    storeData.identityEntities.push(entity);
+  } else {
+    if (entity.canonicalName !== canonicalName) {
+      if (details.recordId) {
+        if (!entity.aliases.includes(entity.canonicalName)) entity.aliases.push(entity.canonicalName);
+        entity.canonicalName = canonicalName;
+        entity.normalizedName = identityName(canonicalName);
+      } else if (!entity.aliases.includes(canonicalName)) entity.aliases.push(canonicalName);
+    }
+    if (details.recordId) entity.status = "confirmed";
+    entity.updatedAt = now;
+  }
+  for (const identifier of identifiers) {
+    const existing = storeData.identityIdentifiers.find((entry) => entry.workspaceId === workspaceId && entry.type === identifier.type && entry.value === identifier.value);
+    if (!existing) storeData.identityIdentifiers.push({ id: id("identifier"), workspaceId, entityId: entity.id, ...identifier, verified: Boolean(details.recordId), sourceRecordId: details.recordId || "", createdAt: now, updatedAt: now });
+    else if (existing.entityId === entity.id && details.recordId) { existing.verified = true; existing.sourceRecordId ||= details.recordId; existing.updatedAt = now; }
+  }
+  if (details.recordId && !storeData.identityRecordLinks.some((entry) => entry.workspaceId === workspaceId && entry.recordId === details.recordId)) {
+    storeData.identityRecordLinks.push({ id: id("identity_link"), workspaceId, entityId: entity.id, recordId: details.recordId, recordType: entityType, createdAt: now, updatedAt: now });
+  }
+  upsertIdentityMention(storeData, workspaceId, entity.id, { ...mention, entityType, name: canonicalName });
+  return entity;
+}
+
+function linkPersonCompanyIdentity(storeData, workspaceId, person, company, sourceId) {
+  if (!person || !company) return;
+  const key = `${person.id}:associated_with:${company.id}`;
+  if (!storeData.identityRelationships.some((entry) => entry.workspaceId === workspaceId && entry.key === key)) {
+    storeData.identityRelationships.push({ id: id("identity_relationship"), workspaceId, key, fromEntityId: person.id, toEntityId: company.id, type: "associated_with", sourceId: clean(sourceId), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+  }
+}
+
+function reconcilePublishedRecordIdentity(storeData, record) {
+  if (!record || !record.workspaceId) return null;
+  const fields = record.fields || {};
+  const sourceId = record.id;
+  let entity = null;
+  if (record.type === "Person") {
+    entity = upsertHiddenIdentity(storeData, record.workspaceId, { entityType: "Person", name: fields.name || record.title, email: fields.email, phone: fields.phone, recordId: record.id }, { key: `record:${record.id}:person`, sourceKind: "crm_record", sourceId, context: record.title, confidence: 1 });
+    if (fields.companyName) {
+      const company = upsertHiddenIdentity(storeData, record.workspaceId, { entityType: "Company", name: fields.companyName }, { key: `record:${record.id}:company`, sourceKind: "crm_record", sourceId, context: record.title, confidence: 0.85 });
+      linkPersonCompanyIdentity(storeData, record.workspaceId, entity, company, record.id);
+    }
+  } else if (record.type === "Company") {
+    entity = upsertHiddenIdentity(storeData, record.workspaceId, { entityType: "Company", name: fields.name || record.title, website: fields.website, contactEmail: fields.contactEmail, recordId: record.id }, { key: `record:${record.id}:company`, sourceKind: "crm_record", sourceId, context: record.title, confidence: 1 });
+  } else if (fields.companyName) {
+    entity = upsertHiddenIdentity(storeData, record.workspaceId, { entityType: "Company", name: fields.companyName }, { key: `record:${record.id}:company`, sourceKind: "crm_record", sourceId, context: record.title, confidence: 0.8 });
+  }
+  record.metadata ||= {};
+  record.metadata.identityFingerprint = identityFingerprint(record);
+  return entity;
+}
+
+function reconcilePlanIdentities(storeData, plan, workspaceId) {
+  if (!plan) return;
+  for (const action of plan.actions || []) {
+    if (!["Person", "Company"].includes(action.recordType)) continue;
+    const fields = action.fields || {};
+    const entity = upsertHiddenIdentity(storeData, workspaceId, { entityType: action.recordType, name: fields.name || fields.companyName || fields.title, email: fields.email, phone: fields.phone, website: fields.website }, { key: `plan:${plan.planId}:${action.id}`, sourceKind: plan.source?.kind || "ingestion", sourceId: plan.source?.ingestionEventId || plan.planId, context: plan.source?.rawText || plan.summary, confidence: Number(action.confidence || 0.75) });
+    if (action.recordType === "Person" && fields.companyName) {
+      const company = upsertHiddenIdentity(storeData, workspaceId, { entityType: "Company", name: fields.companyName }, { key: `plan:${plan.planId}:${action.id}:company`, sourceKind: plan.source?.kind || "ingestion", sourceId: plan.source?.ingestionEventId || plan.planId, context: plan.source?.rawText || plan.summary, confidence: 0.7 });
+      linkPersonCompanyIdentity(storeData, workspaceId, entity, company, plan.source?.ingestionEventId || plan.planId);
+    }
+  }
+}
+
+function reconcileWorkspaceIdentities(storeData, workspaceId) {
+  const records = storeData.records.filter((record) => record.workspaceId === workspaceId);
+  let processed = 0;
+  for (const record of records) {
+    if (record.metadata?.identityFingerprint === identityFingerprint(record)) continue;
+    reconcilePublishedRecordIdentity(storeData, record);
+    processed += 1;
+  }
+  const now = new Date().toISOString();
+  storeData.identityReconciliation[workspaceId] = { version: IDENTITY_VERSION, lastRunAt: now, processed, recordCount: records.length };
+  return { processed, entities: storeData.identityEntities.filter((entry) => entry.workspaceId === workspaceId).length, lastRunAt: now };
 }
 
 async function loadStore() {
@@ -705,6 +874,7 @@ async function processIngestion(storeData, { workspaceId, connection, payload, k
   }
   const plan = await makePlan({ kind, sourceId: event.sourceId, rawText, payload: sanitizedPayload, ingestionEventId: event.id, relevance }, workspaceId, storeData);
   storeData.plans.push(plan);
+  reconcilePlanIdentities(storeData, plan, workspaceId);
   if (stageDrafts) stagePlanDrafts(storeData, plan, workspaceId);
   event.planId = plan.planId;
   event.status = relevance.decision === "needs_review" ? "review_required" : stageDrafts ? "draft_created" : "plan_created";
@@ -789,6 +959,7 @@ function publishDraftRecord(storeData, draftId, workspaceId) {
     plan.draftRecordIds = (plan.draftRecordIds || []).filter((idValue) => idValue !== draft.id);
     if (!plan.draftRecordIds.length) { plan.status = "committed"; plan.committedAt = now; }
   }
+  reconcilePublishedRecordIdentity(storeData, record);
   return record;
 }
 
@@ -835,6 +1006,7 @@ function commitPlan(storeData, planId, actionIds, workspaceId) {
   plan.status = "committed";
   plan.committedAt = now;
   plan.committedRecordIds = committed.map((record) => record.id);
+  for (const record of committed) reconcilePublishedRecordIdentity(storeData, record);
   return { plan, committed };
 }
 
@@ -1044,7 +1216,16 @@ async function api(req, res, url, route) {
   }
   const ctx = requestContext(req, url, storeData);
   if (!ctx) return send(res, 401, { error: "Sign in required." });
-  if (req.method === "GET" && route === "/api/dashboard/summary") return send(res, 200, dashboardSummary(storeData, ctx.workspaceId));
+  if (req.method === "GET" && route === "/api/dashboard/summary") {
+    const identityReconciliation = reconcileWorkspaceIdentities(storeData, ctx.workspaceId);
+    if (identityReconciliation.processed) await saveStore(storeData);
+    return send(res, 200, { ...dashboardSummary(storeData, ctx.workspaceId), identityReconciliation });
+  }
+  if (req.method === "POST" && route === "/api/identity/reconcile") {
+    const identityReconciliation = reconcileWorkspaceIdentities(storeData, ctx.workspaceId);
+    await saveStore(storeData);
+    return send(res, 200, { identityReconciliation });
+  }
   if (req.method === "GET" && route === "/api/records") return send(res, 200, { records: filtered(storeData, Object.fromEntries(url.searchParams.entries()), ctx.workspaceId) });
   if (req.method === "GET" && route === "/api/records/drafts") return send(res, 200, { records: storeData.draftRecords.filter((record) => record.workspaceId === ctx.workspaceId).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))) });
   if (req.method === "GET" && route === "/api/sources") return send(res, 200, { sources: storeData.sources, snippet: snippet() });
@@ -1255,6 +1436,7 @@ async function api(req, res, url, route) {
   if (req.method === "POST" && route === "/api/records/plan") {
     const plan = await makePlan(await readBody(req), ctx.workspaceId, storeData);
     storeData.plans.push(plan);
+    reconcilePlanIdentities(storeData, plan, ctx.workspaceId);
     const drafts = stagePlanDrafts(storeData, plan, ctx.workspaceId);
     await saveStore(storeData);
     return send(res, 200, { plan, drafts });
