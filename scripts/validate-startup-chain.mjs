@@ -118,6 +118,9 @@ await assertContains("src/server-analytics.js", "await import(`${pathToFileURL(a
 await assertContains("src/server-fonts.js", "await import(`${pathToFileURL(fontRuntimePath).href}?v=${Date.now()}`);", "the font runtime handoff");
 await assertContains("src/server-connected-resources.js", 'await import("./server-fonts.js");', "the font wrapper handoff");
 await assertContains("src/server-account-persistence.js", 'await import("./server-connected-resources.js");', "the connected resources wrapper handoff");
+await assertContains("src/server-connected-resources.js", "function constravaEmailConnect(state)", "the provider-aware email connection step");
+await assertContains("src/server.js", "async function fetchImapMessages(connection)", "the universal IMAP inbox adapter");
+await assertContains("src/server.js", "/imap$/", "the IMAP verification route");
 
 await validateLocalImports("src/server-tracker-analytics.js");
 await validateEncodedScopeWrapper();
