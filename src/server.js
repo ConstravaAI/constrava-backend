@@ -1231,7 +1231,17 @@ async function api(req, res, url, route) {
     return send(res, 200, { identityReconciliation });
   }
   if (req.method === "GET" && route === "/api/records") return send(res, 200, { records: filtered(storeData, Object.fromEntries(url.searchParams.entries()), ctx.workspaceId) });
-  if (req.method === "GET" && route === "/api/records/drafts") return send(res, 200, { records: storeData.draftRecords.filter((record) => record.workspaceId === ctx.workspaceId).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))) });
+  if (req.method === "GET" && route === "/api/records/drafts") {
+    const records = storeData.draftRecords
+      .filter((record) => record.workspaceId === ctx.workspaceId)
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      .map((record) => {
+        const event = record.metadata?.ingestionEventId ? storeData.ingestionEvents.find((entry) => entry.id === record.metadata.ingestionEventId && entry.workspaceId === ctx.workspaceId) : null;
+        const sourcePreview = event ? { kind: event.kind, from: clean(event.payload?.from), text: clean(event.kind === "email" ? event.payload?.body : submissionText(event.payload)) } : null;
+        return sourcePreview ? { ...record, sourcePreview } : record;
+      });
+    return send(res, 200, { records });
+  }
   if (req.method === "GET" && route === "/api/sources") return send(res, 200, { sources: storeData.sources, snippet: snippet() });
   if (req.method === "GET" && route === "/api/plans") return send(res, 200, { plans: storeData.plans.filter((plan) => plan.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/reports") return send(res, 200, { reports: storeData.reports.filter((report) => report.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
