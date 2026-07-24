@@ -2,6 +2,8 @@ import http from "node:http";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import tls from "node:tls";
+import dns from "node:dns/promises";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -262,6 +264,114 @@ function emailProviderConfig(provider) {
   return null;
 }
 
+function imapQuote(value) {
+  return `"${String(value || "").replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\r", "").replaceAll("\n", "")}"`;
+}
+
+function imapExchange(socket, tag, command, timeoutMs = 20_000) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    const timeout = setTimeout(() => finish(new Error("The mail server timed out.")), timeoutMs);
+    const onData = (chunk) => {
+      chunks.push(chunk);
+      const value = Buffer.concat(chunks);
+      const text = value.toString("latin1");
+      const match = text.match(new RegExp(`(?:^|\\r\\n)${tag} (OK|NO|BAD)[^\\r\\n]*`, "i"));
+      if (!match) return;
+      if (match[1].toUpperCase() !== "OK") return finish(new Error(match[0].trim().replace(`${tag} `, "") || "The mail server rejected the request."));
+      finish(null, value);
+    };
+    const finish = (error, value) => {
+      clearTimeout(timeout);
+      socket.off("data", onData);
+      socket.off("error", finish);
+      if (error) reject(error); else resolve(value);
+    };
+    socket.on("data", onData);
+    socket.once("error", finish);
+    socket.write(`${tag} ${command}\r\n`);
+  });
+}
+
+function privateNetworkAddress(address) {
+  const value = String(address || "").toLowerCase();
+  if (value === "::1" || value.startsWith("fc") || value.startsWith("fd") || value.startsWith("fe80:")) return true;
+  const parts = value.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part))) return false;
+  return parts[0] === 10 || parts[0] === 127 || parts[0] === 0 || (parts[0] === 169 && parts[1] === 254) || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] === 192 && parts[1] === 168);
+}
+
+async function withImapSession(credentials, callback) {
+  const host = clean(credentials.host).toLowerCase();
+  const port = Number(credentials.port || 993);
+  if (!host || port !== 993) throw Object.assign(new Error("Use a secure IMAP server on port 993."), { status: 400 });
+  const addresses = await dns.lookup(host, { all: true });
+  if (!addresses.length || addresses.some((entry) => privateNetworkAddress(entry.address))) throw Object.assign(new Error("The IMAP server must use a public internet address."), { status: 400 });
+  const socket = tls.connect({ host: addresses[0].address, port, servername: host, rejectUnauthorized: true });
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Could not reach the IMAP server.")), 15_000);
+    socket.once("secureConnect", () => { clearTimeout(timeout); resolve(); });
+    socket.once("error", (error) => { clearTimeout(timeout); reject(error); });
+  });
+  try {
+    await imapExchange(socket, "A1", `LOGIN ${imapQuote(credentials.username)} ${imapQuote(credentials.password)}`);
+    return await callback(socket);
+  } finally {
+    try { socket.write("ZZ LOGOUT\r\n"); } catch {}
+    socket.end();
+  }
+}
+
+function decodeTransferBody(body, encoding) {
+  const type = clean(encoding).toLowerCase();
+  if (type === "base64") {
+    try { return Buffer.from(body.replace(/\s/g, ""), "base64").toString("utf8"); } catch { return body; }
+  }
+  if (type === "quoted-printable") return body.replace(/=\r?\n/g, "").replace(/=([0-9A-F]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  return body;
+}
+
+function parseImapMessage(raw, uid) {
+  const [headerBlock = "", ...bodyParts] = raw.split(/\r?\n\r?\n/);
+  const unfolded = headerBlock.replace(/\r?\n[ \t]+/g, " ");
+  const header = (name) => unfolded.match(new RegExp(`^${name}:\\s*(.*)$`, "im"))?.[1]?.trim() || "";
+  let body = bodyParts.join("\n\n");
+  body = decodeTransferBody(body, header("Content-Transfer-Encoding"));
+  if (/text\/html/i.test(header("Content-Type"))) body = body.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ");
+  const received = new Date(header("Date") || Date.now());
+  return { from: header("From"), to: header("To"), subject: header("Subject"), body: clean(body).slice(0, 24000), threadId: header("References") || header("In-Reply-To") || header("Message-ID"), messageId: header("Message-ID") || `imap-${uid}`, receivedAt: Number.isNaN(received.getTime()) ? new Date().toISOString() : received.toISOString(), imapUid: Number(uid) };
+}
+
+function imapLiteral(buffer) {
+  const marker = buffer.toString("latin1").match(/\{(\d+)\}\r\n/);
+  if (!marker) return "";
+  const markerIndex = buffer.indexOf(Buffer.from(marker[0], "latin1"));
+  const start = markerIndex + Buffer.byteLength(marker[0], "latin1");
+  return buffer.subarray(start, start + Number(marker[1])).toString("utf8");
+}
+
+async function fetchImapMessages(connection) {
+  const credentials = decryptEmailTokens(connection.oauthTokens);
+  if (!credentials?.password) throw Object.assign(new Error("Reconnect this IMAP inbox before syncing."), { status: 409 });
+  return withImapSession(credentials, async (socket) => {
+    await imapExchange(socket, "A2", "SELECT INBOX");
+    const startUid = Math.max(1, Number(connection.imapLastUid || 0) + 1);
+    const searched = await imapExchange(socket, "A3", `UID SEARCH UID ${startUid}:*`);
+    const line = searched.toString("latin1").match(/\* SEARCH([^\r\n]*)/i)?.[1] || "";
+    const uids = line.trim().split(/\s+/).filter(Boolean).map(Number).filter(Number.isFinite).slice(-250);
+    const messages = [];
+    let tagNumber = 4;
+    for (const uid of uids) {
+      const tag = `A${tagNumber++}`;
+      const fetched = await imapExchange(socket, tag, `UID FETCH ${uid} (UID RFC822)`, 30_000);
+      const raw = imapLiteral(fetched);
+      if (raw) messages.push(parseImapMessage(raw, uid));
+    }
+    if (uids.length) connection.imapLastUid = Math.max(...uids);
+    return messages;
+  });
+}
+
 async function emailProviderTokens(connection) {
   const tokens = decryptEmailTokens(connection.oauthTokens);
   if (!tokens) throw Object.assign(new Error("Authorize this mailbox before syncing."), { status: 409 });
@@ -337,8 +447,12 @@ async function fetchOutlookMessages(connection, accessToken) {
 
 async function syncEmailConnection(storeData, connection) {
   if (connection.status !== "active") return { processed: 0, committed: 0 };
-  const tokens = await emailProviderTokens(connection);
-  const messages = connection.provider === "gmail" ? await fetchGmailMessages(connection, tokens.access_token) : await fetchOutlookMessages(connection, tokens.access_token);
+  let messages = [];
+  if (connection.provider === "imap") messages = await fetchImapMessages(connection);
+  else {
+    const tokens = await emailProviderTokens(connection);
+    messages = connection.provider === "gmail" ? await fetchGmailMessages(connection, tokens.access_token) : await fetchOutlookMessages(connection, tokens.access_token);
+  }
   let processed = 0, committed = 0;
   for (const payload of messages) {
     const result = await processIngestion(storeData, { workspaceId: connection.workspaceId, connection, payload, kind: "email", providerSubmissionId: `${connection.provider}:${payload.messageId}` });
@@ -1012,12 +1126,31 @@ async function api(req, res, url, route) {
   if (req.method === "POST" && route === "/api/email-connections") {
     const body = await readBody(req);
     const provider = clean(body.provider || "gmail");
-    const authorizationReady = Boolean(emailTokenKey()) && (provider === "gmail" ? Boolean(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET) : provider === "outlook" ? Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) : false);
+    const authorizationReady = Boolean(emailTokenKey()) && (provider === "gmail" ? Boolean(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET) : provider === "outlook" ? Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) : provider === "imap");
     const connection = { id: id("email"), workspaceId: ctx.workspaceId, sourceId: id("source_email"), name: clean(body.name || "Connected inbox"), emailAddress: clean(body.emailAddress).toLowerCase(), provider, status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, scope: body.scope || {}, automationPolicy: "review", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), activatedAt: "", authorizedAt: "", syncCursor: "", lastSyncAt: "", lastSyncError: "", syncStats: { processed: 0, committed: 0 }, lastMessageAt: "", testEventId: "" };
     storeData.emailConnections.push(connection);
     storeData.sources.push({ id: connection.sourceId, workspaceId: ctx.workspaceId, name: connection.name, type: "email", status: "draft", metadata: { connectionId: connection.id, provider: connection.provider, emailAddress: connection.emailAddress } });
     await saveStore(storeData);
     return send(res, 201, { connection });
+  }
+  const emailImapMatch = route.match(/^\/api\/email-connections\/([^/]+)\/imap$/);
+  if (req.method === "POST" && emailImapMatch) {
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailImapMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Email connection not found." });
+    if (connection.provider !== "imap") return send(res, 400, { error: "This inbox does not use IMAP." });
+    if (!emailTokenKey()) return send(res, 503, { error: `${EMAIL_TOKEN_KEY_ENV} is not configured.` });
+    const body = await readBody(req);
+    const credentials = { host: clean(body.host), port: Number(body.port || 993), username: clean(body.username || connection.emailAddress), password: String(body.appPassword || body.password || "") };
+    if (!credentials.password) return send(res, 400, { error: "Enter the app password provided by your email provider." });
+    await withImapSession(credentials, async () => true);
+    connection.oauthTokens = encryptEmailTokens(credentials);
+    connection.authorizationStatus = "authorized";
+    connection.authorizationReady = true;
+    connection.imapHost = credentials.host;
+    connection.imapPort = credentials.port;
+    connection.updatedAt = new Date().toISOString();
+    await saveStore(storeData);
+    return send(res, 200, { connection: { ...connection, oauthTokens: undefined }, verified: true });
   }
   const emailTestMatch = route.match(/^\/api\/email-connections\/([^/]+)\/test$/);
   if (req.method === "POST" && emailTestMatch) {
@@ -1081,7 +1214,7 @@ async function api(req, res, url, route) {
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
     if (source) source.status = connection.status === "active" ? "connected" : "ready_to_authorize";
     await saveStore(storeData);
-    return send(res, 200, { connection });
+    return send(res, 200, { connection: { ...connection, oauthTokens: undefined } });
   }
   if (req.method === "POST" && route === "/api/records/plan") {
     const plan = await makePlan(await readBody(req), ctx.workspaceId, storeData);
