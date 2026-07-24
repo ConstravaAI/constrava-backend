@@ -1,5 +1,19 @@
 # Constrava
 
+## Durable production storage
+
+Constrava stores accounts, encrypted email provider tokens, CRM records, sync cursors, and identity data in one workspace store. Local development defaults to `data/store.json`.
+
+Production deployments must provide a durable path:
+
+1. In Render, attach a persistent disk to the web service.
+2. Use `/var/data` as the disk mount path.
+3. Add the environment variable `DATA_DIR=/var/data`.
+4. Keep `EMAIL_TOKEN_ENCRYPTION_KEY` unchanged across deploys.
+5. Redeploy, then connect each inbox once so its encrypted token is written to the durable store.
+
+`DATA_FILE` can be used instead when an explicit full path is preferred. `/api/health` reports `durableStoreConfigured: true` when either setting is active.
+
 Constrava is an AI-assisted business command center for turning messy activity into structured records, priorities, analytics, and next actions.
 
 ## Run locally
