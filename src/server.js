@@ -25,6 +25,15 @@ const EMAIL_TOKEN_KEY_ENV = "EMAIL_TOKEN_ENCRYPTION_KEY";
 const EMAIL_SYNC_INTERVAL_MS = Math.max(30_000, Number(process.env.EMAIL_SYNC_INTERVAL_MS || 60_000));
 const AUTO_COMMIT_MIN_CONFIDENCE = 0.9;
 const HIGH_CONFIDENCE_MIN_CONFIDENCE = 0.97;
+const EMAIL_AUTOMATION_POLICIES = new Set(["off", "draft_90", "draft_97"]);
+
+function emailAutomationPolicy(value) {
+  const normalized = clean(value).toLowerCase();
+  if (normalized === "review") return "off";
+  if (normalized === "auto" || normalized === "standard") return "draft_90";
+  if (normalized === "high_confidence") return "draft_97";
+  return EMAIL_AUTOMATION_POLICIES.has(normalized) ? normalized : "off";
+}
 
 const id = (prefix) => `${prefix}_${crypto.randomBytes(8).toString("hex")}`;
 const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
@@ -144,6 +153,10 @@ function normalize(storeData) {
   storeData.users ||= [];
   storeData.sessions ||= [];
   for (const connection of storeData.emailConnections) {
+    connection.automationPolicy = emailAutomationPolicy(connection.automationPolicy);
+    connection.accountUserId ||= storeData.users.find((user) => user.workspaceId === connection.workspaceId)?.id || "";
+    connection.syncStats ||= { processed: 0, drafted: 0, committed: 0 };
+    connection.syncStats.drafted ||= 0;
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
     if (source && connection.status === "active" && connection.authorizationStatus === "authorized") source.status = "connected";
   }
@@ -663,30 +676,39 @@ async function fetchOutlookMessages(connection, accessToken) {
 }
 
 async function syncEmailConnection(storeData, connection) {
-  if (connection.status !== "active") return { processed: 0, committed: 0 };
+  if (connection.status !== "active") return { processed: 0, drafted: 0, committed: 0 };
   let messages = [];
   if (connection.provider === "imap") messages = await fetchImapMessages(connection);
   else {
     const tokens = await emailProviderTokens(connection);
     messages = connection.provider === "gmail" ? await fetchGmailMessages(connection, tokens.access_token) : await fetchOutlookMessages(connection, tokens.access_token);
   }
-  let processed = 0, committed = 0;
+  let processed = 0, drafted = 0;
+  const automationPolicy = emailAutomationPolicy(connection.automationPolicy);
+  connection.automationPolicy = automationPolicy;
   for (const payload of messages) {
-    const result = await processIngestion(storeData, { workspaceId: connection.workspaceId, connection, payload, kind: "email", providerSubmissionId: `${connection.provider}:${payload.messageId}` });
+    const result = await processIngestion(storeData, { workspaceId: connection.workspaceId, connection, payload, kind: "email", providerSubmissionId: `${connection.provider}:${payload.messageId}`, stageDrafts: false });
     if (result.duplicate) continue;
     processed += 1;
     const confidence = Number(result.relevance.confidence || 0);
     const hasRiskFlags = Boolean(result.relevance.riskFlags?.length);
-    const threshold = connection.automationPolicy === "high_confidence" ? HIGH_CONFIDENCE_MIN_CONFIDENCE : AUTO_COMMIT_MIN_CONFIDENCE;
-    const shouldCommit = result.plan && result.relevance.decision === "create_records" && connection.automationPolicy !== "review" && confidence >= threshold && result.plan.riskLevel === "low" && !hasRiskFlags;
-    if (result.plan && result.relevance.decision === "create_records") result.event.status = shouldCommit ? "draft_created" : "review_required";
+    const threshold = automationPolicy === "draft_97" ? HIGH_CONFIDENCE_MIN_CONFIDENCE : AUTO_COMMIT_MIN_CONFIDENCE;
+    const shouldCreateDrafts = result.plan && result.relevance.decision === "create_records" && automationPolicy !== "off" && confidence >= threshold && result.plan.riskLevel !== "high" && !hasRiskFlags;
+    if (shouldCreateDrafts) {
+      const drafts = stagePlanDrafts(storeData, result.plan, connection.workspaceId);
+      drafted += drafts.length;
+      result.event.status = drafts.length ? "draft_created" : "plan_created";
+    } else if (result.plan && result.relevance.decision === "create_records") {
+      result.event.status = "review_required";
+    }
   }
   connection.syncCursor = new Date().toISOString();
   connection.lastMessageAt = messages.at(-1)?.receivedAt || connection.lastMessageAt;
   connection.lastSyncAt = new Date().toISOString();
   connection.lastSyncError = "";
-  connection.syncStats = { processed, committed };
-  return { processed, committed };
+  connection.syncStats = { processed, drafted, committed: 0 };
+  connection.updatedAt = connection.lastSyncAt;
+  return { processed, drafted, committed: 0 };
 }
 
 async function structuredResponse({ model, name, schema, instructions, input }) {
@@ -1111,7 +1133,7 @@ localStorage.removeItem("constrava_session_token");
 const DEMO=${JSON.stringify(demo)};
 const API_SUFFIX=${JSON.stringify(apiSuffix)};
 const WORKSPACE_LABEL=${JSON.stringify(workspaceLabel)};
-let S={tab:"analytics",crmView:"overview",records:[],plans:[],plan:null,summary:null,sources:[],events:[],reports:[],snippet:""};
+let S={tab:"analytics",crmView:"overview",records:[],plans:[],plan:null,summary:null,sources:[],emailConnections:[],events:[],reports:[],snippet:""};
 const esc=function(v){return String(v==null?"":v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")};
 function url(p){return API_SUFFIX?p+(p.includes("?")?"&":"?")+API_SUFFIX:p}
 async function api(p,o){o=o||{};const r=await fetch(url(p),{...o,credentials:"include",headers:{"content-type":"application/json",...(o.headers||{})}});const d=await r.json();if(r.status===401){location.href="/signin";return null}if(!r.ok)throw Error(d.error||"Request failed");return d}
@@ -1124,14 +1146,16 @@ function highestPriorityRecords(){return S.records.filter(function(r){return Num
 function messageItems(){let rows=[];let pending=(S.plans||[]).filter(function(p){return p.status!=="committed"}).length;if(pending)rows.push({title:pending+' AI plan'+(pending===1?'':'s')+' waiting for review',body:'Open Connected Resources to review and commit draft record changes.'});let readySources=(S.sources||[]).filter(function(s){return s.status==='ready_to_connect'}).length;if(readySources)rows.push({title:readySources+' resource'+(readySources===1?'':'s')+' ready to connect',body:'Connect email, website, or form sources when you want automated capture.'});if(!rows.length)rows.push({title:'No new messages',body:'Messages and system notifications will appear here as activity comes in.'});return rows}
 function noticeMarkup(rows,emptyTitle,emptyBody){if(!rows.length)return '<div class="noticeItem"><b>'+esc(emptyTitle)+'</b><p>'+esc(emptyBody)+'</p></div>';return rows.map(function(r){return '<div class="noticeItem"><b>'+esc(r.title)+'</b><p>'+esc(r.body||recordFields(r)||((r.priorityReasons||[])[0]||''))+'</p></div>'}).join('')}
 function syncNotifications(){if(DEMO)return;const highest=highestPriorityRecords();const messages=messageItems();const dot=document.getElementById('notificationDot');if(dot)dot.textContent=highest.length+Math.max(0,messages.filter(function(m){return m.title!=='No new messages'}).length);const p=document.getElementById('priorityNotifications');if(p)p.innerHTML=noticeMarkup(highest,'No highest priority records','Records scored 95 or higher will appear here.');const m=document.getElementById('messageNotifications');if(m)m.innerHTML=noticeMarkup(messages,'No new messages','Messages and notifications will appear here.');}
-async function load(){let out=await Promise.all([api('/api/dashboard/summary'),api('/api/records'),api('/api/sources'),api('/api/plans'),api('/api/reports'),api('/api/analytics/events')]);S.summary=out[0];S.records=out[1].records;S.sources=out[2].sources;S.snippet=out[2].snippet;S.plans=out[3].plans;S.reports=out[4].reports;S.events=out[5].events;syncNotifications()}
+async function load(){let out=await Promise.all([api('/api/dashboard/summary'),api('/api/records'),api('/api/sources'),api('/api/email-connections'),api('/api/plans'),api('/api/reports'),api('/api/analytics/events')]);S.summary=out[0];S.records=out[1].records;S.sources=out[2].sources;S.snippet=out[2].snippet;S.emailConnections=out[3].connections;S.plans=out[4].plans;S.reports=out[5].reports;S.events=out[6].events;syncNotifications()}
 function tab(name){S.tab=name;document.querySelectorAll('.tab').forEach(function(b){b.classList.toggle('active',b.dataset.tab===name)});document.getElementById('settingsButton').classList.toggle('active',name==='settings');const dd=document.getElementById('notificationDropdown');if(dd)dd.classList.remove('open');const nb=document.getElementById('notificationButton');if(nb)nb.setAttribute('aria-expanded','false');pageTitle.textContent=name==='crm'?'CRM':name==='resources'?'Connected Resources':name==='settings'?'Settings':name==='notifications'?'Notifications':'';render()}
 function crmCount(type){if(type==='all')return S.records.length;if(type==='overview'||type==='ai')return '';return S.records.filter(function(r){return r.type===type}).length}
 function crmShell(content){const items=[['overview','Overview'],['all','All Records'],['Person','Contacts'],['Company','Companies'],['Deal','Deals'],['Task','Tasks'],['Intake','Intakes'],['Note','Notes'],['ai','AI Add']];return '<div class="crmShell"><aside class="crmSide"><div class="crmSideTitle">CRM sections</div>'+items.map(function(item){const id=item[0],label=item[1];return '<button class="crmTab '+(S.crmView===id?'active':'')+'" data-crm="'+id+'"><span>'+label+'</span><span>'+crmCount(id)+'</span></button>'}).join('')+'</aside><div>'+content+'</div></div>'}
 function crmContent(){if(S.crmView==='overview'){return crmShell('<div class="grid metrics">'+metric('All records',S.records.length,'CRM objects')+metric('Contacts',crmCount('Person'),'People')+metric('Deals',crmCount('Deal'),money(S.summary.metrics.revenueOpportunity))+metric('Tasks',crmCount('Task'),'Follow-ups')+'</div><div style="margin-top:16px">'+list('High-priority CRM records',S.summary.highPriority,'No high priority records')+'</div>')}if(S.crmView==='all')return crmShell(list('All CRM Records',S.records,'No CRM records yet'));if(S.crmView==='ai'){return crmShell('<section class="card"><div class="in"><h2>AI Add</h2><p class="muted">Paste a lead, note, email, or form submission. Constrava will draft records for review before committing them.</p><form id="aiForm"><textarea name="rawText" required placeholder="Example: Sarah from Bluebird Dental wants a website quote, budget $6,000, follow up tomorrow."></textarea><br><br><button class="primary">Create AI plan</button></form></div></section>')}return crmShell(list(({Person:'Contacts',Company:'Companies',Deal:'Deals',Task:'Tasks',Intake:'Intakes',Note:'Notes'})[S.crmView]||S.crmView,S.records.filter(function(r){return r.type===S.crmView}),'This section is empty'))}
 function notificationContent(){return '<div class="notificationPanel"><section class="card"><div class="in"><h2>Highest priority records</h2><p class="muted">Only records scored 95 or higher appear here so this stays reserved for true priority work.</p>'+noticeMarkup(highestPriorityRecords(),'No highest priority records','There are no highest priority records right now.')+'</div></section><section class="card"><div class="in"><h2>Messages & notifications</h2><p class="muted">System messages, pending AI plans, and connection notices.</p>'+noticeMarkup(messageItems(),'No new messages','Messages and notifications will appear here.')+'</div></section></div>'}
-function render(){let h='',m=S.summary.metrics;if(S.tab==='analytics'){h='<div class="grid metrics">'+metric('New leads',m.newLeads,'Intakes and contacts')+metric('Active deals',m.activeDeals,money(m.revenueOpportunity))+metric('Traffic events',m.trafficEvents,'Captured activity')+metric('AI-created',m.aiCreatedRecords,'Committed records')+'</div><div class="grid two" style="margin-top:16px"><section class="card"><div class="in"><h2>Recommended actions</h2>'+S.summary.recommendedActions.map(function(a){return '<div class="item"><b>'+esc(a.title)+'</b><p class="muted">'+esc(a.reason)+'</p></div>'}).join('')+'</div></section><section class="card"><div class="in"><h2>Recent analytics events</h2>'+S.events.slice(0,8).map(function(e){return '<div class="item"><b>'+esc(e.type)+'</b><p class="muted">'+esc(e.sourceUrl||e.siteId||'')+'</p></div>'}).join('')+'</div></section></div>'}if(S.tab==='crm')h=crmContent();if(S.tab==='resources'){h='<div class="grid two"><section class="card"><div class="in"><h2>Outside resources</h2>'+S.sources.map(function(s){return '<div class="item resource"><div class="resourceIcon">'+(s.type.includes('email')?'✉':s.type.includes('website')?'⌁':'●')+'</div><div><b>'+esc(s.name)+'</b><p class="muted">'+esc(s.type)+' · '+esc(s.status)+'</p></div><button class="secondary">Configure</button></div>'}).join('')+'</div></section><section class="card"><div class="in"><h2>Website tracker</h2><p class="muted">Use this snippet on an outside website to send analytics events into the demo source.</p><pre>'+esc(S.snippet)+'</pre></div></section></div><section class="card" style="margin-top:16px"><div class="in"><h2>Recent plans</h2>'+S.plans.slice(0,8).map(function(p){return '<div class="item"><b>'+esc(p.summary)+'</b><p class="muted">'+esc(p.aiProvider)+' · '+p.actions.length+' actions</p><button class="secondary" data-plan="'+esc(p.planId)+'">Review</button></div>'}).join('')+'</div></section>'}if(S.tab==='settings'){h='<div class="grid two"><section class="card"><div class="in"><h2>Workspace settings</h2><label>Workspace</label><input value="'+esc(WORKSPACE_LABEL)+'"><label>Theme</label><select><option>White and dark blue</option></select><button class="primary">Save settings</button></div></section><section class="card"><div class="in"><h2>Account</h2><p class="muted">Your login is kept by a persistent browser cookie. Reloading the page should keep this dashboard open until you log out.</p><div class="item"><b>Session</b><p class="muted">Saved in this browser for up to 30 days.</p></div></div></section></div>'}if(S.tab==='notifications')h=notificationContent();app.innerHTML=h;bind();syncNotifications()}
-function bind(){document.querySelectorAll('.tab').forEach(function(b){b.onclick=function(){tab(b.dataset.tab)}});document.querySelectorAll('[data-crm]').forEach(function(b){b.onclick=function(){S.crmView=b.dataset.crm;render()}});document.querySelectorAll('[data-plan]').forEach(function(b){b.onclick=function(){openPlan(S.plans.find(function(p){return p.planId===b.dataset.plan}))}});let f=document.getElementById('aiForm');if(f)f.onsubmit=async function(e){e.preventDefault();let p=await api('/api/records/plan',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(f)))});S.plan=p.plan;openPlan(S.plan);await load();S.crmView='ai';render()}}
+function emailPolicyOptions(value){return [['off','Do not create drafts automatically'],['draft_90','Create drafts at 90% confidence'],['draft_97','Create drafts at 97% confidence']].map(function(option){return '<option value="'+option[0]+'" '+(value===option[0]?'selected':'')+'>'+option[1]+'</option>'}).join('')}
+function inboxSettings(){if(DEMO)return '<div class="item"><div><b>Email connections are account-specific</b><p class="muted">Sign in to view and edit saved inboxes.</p></div></div>';if(!S.emailConnections.length)return '<div class="item"><div><b>No saved inbox connection</b><p class="muted">Once an inbox is authorized, it will stay attached to this account across sign-outs, refreshes, and browser restarts.</p></div></div>';return S.emailConnections.map(function(c){return '<form class="item emailSettingsForm" data-email-id="'+esc(c.id)+'" style="display:grid;gap:10px"><div><b>'+esc(c.emailAddress||c.name)+'</b><p class="muted">'+esc(c.provider)+' · '+esc(c.status)+' · saved to this account</p></div><label>Connection name<input name="name" value="'+esc(c.name)+'" required></label><label>Automatic draft creation<select name="automationPolicy">'+emailPolicyOptions(c.automationPolicy||'off')+'</select></label><label>Excluded senders or domains<input name="excludedSenders" value="'+esc((c.scope||{}).excludedSenders||'')+'" placeholder="newsletter@example.com, example.org"></label><div><button class="primary" type="submit">Save inbox settings</button> <span class="muted emailSaveStatus" aria-live="polite"></span></div></form>'}).join('')}
+function render(){let h='',m=S.summary.metrics;if(S.tab==='analytics'){h='<div class="grid metrics">'+metric('New leads',m.newLeads,'Intakes and contacts')+metric('Active deals',m.activeDeals,money(m.revenueOpportunity))+metric('Traffic events',m.trafficEvents,'Captured activity')+metric('AI-created',m.aiCreatedRecords,'Committed records')+'</div><div class="grid two" style="margin-top:16px"><section class="card"><div class="in"><h2>Recommended actions</h2>'+S.summary.recommendedActions.map(function(a){return '<div class="item"><b>'+esc(a.title)+'</b><p class="muted">'+esc(a.reason)+'</p></div>'}).join('')+'</div></section><section class="card"><div class="in"><h2>Recent analytics events</h2>'+S.events.slice(0,8).map(function(e){return '<div class="item"><b>'+esc(e.type)+'</b><p class="muted">'+esc(e.sourceUrl||e.siteId||'')+'</p></div>'}).join('')+'</div></section></div>'}if(S.tab==='crm')h=crmContent();if(S.tab==='resources'){h='<div class="grid two"><section class="card"><div class="in"><h2>Saved inbox connections</h2><p class="muted">Inbox authorization and settings are stored with your account, not in this browser.</p>'+inboxSettings()+'</div></section><section class="card"><div class="in"><h2>Other resources</h2>'+S.sources.filter(function(s){return s.type!=="email"}).map(function(s){return '<div class="item resource"><div class="resourceIcon">'+(s.type.includes("website")?"⌁":"●")+'</div><div><b>'+esc(s.name)+'</b><p class="muted">'+esc(s.type)+' · '+esc(s.status)+'</p></div></div>'}).join('')+'</div></section></div><section class="card" style="margin-top:16px"><div class="in"><h2>Recent plans</h2>'+S.plans.slice(0,8).map(function(p){return '<div class="item"><b>'+esc(p.summary)+'</b><p class="muted">'+esc(p.aiProvider)+' · '+p.actions.length+' actions</p><button class="secondary" data-plan="'+esc(p.planId)+'">Review</button></div>'}).join('')+'</div></section>'}if(S.tab==='settings'){h='<div class="grid two"><section class="card"><div class="in"><h2>Workspace settings</h2><label>Workspace</label><input value="'+esc(WORKSPACE_LABEL)+'"><label>Theme</label><select><option>White and dark blue</option></select><button class="primary">Save settings</button></div></section><section class="card"><div class="in"><h2>Account</h2><p class="muted">Your login is kept by a persistent browser cookie. Reloading the page should keep this dashboard open until you log out.</p><div class="item"><b>Session</b><p class="muted">Saved in this browser for up to 30 days.</p></div></div></section></div>'}if(S.tab==='notifications')h=notificationContent();app.innerHTML=h;bind();syncNotifications()}
+function bind(){document.querySelectorAll('.tab').forEach(function(b){b.onclick=function(){tab(b.dataset.tab)}});document.querySelectorAll('[data-crm]').forEach(function(b){b.onclick=function(){S.crmView=b.dataset.crm;render()}});document.querySelectorAll('[data-plan]').forEach(function(b){b.onclick=function(){openPlan(S.plans.find(function(p){return p.planId===b.dataset.plan}))}});document.querySelectorAll('.emailSettingsForm').forEach(function(form){form.onsubmit=async function(e){e.preventDefault();const button=form.querySelector('button[type="submit"]');const status=form.querySelector('.emailSaveStatus');button.disabled=true;status.textContent='Saving…';try{const values=Object.fromEntries(new FormData(form));await api('/api/email-connections/'+encodeURIComponent(form.dataset.emailId),{method:'PATCH',body:JSON.stringify({name:values.name,automationPolicy:values.automationPolicy,scope:{excludedSenders:values.excludedSenders}})});status.textContent='Saved';await load();render()}catch(error){status.textContent=error.message}finally{button.disabled=false}}});let f=document.getElementById('aiForm');if(f)f.onsubmit=async function(e){e.preventDefault();let p=await api('/api/records/plan',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(f)))});S.plan=p.plan;openPlan(S.plan);await load();S.crmView='ai';render()}}
 async function refresh(nextTab){await load();if(nextTab)S.tab=nextTab;render()}
 function openPlan(plan){S.plan=plan;if(!S.plan)return;planTitle.textContent=S.plan.summary;planBody.innerHTML=S.plan.actions.map(function(a){return '<label class="item" style="display:grid;grid-template-columns:auto 1fr;gap:12px"><input type="checkbox" checked value="'+a.id+'"><span><b>'+esc(a.actionType)+' '+esc(a.recordType)+'</b><p class="muted">'+esc(a.reasoning)+'</p><pre>'+esc(JSON.stringify(a.fields,null,2))+'</pre></span></label>'}).join('');planDialog.showModal()}
 async function signout(){localStorage.removeItem('constrava_session_token');if(DEMO){location.href='/';return}await fetch('/api/auth/logout',{method:'POST',credentials:'include'});location.href='/'}
@@ -1267,13 +1291,13 @@ async function api(req, res, url, route) {
       });
     return send(res, 200, { records });
   }
-  if (req.method === "GET" && route === "/api/sources") return send(res, 200, { sources: storeData.sources, snippet: snippet() });
+  if (req.method === "GET" && route === "/api/sources") return send(res, 200, { sources: storeData.sources.filter((entry) => entry.workspaceId === ctx.workspaceId), snippet: snippet() });
   if (req.method === "GET" && route === "/api/plans") return send(res, 200, { plans: storeData.plans.filter((plan) => plan.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/reports") return send(res, 200, { reports: storeData.reports.filter((report) => report.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/analytics/events") return send(res, 200, { events: storeData.events.filter((event) => event.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/form-connections") return send(res, 200, { connections: storeData.formConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ tokenHash, ...entry }) => entry) });
   if (req.method === "GET" && route === "/api/ingestion-events") return send(res, 200, { events: storeData.ingestionEvents.filter((entry) => entry.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
-  if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ oauthTokens, oauthStateHash, ...entry }) => entry) });
+  if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ oauthTokens, oauthStateHash, ...entry }) => ({ ...entry, automationPolicy: emailAutomationPolicy(entry.automationPolicy) })) });
   if (req.method === "GET" && route === "/api/connected-resources") {
     const resources = storeData.sources
       .filter((entry) => entry.workspaceId === ctx.workspaceId && entry.status === "connected")
@@ -1287,6 +1311,36 @@ async function api(req, res, url, route) {
       }))
       .filter((entry) => entry.resourceId);
     return send(res, 200, { resources });
+  }
+  const emailSettingsMatch = route.match(/^\/api\/email-connections\/([^/]+)$/);
+  if (req.method === "PATCH" && emailSettingsMatch) {
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailSettingsMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Email connection not found." });
+    const body = await readBody(req);
+    if (body.name !== undefined) {
+      const name = clean(body.name);
+      if (!name) return send(res, 400, { error: "Connection name is required." });
+      connection.name = name;
+    }
+    if (body.automationPolicy !== undefined) {
+      const requestedPolicy = clean(body.automationPolicy).toLowerCase();
+      if (!EMAIL_AUTOMATION_POLICIES.has(requestedPolicy)) return send(res, 400, { error: "Choose Off, 90% confidence, or 97% confidence." });
+      connection.automationPolicy = requestedPolicy;
+    }
+    if (body.scope !== undefined) {
+      connection.scope = { ...(connection.scope || {}), ...(body.scope || {}) };
+      if (connection.scope.excludedSenders !== undefined) connection.scope.excludedSenders = clean(connection.scope.excludedSenders);
+    }
+    connection.accountUserId ||= ctx.user?.id || "";
+    connection.updatedAt = new Date().toISOString();
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
+    if (source) {
+      source.name = connection.name;
+      source.metadata = { ...(source.metadata || {}), connectionId: connection.id, provider: connection.provider, emailAddress: connection.emailAddress, automationPolicy: connection.automationPolicy };
+    }
+    await saveStore(storeData);
+    const { oauthTokens, oauthStateHash, ...safeConnection } = connection;
+    return send(res, 200, { connection: safeConnection });
   }
   const emailMessagesMatch = route.match(/^\/api\/email-connections\/([^/]+)\/messages$/);
   if (req.method === "GET" && emailMessagesMatch) {
@@ -1378,9 +1432,10 @@ async function api(req, res, url, route) {
     const body = await readBody(req);
     const provider = clean(body.provider || "gmail");
     const authorizationReady = Boolean(emailTokenKey()) && (provider === "gmail" ? Boolean(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET) : provider === "outlook" ? Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) : provider === "imap");
-    const connection = { id: id("email"), workspaceId: ctx.workspaceId, sourceId: id("source_email"), name: clean(body.name || "Connected inbox"), emailAddress: clean(body.emailAddress).toLowerCase(), provider, status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, scope: body.scope || {}, automationPolicy: "review", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), activatedAt: "", authorizedAt: "", syncCursor: "", lastSyncAt: "", lastSyncError: "", syncStats: { processed: 0, committed: 0 }, lastMessageAt: "", testEventId: "" };
+    const requestedAutomationPolicy = emailAutomationPolicy(body.automationPolicy);
+    const connection = { id: id("email"), accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, sourceId: id("source_email"), name: clean(body.name || "Connected inbox"), emailAddress: clean(body.emailAddress).toLowerCase(), provider, status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, scope: body.scope || {}, automationPolicy: requestedAutomationPolicy, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), activatedAt: "", authorizedAt: "", syncCursor: "", lastSyncAt: "", lastSyncError: "", syncStats: { processed: 0, drafted: 0, committed: 0 }, lastMessageAt: "", testEventId: "" };
     storeData.emailConnections.push(connection);
-    storeData.sources.push({ id: connection.sourceId, workspaceId: ctx.workspaceId, name: connection.name, type: "email", status: "draft", metadata: { connectionId: connection.id, provider: connection.provider, emailAddress: connection.emailAddress } });
+    storeData.sources.push({ id: connection.sourceId, accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, name: connection.name, type: "email", status: "draft", metadata: { connectionId: connection.id, provider: connection.provider, emailAddress: connection.emailAddress, automationPolicy: connection.automationPolicy } });
     await saveStore(storeData);
     return send(res, 201, { connection });
   }
@@ -1463,7 +1518,7 @@ async function api(req, res, url, route) {
     if (!connection.testEventId) return send(res, 409, { error: "Process a test email before activation." });
     const body = await readBody(req);
     connection.scope = body.scope || connection.scope;
-    connection.automationPolicy = clean(body.automationPolicy || "review");
+    connection.automationPolicy = emailAutomationPolicy(body.automationPolicy ?? connection.automationPolicy);
     connection.status = connection.authorizationStatus === "authorized" ? "active" : "ready_to_authorize";
     connection.activatedAt = new Date().toISOString();
     connection.updatedAt = connection.activatedAt;
