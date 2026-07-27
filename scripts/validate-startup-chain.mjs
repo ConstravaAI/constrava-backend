@@ -139,6 +139,7 @@ await assertContains("src/server.js", "storeWriteQueue", "serialized atomic stor
 await assertContains("src/server-account-persistence.js", "replacement.satisfiedBy", "forward-compatible account persistence patches");
 await assertContains("src/server-analytics-selector-copies.js", '["analyticsAudienceTools", "analyticsContent"]', "all analytics tab detail removal boundaries");
 await assertContains("src/server-analytics-selector-copies.js", "analyticsDedicatedMetrics()+(body?'<div", "conditional analytics detail panel rendering");
+await assertContains("src/server-analytics-selector-copies.js", ".analyticsToolbarControlsWrap select{color:#061a33!important}", "dark analytics dropdown selected values");
 
 await validateLocalImports("src/server-tracker-analytics.js");
 await validateEncodedScopeWrapper();
