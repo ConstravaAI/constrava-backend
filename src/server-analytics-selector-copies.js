@@ -79,7 +79,18 @@ function analyticsAudienceTools(events){const browserFn=function(e){try{return t
     generated = generated.replace(/if\(S\.analyticsView==='pages'\)body=[\s\S]*?;if\(S\.analyticsView==='events'\)body=/, "if(S.analyticsView==='pages')body=analyticsPagesTools(events);if(S.analyticsView==='events')body=");
     generated = generated.replace(/if\(S\.analyticsView==='events'\)body=[\s\S]*?;if\(S\.analyticsView==='audience'\)body=/, "if(S.analyticsView==='events')body=analyticsEventsTools(events);if(S.analyticsView==='audience')body=");
     generated = generated.replace(/if\(S\.analyticsView==='audience'\)body=[\s\S]*?;return '<div class="analyticsShell/, "if(S.analyticsView==='audience')body=analyticsAudienceTools(events);return '<div class=\"analyticsShell");
-    generated = generated.replace(/function analyticsOverviewTools[\s\S]*?(?=function analyticsTrafficTools)/, "function analyticsOverviewTools(){return ''}\n");
+    const analyticsDetailFunctions = [
+      ["analyticsOverviewTools", "analyticsTrafficTools"],
+      ["analyticsTrafficTools", "analyticsSourcesTools"],
+      ["analyticsSourcesTools", "analyticsPagesTools"],
+      ["analyticsPagesTools", "analyticsEventsTools"],
+      ["analyticsEventsTools", "analyticsAudienceTools"],
+      ["analyticsAudienceTools", "analyticsContent"]
+    ];
+    for (const [functionName, nextFunctionName] of analyticsDetailFunctions) {
+      const detailPattern = new RegExp("function " + functionName + "[\\s\\S]*?(?=function " + nextFunctionName + ")");
+      generated = generated.replace(detailPattern, "function " + functionName + "(){return ''}\n");
+    }
 
     generated = generated.replace("+analyticsPulseHeader(events,pages)+analyticsModeTabs()+'<div class=\"analyticsToolPanel\">", "+analyticsPulseHeader(events,pages)+'<div class=\"analyticsToolPanel\">");
     generated = generated.replace("+analyticsPulseHeader(events,pages)+analyticsDedicatedMetrics()+'<div class=\"analyticsToolPanel\">", "+analyticsPulseHeader(events,pages)+'<div class=\"analyticsToolPanel\">");
