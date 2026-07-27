@@ -142,6 +142,8 @@ await assertContains("src/server-analytics-selector-copies.js", "analyticsDedica
 await assertContains("src/server-analytics-selector-copies.js", ".analyticsToolbarControlsWrap select{color:#061a33!important}", "dark analytics dropdown selected values");
 await assertContains("src/server-fonts.js", '<select id="analyticsRange" style="color:#061a33!important">', "explicit dark date-range selected value");
 await assertContains("src/server-fonts.js", '<select id="analyticsSource" style="color:#061a33!important">', "explicit dark event-type selected value");
+await assertContains("src/server-fonts.js", '["analyticsAudienceTools", "analyticsContent"]', "final analytics detail removal boundaries");
+await assertContains("src/server-fonts.js", "${analyticsCommandCenterFinal}", "the cleaned final analytics renderer injection");
 
 await validateLocalImports("src/server-tracker-analytics.js");
 await validateEncodedScopeWrapper();
