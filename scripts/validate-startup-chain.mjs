@@ -110,6 +110,7 @@ await assertContains("src/server.js", 'aria-label="Settings"', "the encoding-saf
 await assertContains("src/server.js", '.settingsIcon svg{', "the shared SVG icon styling");
 await assertContains("src/server-tab-loading-state.js", 'await import(`${pathToFileURL(generatedSelectorPath).href}?v=${Date.now()}`);', "the analytics selector loading handoff");
 await assertContains("src/server-analytics-selector-copies.js", 'await import("./server-crm-actions-scope.js");', "the CRM scope fallback handoff");
+await assertContains("src/server-analytics-selector-copies.js", "await fs.writeFile(generatedPath, generated);", "the analytics selector generated write target");
 await assertContains("src/server-runtime.js", "await fs.writeFile(runtimePath, source);", "the generated runtime write target");
 await assertContains("src/server-responsive.js", "await import(`${pathToFileURL(responsiveRuntimePath).href}?v=${Date.now()}`);", "the responsive runtime handoff");
 await assertContains("src/server-responsive.js", "function aiDraftText\\\\(", "the AI record renderer preservation boundary");
