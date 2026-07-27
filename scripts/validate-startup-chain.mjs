@@ -136,6 +136,8 @@ await assertContains("src/server-runtime.js", "function aiDraftText(", "simplifi
 await assertContains("src/server.js", "durableStoreConfigured", "durable production store configuration");
 await assertContains("src/server.js", "storeWriteQueue", "serialized atomic store writes");
 await assertContains("src/server-account-persistence.js", "replacement.satisfiedBy", "forward-compatible account persistence patches");
+await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewTools(){return ''}", "the intentionally empty analytics overview detail renderer");
+await assertContains("src/server-analytics-selector-copies.js", "analyticsDedicatedMetrics()+(body?'<div", "conditional analytics detail panel rendering");
 
 await validateLocalImports("src/server-tracker-analytics.js");
 await validateEncodedScopeWrapper();
