@@ -3,14 +3,15 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const srcDir = path.join(root, "src");
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const srcDir = path.join(projectRoot, "src");
 const failures = [];
+const requiredStartScript = "node src/server-tracker-analytics.js";
 
 async function readProjectFile(relativePath) {
   try {
-    return await fs.readFile(path.join(root, relativePath), "utf8");
-  } catch (error) {
+    return await fs.readFile(path.join(projectRoot, relativePath), "utf8");
+  } catch {
     failures.push(`Missing required file: ${relativePath}`);
     return "";
   }
@@ -29,16 +30,18 @@ async function assertContains(relativePath, needle, label) {
 }
 
 function checkSyntax(relativePath) {
-  const result = spawnSync(process.execPath, ["--check", path.join(root, relativePath)], {
-    encoding: "utf8"
-  });
+  const result = spawnSync(
+    process.execPath,
+    ["--check", path.join(projectRoot, relativePath)],
+    { encoding: "utf8" }
+  );
   if (result.status !== 0) {
     fail(`${relativePath} failed syntax check:\n${result.stderr || result.stdout}`.trim());
   }
 }
 
 function localImportTargets(relativePath, source) {
-  const dir = path.dirname(path.join(root, relativePath));
+  const dir = path.dirname(path.join(projectRoot, relativePath));
   const targets = [];
   const patterns = [
     /\bimport\s+(?:[^'"]+\s+from\s+)?["'](\.\/[^"']+)["']/g,
@@ -47,7 +50,9 @@ function localImportTargets(relativePath, source) {
   for (const pattern of patterns) {
     for (const match of source.matchAll(pattern)) {
       const target = match[1].endsWith(".js") ? match[1] : `${match[1]}.js`;
-      targets.push(path.relative(root, path.resolve(dir, target)).replaceAll("\\", "/"));
+      targets.push(
+        path.relative(projectRoot, path.resolve(dir, target)).replaceAll("\\", "/")
+      );
     }
   }
   return targets;
@@ -61,7 +66,7 @@ async function validateLocalImports(relativePath, seen = new Set()) {
   for (const target of localImportTargets(relativePath, source)) {
     if (path.basename(target).startsWith(".")) continue;
     try {
-      await fs.access(path.join(root, target));
+      await fs.access(path.join(projectRoot, target));
     } catch {
       fail(`${relativePath} imports missing file ${target}`);
       continue;
@@ -94,11 +99,15 @@ async function validateEncodedScopeWrapper() {
 }
 
 const packageJson = JSON.parse(await readProjectFile("package.json") || "{}");
-if (packageJson.scripts?.start !== "node src/server-tracker-analytics.js") {
+if (packageJson.scripts?.start !== requiredStartScript) {
   fail("package.json start script must stay pointed at src/server-tracker-analytics.js.");
 }
 
-for (const fileName of (await fs.readdir(srcDir)).filter((name) => name.endsWith(".js") && !name.startsWith(".")).sort()) {
+const sourceFileNames = (await fs.readdir(srcDir))
+  .filter((name) => name.endsWith(".js") && !name.startsWith("."))
+  .sort();
+
+for (const fileName of sourceFileNames) {
   checkSyntax(`src/${fileName}`);
 }
 
@@ -137,14 +146,19 @@ await assertContains("src/server-runtime.js", "function aiDraftText(", "simplifi
 await assertContains("src/server.js", "durableStoreConfigured", "durable production store configuration");
 await assertContains("src/server.js", "storeWriteQueue", "serialized atomic store writes");
 await assertContains("src/server-account-persistence.js", "replacement.satisfiedBy", "forward-compatible account persistence patches");
-await assertContains("src/server-analytics-selector-copies.js", '["analyticsAudienceTools", "analyticsContent"]', "all analytics tab detail removal boundaries");
+await assertContains("src/server-analytics-selector-copies.js", "function analyticsModernDonut(", "the analytics distribution chart system");
+await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewTrend(", "the interactive Overview trend chart");
+await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewComposition(", "the interactive Overview composition chart");
+await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewJourney(", "the Overview visitor journey");
+await assertContains("src/server-analytics-selector-copies.js", ".analyticsOverviewSwitch button[aria-pressed=\"true\"]", "the accessible Overview chart controls");
+await assertContains("src/server-analytics-selector-copies.js", "analytics-visual-system-v1", "the colorful analytics visual system");
 await assertContains("src/server-analytics-selector-copies.js", "analyticsDedicatedMetrics()+(body?'<div", "conditional analytics detail panel rendering");
 await assertContains("src/server-analytics-selector-copies.js", ".analyticsToolbarControlsWrap select{color:#061a33!important}", "dark analytics dropdown selected values");
 await assertContains("src/server-fonts.js", '<select id="analyticsRange" style="color:#061a33!important">', "explicit dark date-range selected value");
 await assertContains("src/server-fonts.js", '<select id="analyticsSource" style="color:#061a33!important">', "explicit dark event-type selected value");
 await assertContains("src/server-fonts.js", 'id="analyticsRefresh" style="color:#061a33!important"', "explicit dark Analytics refresh text");
 await assertContains("src/server-fonts.js", 'id="analyticsReport" style="color:#061a33!important"', "explicit dark Analytics snapshot text");
-await assertContains("src/server-fonts.js", '["analyticsAudienceTools", "analyticsContent"]', "final analytics detail removal boundaries");
+await assertContains("src/server-fonts.js", "function analyticsAudienceTools(", "the audience analytics page");
 await assertContains("src/server-fonts.js", "${analyticsCommandCenterFinal}", "the cleaned final analytics renderer injection");
 
 await validateLocalImports("src/server-tracker-analytics.js");
