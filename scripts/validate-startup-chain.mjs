@@ -150,6 +150,9 @@ await assertContains("src/server-analytics-selector-copies.js", "function analyt
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewTrend(", "the interactive Overview trend chart");
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewComposition(", "the interactive Overview composition chart");
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewJourney(", "the Overview visitor journey");
+await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewBlock(", "the reusable expandable Overview data block");
+await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewToggleExpand(", "the Overview block expansion interaction");
+await assertContains("src/server-analytics-selector-copies.js", ".analyticsOverviewGrid{display:grid", "the responsive Overview data grid");
 await assertContains("src/server-analytics-selector-copies.js", ".analyticsOverviewSwitch button[aria-pressed=\"true\"]", "the accessible Overview chart controls");
 await assertContains("src/server-analytics-selector-copies.js", "analytics-visual-system-v1", "the colorful analytics visual system");
 await assertContains("src/server-analytics-selector-copies.js", "analyticsDedicatedMetrics()+(body?'<div", "conditional analytics detail panel rendering");
