@@ -1,3 +1,4 @@
 data/store.json
 node_modules/
+.npm-cache/
 .env
