@@ -53,7 +53,6 @@ const generatedAnalyticsPatch =
   "source = source.replace(" + JSON.stringify("let typeSelect=document.getElementById('manualType');") + ", " + JSON.stringify(analyticsBindCode + "let typeSelect=document.getElementById('manualType');") + ");\n";
 
 let responsive = await fs.readFile(responsiveSourcePath, "utf8");
-responsive = responsive.replace(/\r\n/g, "\n");
 const styleMarker = "`;\n\nconst crmContentNeedle";
 if (!responsive.includes(styleMarker)) {
   throw new Error("Could not find responsiveCss closing marker in src/server-responsive.js");
