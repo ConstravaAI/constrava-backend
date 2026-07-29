@@ -2,17 +2,19 @@
 
 ## Durable production storage
 
-Constrava stores accounts, encrypted email provider tokens, CRM records, sync cursors, and identity data in one workspace store. Local development defaults to `data/store.json`.
+Constrava stores accounts, sessions, encrypted email provider tokens, website connections, CRM records, analytics, sync cursors, and identity data in one workspace store. Local development defaults to `data/store.json`.
 
-Production deployments must provide a durable path:
+The preferred production configuration is Neon Postgres:
 
-1. In Render, attach a persistent disk to the web service.
-2. Use `/var/data` as the disk mount path.
-3. Add the environment variable `DATA_DIR=/var/data`.
-4. Keep `EMAIL_TOKEN_ENCRYPTION_KEY` unchanged across deploys.
-5. Redeploy, then connect each inbox once so its encrypted token is written to the durable store.
+1. Copy the pooled Neon connection string.
+2. Add it to Render as the secret environment variable `DATABASE_URL`.
+3. Keep `EMAIL_TOKEN_ENCRYPTION_KEY` unchanged across deploys.
+4. Redeploy. Constrava creates the isolated `constrava_v2.app_store` table automatically.
+5. If `data/store.json` exists on the first database-backed start, Constrava imports it once.
 
-`DATA_FILE` can be used instead when an explicit full path is preferred. `/api/health` reports `durableStoreConfigured: true` when either setting is active.
+The existing file store remains available as a fallback. On a paid Render service, attach a persistent disk at `/var/data` and set `DATA_DIR=/var/data`. `DATA_FILE` can be used instead when an explicit full path is preferred.
+
+`/api/health` reports `dataStore: "postgres"` and `postgresStoreConfigured: true` when Neon is active. A configured database failure stops the request instead of silently falling back to Render's temporary filesystem.
 
 Constrava is an AI-assisted business command center for turning messy activity into structured records, priorities, analytics, and next actions.
 
