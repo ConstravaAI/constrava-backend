@@ -124,6 +124,10 @@ await assertContains("src/server-runtime.js", "await fs.writeFile(runtimePath, s
 await assertContains("src/server-responsive.js", "await import(`${pathToFileURL(responsiveRuntimePath).href}?v=${Date.now()}`);", "the responsive runtime handoff");
 await assertContains("src/server-responsive.js", "function aiDraftText\\\\(", "the AI record renderer preservation boundary");
 await assertContains("src/server-runtime.js", "function aiRecordsContent()", "the AI record queue renderer");
+await assertContains("src/server-runtime.js", 'id="crmPriorityCheck">AI Priority Check</button>', "the CRM hero priority action");
+await assertContains("src/server-runtime.js", 'id="crmEditRecords">Edit Records</button>', "the CRM hero edit action");
+await assertContains("src/server-runtime.js", "recordEditorBindCodeWithHeroActions", "the CRM hero action bindings");
+await assertContains("src/server-runtime.js", "el.style.display='none'", "the hidden duplicate CRM workspace actions");
 await assertContains("src/server-analytics.js", "await import(`${pathToFileURL(analyticsRuntimePath).href}?v=${Date.now()}`);", "the analytics runtime handoff");
 await assertContains("src/server-analytics.js", 'responsive = responsive.replace(/\\r\\n/g, "\\n");', "cross-platform analytics wrapper line endings");
 await assertContains("src/server-runtime.js", 'source = source.replace(/\\r\\n/g, "\\n");', "cross-platform runtime wrapper line endings");
@@ -180,6 +184,7 @@ await assertContains("src/server-analytics-selector-copies.js", ".analyticsOverv
 await assertContains("src/server-analytics-selector-copies.js", "analytics-visual-system-v1", "the colorful analytics visual system");
 await assertContains("src/server-analytics-selector-copies.js", "analyticsDedicatedMetrics()+(body?'<div", "conditional analytics detail panel rendering");
 await assertContains("src/server-analytics-selector-copies.js", ".analyticsToolbarControlsWrap select{color:#061a33!important}", "dark analytics dropdown selected values");
+await assertContains("src/server-analytics-selector-copies.js", ".crmHeroActions{display:flex", "the CRM hero action layout");
 await assertContains("src/server-fonts.js", 'source = source.replace(/\\r\\n/g, "\\n");', "cross-platform Analytics visual source line endings");
 await assertContains("src/server-fonts.js", 'source.includes("function analyticsOverviewPopup(")', "the active Analytics visual installation check");
 await assertContains("src/server-fonts.js", '<select id="analyticsRange" style="color:#061a33!important">', "explicit dark date-range selected value");
