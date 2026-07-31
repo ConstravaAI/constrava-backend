@@ -163,6 +163,14 @@ await assertContains("src/server-analytics-selector-copies.js", "function analyt
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewComposition(", "the interactive Overview composition chart");
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewJourney(", "the Overview visitor journey");
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewBlock(", "the reusable Overview data block");
+await assertContains("src/server-analytics-selector-copies.js", "function analyticsTabGrid(", "the shared Analytics tab card grid");
+await assertContains("src/server-analytics-selector-copies.js", "function analyticsTabTimelineBlock(", "the shared Analytics tab timeline block");
+await assertContains("src/server-analytics-selector-copies.js", "function analyticsTabDonutBlock(", "the shared Analytics tab distribution block");
+await assertContains("src/server-analytics-selector-copies.js", "analyticsTabGrid('Traffic'", "the Traffic overview-style grid");
+await assertContains("src/server-analytics-selector-copies.js", "analyticsTabGrid('Sources'", "the Sources overview-style grid");
+await assertContains("src/server-analytics-selector-copies.js", "analyticsTabGrid('Pages'", "the Pages overview-style grid");
+await assertContains("src/server-analytics-selector-copies.js", "analyticsTabGrid('Events'", "the Events overview-style grid");
+await assertContains("src/server-analytics-selector-copies.js", "analyticsTabGrid('Audience'", "the Audience overview-style grid");
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewPopup(", "the centered Overview detail pop-up");
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewToggleExpand(", "the Overview pop-up open and collapse interaction");
 await assertContains("src/server-analytics-selector-copies.js", ".analyticsOverviewModalLayer{position:fixed", "the full-screen Overview pop-up layer");
