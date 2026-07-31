@@ -210,4 +210,4 @@ if (markerIndex >= 0 && markerIndex < targetIndex) {
 }
 await fs.writeFile(runtimeWrapperPath, wrapperSource);
 
-await import("./server-fonts.js");
+await import("./server-colorful-workspaces.js");
