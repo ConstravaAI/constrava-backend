@@ -6,8 +6,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const serverPath = path.join(here, "server.js");
 
 let source = await fs.readFile(serverPath, "utf8");
-source = source.replace('<h1 id="pageTitle">Analytics</h1>', '<h1 id="pageTitle"></h1>');
-source = source.replace(":'Analytics';render()", ":'';render()");
+source = source.replace(/<h1 id="pageTitle">[^<]*<\/h1>/g, "");
 await fs.writeFile(serverPath, source);
 
 await import("./server-notification-icon.js");
