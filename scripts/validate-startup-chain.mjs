@@ -128,7 +128,9 @@ await assertContains("src/server-analytics.js", "await import(`${pathToFileURL(a
 await assertContains("src/server-analytics.js", 'responsive = responsive.replace(/\\r\\n/g, "\\n");', "cross-platform analytics wrapper line endings");
 await assertContains("src/server-runtime.js", 'source = source.replace(/\\r\\n/g, "\\n");', "cross-platform runtime wrapper line endings");
 await assertContains("src/server-fonts.js", "await import(`${pathToFileURL(fontRuntimePath).href}?v=${Date.now()}`);", "the font runtime handoff");
-await assertContains("src/server-connected-resources.js", 'await import("./server-fonts.js");', "the font wrapper handoff");
+await assertContains("src/server-connected-resources.js", 'await import("./server-colorful-workspaces.js");', "the colorful workspace wrapper handoff");
+await assertContains("src/server-colorful-workspaces.js", 'await import("./server-fonts.js");', "the font wrapper handoff");
+await assertContains("src/server-colorful-workspaces.js", 'source.indexOf("<title>Constrava Dashboard</title>")', "dashboard-specific colorful stylesheet target");
 await assertContains("src/server-account-persistence.js", 'await import("./server-connected-resources.js");', "the connected resources wrapper handoff");
 await assertContains("src/server-connected-resources.js", "function constravaEmailConnect(state)", "the provider-aware email connection step");
 await assertContains("src/server.js", "async function fetchImapMessages(connection)", "the universal IMAP inbox adapter");
