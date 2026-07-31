@@ -5,13 +5,37 @@ import crypto from "node:crypto";
 import tls from "node:tls";
 import dns from "node:dns/promises";
 import { fileURLToPath } from "node:url";
+import { Pool } from "pg";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+function normalizeDatabaseConnectionString(value) {
+  const raw = String(value || "").trim();
+  const extracted = raw.match(/postgres(?:ql)?:\/\/[^\s'"]+/i)?.[0];
+  return extracted || raw.replace(/^(['"])(.*)\1$/, "$2").trim();
+}
+
+const databaseUrl = normalizeDatabaseConnectionString(process.env.DATABASE_URL);
 const configuredDataFile = String(process.env.DATA_FILE || "").trim();
 const configuredDataDir = String(process.env.DATA_DIR || "").trim();
 const storeFile = configuredDataFile ? path.resolve(configuredDataFile) : path.join(configuredDataDir ? path.resolve(configuredDataDir) : path.join(root, "data"), "store.json");
 const storeBackupFile = `${storeFile}.backup`;
-const durableStoreConfigured = Boolean(configuredDataFile || configuredDataDir);
+const postgresStoreConfigured = Boolean(databaseUrl);
+const durableStoreConfigured = Boolean(postgresStoreConfigured || configuredDataFile || configuredDataDir);
+const dataStoreKind = postgresStoreConfigured ? "postgres" : durableStoreConfigured ? "persistent_file" : "local_file";
+const configuredPoolSize = Number(process.env.DATABASE_POOL_SIZE || 5);
+const postgresPool = postgresStoreConfigured
+  ? new Pool({
+      connectionString: databaseUrl,
+      ssl: process.env.PGSSLMODE === "disable" ? false : { rejectUnauthorized: false },
+      max: Number.isFinite(configuredPoolSize) ? Math.max(1, Math.min(20, configuredPoolSize)) : 5,
+      connectionTimeoutMillis: 7_500,
+      idleTimeoutMillis: 30_000,
+      allowExitOnIdle: true
+    })
+  : null;
+const POSTGRES_STORE_TABLE = "public.constrava_app_store_v2";
+const STORE_VERSION = Symbol("constravaStoreVersion");
 const PORT = Number(process.env.PORT || 3000);
 const ORIGIN = process.env.PUBLIC_ORIGIN || `http://localhost:${PORT}`;
 const COOKIE_NAME = "constrava_session";
@@ -103,6 +127,7 @@ function seed() {
     ingestionEvents: [],
     formConnections: [],
     emailConnections: [],
+    websiteConnections: [],
     identityEntities: [],
     identityIdentifiers: [],
     identityMentions: [],
@@ -144,6 +169,7 @@ function normalize(storeData) {
   storeData.ingestionEvents ||= [];
   storeData.formConnections ||= [];
   storeData.emailConnections ||= [];
+  storeData.websiteConnections ||= [];
   storeData.identityEntities ||= [];
   storeData.identityIdentifiers ||= [];
   storeData.identityMentions ||= [];
@@ -327,7 +353,100 @@ function reconcileWorkspaceIdentities(storeData, workspaceId) {
   return { processed, entities: storeData.identityEntities.filter((entry) => entry.workspaceId === workspaceId).length, lastRunAt: now };
 }
 
-async function loadStore() {
+let postgresReadyPromise = null;
+let postgresStatus = postgresStoreConfigured ? "checking" : "not_configured";
+let postgresLastErrorCode = "";
+let postgresLastCheckedAt = "";
+
+function publicDatabaseError(error) {
+  const code = String(error?.code || "connection_failed").replace(/[^a-z0-9_-]/gi, "").slice(0, 40) || "connection_failed";
+  postgresStatus = "unavailable";
+  postgresLastErrorCode = code;
+  postgresLastCheckedAt = new Date().toISOString();
+  const safeMessage = String(error?.message || "Database connection failed.").replaceAll(databaseUrl, "[DATABASE_URL]");
+  console.error(`Neon account storage unavailable [${code}]: ${safeMessage}`);
+  return Object.assign(new Error("Account storage is temporarily unavailable. Please try again shortly."), {
+    status: 503,
+    code: "DATABASE_UNAVAILABLE",
+    databaseErrorCode: code,
+    cause: error
+  });
+}
+
+function ensurePostgresStore() {
+  if (!postgresPool) return Promise.resolve();
+  if (!postgresReadyPromise) {
+    postgresStatus = "checking";
+    postgresReadyPromise = (async () => {
+      await postgresPool.query(`
+        CREATE TABLE IF NOT EXISTS ${POSTGRES_STORE_TABLE} (
+          id TEXT PRIMARY KEY,
+          data JSONB NOT NULL,
+          version BIGINT NOT NULL DEFAULT 1,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      postgresStatus = "ready";
+      postgresLastErrorCode = "";
+      postgresLastCheckedAt = new Date().toISOString();
+    })().catch((error) => {
+      postgresReadyPromise = null;
+      throw publicDatabaseError(error);
+    });
+  }
+  return postgresReadyPromise;
+}
+
+async function postgresQuery(text, parameters = []) {
+  try {
+    return await postgresPool.query(text, parameters);
+  } catch (error) {
+    postgresReadyPromise = null;
+    if (error?.code === "DATABASE_UNAVAILABLE") throw error;
+    throw publicDatabaseError(error);
+  }
+}
+
+async function databaseHealth() {
+  if (!postgresPool) {
+    return { postgresStoreConfigured: false, databaseStatus: "not_configured", databaseErrorCode: "", databaseCheckedAt: "" };
+  }
+  try {
+    await ensurePostgresStore();
+    await postgresQuery("SELECT 1");
+    postgresStatus = "ready";
+    postgresLastErrorCode = "";
+    postgresLastCheckedAt = new Date().toISOString();
+  } catch (error) {
+    if (error?.code !== "DATABASE_UNAVAILABLE") publicDatabaseError(error);
+  }
+  return {
+    postgresStoreConfigured: true,
+    databaseStatus: postgresStatus,
+    databaseErrorCode: postgresLastErrorCode,
+    databaseCheckedAt: postgresLastCheckedAt
+  };
+}
+
+if (postgresPool) {
+  postgresPool.on("error", (error) => {
+    postgresReadyPromise = null;
+    publicDatabaseError(error);
+  });
+}
+
+function setStoreVersion(storeData, version) {
+  Object.defineProperty(storeData, STORE_VERSION, {
+    value: Number(version || 0),
+    writable: true,
+    configurable: true,
+    enumerable: false
+  });
+  return storeData;
+}
+
+async function loadFileStore() {
   await fs.mkdir(path.dirname(storeFile), { recursive: true });
   try {
     return normalize(JSON.parse(await fs.readFile(storeFile, "utf8")));
@@ -344,9 +463,46 @@ async function loadStore() {
   }
 }
 
+async function loadStore() {
+  if (!postgresPool) return loadFileStore();
+  await ensurePostgresStore();
+  let result = await postgresQuery(`SELECT data, version FROM ${POSTGRES_STORE_TABLE} WHERE id = $1`, ["primary"]);
+  if (!result.rows.length) {
+    const initial = await loadFileStore();
+    await postgresQuery(
+      `INSERT INTO ${POSTGRES_STORE_TABLE} (id, data) VALUES ($1, $2::jsonb) ON CONFLICT (id) DO NOTHING`,
+      ["primary", JSON.stringify(initial)]
+    );
+    result = await postgresQuery(`SELECT data, version FROM ${POSTGRES_STORE_TABLE} WHERE id = $1`, ["primary"]);
+  }
+  const row = result.rows[0];
+  if (!row) throw Object.assign(new Error("The Postgres workspace store could not be initialized."), { status: 503 });
+  const data = normalize(typeof row.data === "string" ? JSON.parse(row.data) : row.data);
+  return setStoreVersion(data, row.version);
+}
+
 let storeWriteQueue = Promise.resolve();
 async function saveStore(storeData) {
   const serialized = `${JSON.stringify(normalize(storeData), null, 2)}\n`;
+  if (postgresPool) {
+    const expectedVersion = Number(storeData[STORE_VERSION] || 0);
+    const operation = storeWriteQueue.then(async () => {
+      await ensurePostgresStore();
+      const result = await postgresQuery(
+        `UPDATE ${POSTGRES_STORE_TABLE}
+         SET data = $1::jsonb, version = version + 1, updated_at = NOW()
+         WHERE id = $2 AND version = $3
+         RETURNING version`,
+        [serialized, "primary", expectedVersion]
+      );
+      if (!result.rows.length) {
+        throw Object.assign(new Error("Workspace data changed during this request. Please retry."), { status: 409 });
+      }
+      setStoreVersion(storeData, result.rows[0].version);
+    });
+    storeWriteQueue = operation.catch(() => {});
+    return operation;
+  }
   const operation = storeWriteQueue.then(async () => {
     await fs.mkdir(path.dirname(storeFile), { recursive: true });
     const temporaryFile = `${storeFile}.${process.pid}.${crypto.randomBytes(6).toString("hex")}.tmp`;
@@ -457,6 +613,49 @@ function normalizeTimeZone(value) {
   } catch {
     return "UTC";
   }
+}
+
+function normalizeWebsiteUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    if (!["http:", "https:"].includes(url.protocol)) throw new Error("unsupported protocol");
+    url.hash = "";
+    return url.toString();
+  } catch {
+    throw Object.assign(new Error("Enter a valid public website URL."), { status: 400 });
+  }
+}
+
+function websiteConnectionUpdate(connection, body) {
+  if (body.websiteName !== undefined || body.name !== undefined) {
+    connection.name = clean(body.websiteName || body.name);
+    if (!connection.name) throw Object.assign(new Error("Website name is required."), { status: 400 });
+  }
+  if (body.productionUrl !== undefined) connection.productionUrl = normalizeWebsiteUrl(body.productionUrl);
+  if (body.additionalDomains !== undefined) connection.additionalDomains = String(body.additionalDomains || "").split(/\r?\n|,/).map(clean).filter(Boolean).slice(0, 50);
+  if (body.platform !== undefined) connection.platform = clean(body.platform || "custom").toLowerCase();
+  if (body.tracking !== undefined) {
+    const selected = body.tracking && typeof body.tracking === "object" ? body.tracking : {};
+    connection.tracking = Object.fromEntries(["pageViews", "trafficSources", "formSubmissions", "buttonClicks", "fileDownloads", "outboundLinks", "customEvents", "revenue"].map((key) => [key, Boolean(selected[key])]));
+  }
+  if (body.installation !== undefined) {
+    const installation = body.installation && typeof body.installation === "object" ? body.installation : {};
+    connection.installation = {
+      method: clean(installation.method || connection.installation?.method || "manual"),
+      values: installation.values && typeof installation.values === "object" ? installation.values : connection.installation?.values || {}
+    };
+  }
+  if (body.test !== undefined) {
+    const test = body.test && typeof body.test === "object" ? body.test : {};
+    connection.test = {
+      status: ["idle", "testing", "connected", "not-found"].includes(test.status) ? test.status : "idle",
+      matchedEvents: Math.max(0, Number(test.matchedEvents || 0)),
+      lastChecked: clean(test.lastChecked)
+    };
+  }
+  if (body.setupStep !== undefined) connection.setupStep = Math.max(1, Math.min(5, Number(body.setupStep) || 1));
+  connection.updatedAt = new Date().toISOString();
+  return connection;
 }
 
 function calendarParts(referenceAt, timeZone) {
@@ -1292,9 +1491,25 @@ async function auth(req, res, route, storeData) {
 }
 
 async function api(req, res, url, route) {
+  if (req.method === "GET" && route === "/api/health") {
+    const database = await databaseHealth();
+    return send(res, 200, {
+      ok: true,
+      cookieName: COOKIE_NAME,
+      sessionMaxAgeDays: 30,
+      secureCookie: isSecure(req),
+      developerAccountConfigured: Boolean(process.env[DEV_LOGIN_KEY_ENV]),
+      durableStoreConfigured,
+      dataStore: dataStoreKind,
+      ...database,
+      homepage: "/",
+      demo: "/demo",
+      signin: "/signin",
+      dashboard: "/dashboard"
+    });
+  }
   const storeData = await loadStore();
   if (route.startsWith("/api/auth/")) return await auth(req, res, route, storeData);
-  if (req.method === "GET" && route === "/api/health") return send(res, 200, { ok: true, cookieName: COOKIE_NAME, sessionMaxAgeDays: 30, secureCookie: isSecure(req), developerAccountConfigured: Boolean(process.env[DEV_LOGIN_KEY_ENV]), durableStoreConfigured, dataStore: durableStoreConfigured ? "persistent_file" : "local_file", homepage: "/", demo: "/demo", signin: "/signin", dashboard: "/dashboard" });
   if (req.method === "POST" && route === "/api/forms/ingest") {
     const body = await readBody(req);
     const connection = storeData.formConnections.find((entry) => entry.id === clean(body.connectionId));
@@ -1373,6 +1588,7 @@ async function api(req, res, url, route) {
   if (req.method === "GET" && route === "/api/reports") return send(res, 200, { reports: storeData.reports.filter((report) => report.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/analytics/events") return send(res, 200, { events: storeData.events.filter((event) => event.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/form-connections") return send(res, 200, { connections: storeData.formConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ tokenHash, ...entry }) => entry) });
+  if (req.method === "GET" && route === "/api/website-connections") return send(res, 200, { connections: storeData.websiteConnections.filter((entry) => entry.workspaceId === ctx.workspaceId) });
   if (req.method === "GET" && route === "/api/ingestion-events") return send(res, 200, { events: storeData.ingestionEvents.filter((entry) => entry.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ oauthTokens, oauthStateHash, ...entry }) => ({ ...entry, automationPolicy: emailAutomationPolicy(entry.automationPolicy) })) });
   if (req.method === "GET" && route === "/api/connected-resources") {
@@ -1473,6 +1689,67 @@ async function api(req, res, url, route) {
     event.viewedAt = event.viewedAt || new Date().toISOString();
     await saveStore(storeData);
     return send(res, 200, { id: event.id, viewedAt: event.viewedAt });
+  }
+  if (req.method === "POST" && route === "/api/website-connections") {
+    const body = await readBody(req);
+    const now = new Date().toISOString();
+    const connection = websiteConnectionUpdate({
+      id: id("website"),
+      accountUserId: ctx.user?.id || "",
+      workspaceId: ctx.workspaceId,
+      sourceId: id("source_website"),
+      name: "",
+      productionUrl: "",
+      additionalDomains: [],
+      platform: "custom",
+      tracking: { pageViews: true, trafficSources: true },
+      installation: { method: "manual", values: {} },
+      test: { status: "idle", matchedEvents: 0, lastChecked: "" },
+      setupStep: 1,
+      status: "draft",
+      createdAt: now,
+      updatedAt: now,
+      activatedAt: ""
+    }, body);
+    if (!connection.productionUrl) throw Object.assign(new Error("Production URL is required."), { status: 400 });
+    storeData.websiteConnections.push(connection);
+    storeData.sources.push({
+      id: connection.sourceId,
+      accountUserId: connection.accountUserId,
+      workspaceId: ctx.workspaceId,
+      name: connection.name,
+      type: "website",
+      status: "draft",
+      metadata: { connectionId: connection.id, productionUrl: connection.productionUrl, platform: connection.platform }
+    });
+    await saveStore(storeData);
+    return send(res, 201, { connection });
+  }
+  const websiteSettingsMatch = route.match(/^\/api\/website-connections\/([^/]+)$/);
+  if (req.method === "PATCH" && websiteSettingsMatch) {
+    const connection = storeData.websiteConnections.find((entry) => entry.id === websiteSettingsMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Website connection not found." });
+    websiteConnectionUpdate(connection, await readBody(req));
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
+    if (source) {
+      source.name = connection.name;
+      source.metadata = { ...(source.metadata || {}), connectionId: connection.id, productionUrl: connection.productionUrl, platform: connection.platform };
+    }
+    await saveStore(storeData);
+    return send(res, 200, { connection });
+  }
+  const websiteActivateMatch = route.match(/^\/api\/website-connections\/([^/]+)\/activate$/);
+  if (req.method === "POST" && websiteActivateMatch) {
+    const connection = storeData.websiteConnections.find((entry) => entry.id === websiteActivateMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Website connection not found." });
+    if (connection.test?.status !== "connected") return send(res, 409, { error: "Verify incoming website activity before activation." });
+    connection.status = "active";
+    connection.activatedAt = new Date().toISOString();
+    connection.updatedAt = connection.activatedAt;
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
+    if (source) source.status = "connected";
+    await saveStore(storeData);
+    return send(res, 200, { connection });
   }
   if (req.method === "POST" && route === "/api/form-connections") {
     const body = await readBody(req);
@@ -1675,26 +1952,34 @@ async function api(req, res, url, route) {
   return send(res, 404, { error: "API route not found" });
 }
 
-http.createServer(async (req, res) => {
+const webServer = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, ORIGIN);
     const route = url.pathname.replace(/\/+$/, "") || "/";
     if (route.startsWith("/api/")) return await api(req, res, url, route);
-    const storeData = await loadStore();
     if (route === "/demo") return html(res, appPage({ demo: true }));
+    if (["/signin", "/login"].includes(route)) return html(res, signInPage());
     if (["/dashboard", "/app"].includes(route)) {
+      const storeData = await loadStore();
       const user = currentUser(req, storeData);
       if (!user) return redirect(res, "/signin");
       ensureUserWorkspace(storeData, user);
       await saveStore(storeData);
       return html(res, appPage({ demo: false, user }));
     }
-    if (["/signin", "/login"].includes(route)) return html(res, signInPage());
     return html(res, publicPage());
   } catch (error) {
-    send(res, error.status || 500, { error: error.message });
+    send(res, error.status || 500, {
+      error: error.message,
+      ...(error.code ? { code: error.code } : {}),
+      ...(error.databaseErrorCode ? { databaseErrorCode: error.databaseErrorCode } : {})
+    });
   }
-}).listen(PORT, () => console.log(`Constrava is running at ${ORIGIN}`));
+});
+webServer.listen(PORT, () => {
+  console.log(`Constrava is running at ${ORIGIN}`);
+  if (postgresPool) void ensurePostgresStore().catch(() => {});
+});
 
 let emailSyncRunning = false;
 async function syncActiveEmailConnections() {

@@ -125,6 +125,8 @@ await assertContains("src/server-responsive.js", "await import(`${pathToFileURL(
 await assertContains("src/server-responsive.js", "function aiDraftText\\\\(", "the AI record renderer preservation boundary");
 await assertContains("src/server-runtime.js", "function aiRecordsContent()", "the AI record queue renderer");
 await assertContains("src/server-analytics.js", "await import(`${pathToFileURL(analyticsRuntimePath).href}?v=${Date.now()}`);", "the analytics runtime handoff");
+await assertContains("src/server-analytics.js", 'responsive = responsive.replace(/\\r\\n/g, "\\n");', "cross-platform analytics wrapper line endings");
+await assertContains("src/server-runtime.js", 'source = source.replace(/\\r\\n/g, "\\n");', "cross-platform runtime wrapper line endings");
 await assertContains("src/server-fonts.js", "await import(`${pathToFileURL(fontRuntimePath).href}?v=${Date.now()}`);", "the font runtime handoff");
 await assertContains("src/server-connected-resources.js", 'await import("./server-fonts.js");', "the font wrapper handoff");
 await assertContains("src/server-account-persistence.js", 'await import("./server-connected-resources.js");', "the connected resources wrapper handoff");
@@ -145,6 +147,13 @@ await assertContains("src/server.js", "sourcePreview", "draft source preview res
 await assertContains("src/server-runtime.js", "function aiDraftText(", "simplified AI draft text renderer");
 await assertContains("src/server.js", "durableStoreConfigured", "durable production store configuration");
 await assertContains("src/server.js", "storeWriteQueue", "serialized atomic store writes");
+await assertContains("src/server.js", "public.constrava_app_store_v2", "the Neon account storage table");
+await assertContains("src/server.js", "normalizeDatabaseConnectionString", "common Neon connection string normalization");
+await assertContains("src/server.js", "async function postgresQuery", "runtime Neon disconnect recovery");
+await assertContains("src/server.js", "Account storage is temporarily unavailable.", "graceful database outage handling");
+await assertContains("src/server.js", "const database = await databaseHealth();", "database-independent health reporting");
+await assertContains("src/server.js", 'route === "/api/website-connections"', "persistent Website Tracker connections");
+await assertContains("src/server-connected-resources.js", "function constravaSaveWebsiteState(", "Website Tracker server persistence");
 await assertContains("src/server-account-persistence.js", "replacement.satisfiedBy", "forward-compatible account persistence patches");
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsModernDonut(", "the analytics distribution chart system");
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewTrend(", "the interactive Overview trend chart");
