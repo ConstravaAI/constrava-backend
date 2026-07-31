@@ -118,12 +118,14 @@ const generatedFontHeadPatch = `sourcePatches.push(
 );\n`;
 
 let source = await fs.readFile(analyticsSourcePath, "utf8");
+source = source.replace(/\r\n/g, "\n");
 source = source
   .replaceAll("\u00e2\u0080\u00a2", "")
   .replaceAll("\u00c2\u00b7", "-");
 
 source = source.replace(/const analyticsCss = String\.raw`[\s\S]*?`;\n\nconst analyticsClientCode = String\.raw`/, `const analyticsCss = String.raw\`\n${modernAnalyticsCss}\n${richAnalyticsCss}\n\`;\n\nconst analyticsClientCode = String.raw\``);
 source = source.replace(/const analyticsClientCode = String\.raw`[\s\S]*?`;\n\nconst analyticsBindCode/, `const analyticsClientCode = String.raw\`${modernAnalyticsClientCode}${analyticsCommandCenterFinal}\`;\n\nconst analyticsBindCode`);
+if (!source.includes("function analyticsOverviewPopup(")) throw new Error("Could not install the current Analytics overview system.");
 
 const analyticsCssNeedle = "const analyticsCss = String.raw`";
 if (!source.includes(analyticsCssNeedle)) throw new Error("Could not find analytics CSS declaration.");
