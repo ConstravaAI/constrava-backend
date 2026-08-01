@@ -29,6 +29,14 @@ async function assertContains(relativePath, needle, label) {
   return source;
 }
 
+async function assertNotContains(relativePath, needle, label) {
+  const source = await readProjectFile(relativePath);
+  if (source && source.includes(needle)) {
+    fail(`${relativePath} still contains ${label || JSON.stringify(needle)}`);
+  }
+  return source;
+}
+
 function checkSyntax(relativePath) {
   const result = spawnSync(
     process.execPath,
@@ -126,6 +134,10 @@ await assertContains("src/server-responsive.js", "function aiDraftText\\\\(", "t
 await assertContains("src/server-runtime.js", "function aiRecordsContent()", "the AI record queue renderer");
 await assertContains("src/server-runtime.js", "api('/api/records/drafts')", "the Review and Publish draft loader");
 await assertContains("src/server-runtime.js", "S.emailConnections=out[3].connections", "the current dashboard load response shape");
+await assertContains("src/server.js", 'recordType: { type: "string", enum: ["Person", "Company", "Deal", "Task", "Note"] }', "the specific AI record type schema");
+await assertContains("src/server.js", "Never create a generic intake or placeholder record.", "the AI best-fit record instruction");
+await assertNotContains("src/server.js", 'action("create", "Intake"', "an Intake fallback action");
+await assertNotContains("src/server-runtime.js", '<option value="Intake">Intake</option>', "an Intake record-type option");
 await assertContains("src/server-runtime.js", 'id="crmPriorityCheck">AI Priority Check</button>', "the CRM hero priority action");
 await assertContains("src/server-runtime.js", 'id="crmEditRecords">Edit Records</button>', "the CRM hero edit action");
 await assertContains("src/server-runtime.js", "recordEditorBindCodeWithHeroActions", "the CRM hero action bindings");
