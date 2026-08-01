@@ -124,6 +124,8 @@ await assertContains("src/server-runtime.js", "await fs.writeFile(runtimePath, s
 await assertContains("src/server-responsive.js", "await import(`${pathToFileURL(responsiveRuntimePath).href}?v=${Date.now()}`);", "the responsive runtime handoff");
 await assertContains("src/server-responsive.js", "function aiDraftText\\\\(", "the AI record renderer preservation boundary");
 await assertContains("src/server-runtime.js", "function aiRecordsContent()", "the AI record queue renderer");
+await assertContains("src/server-runtime.js", "api('/api/records/drafts')", "the Review and Publish draft loader");
+await assertContains("src/server-runtime.js", "S.emailConnections=out[3].connections", "the current dashboard load response shape");
 await assertContains("src/server-runtime.js", 'id="crmPriorityCheck">AI Priority Check</button>', "the CRM hero priority action");
 await assertContains("src/server-runtime.js", 'id="crmEditRecords">Edit Records</button>', "the CRM hero edit action");
 await assertContains("src/server-runtime.js", "recordEditorBindCodeWithHeroActions", "the CRM hero action bindings");
@@ -133,6 +135,10 @@ await assertContains("src/server-analytics.js", 'responsive = responsive.replace
 await assertContains("src/server-runtime.js", 'source = source.replace(/\\r\\n/g, "\\n");', "cross-platform runtime wrapper line endings");
 await assertContains("src/server-fonts.js", "await import(`${pathToFileURL(fontRuntimePath).href}?v=${Date.now()}`);", "the font runtime handoff");
 await assertContains("src/server-connected-resources.js", 'await import("./server-colorful-workspaces.js");', "the colorful workspace wrapper handoff");
+await assertContains("src/server-connected-resources.js", "function constravaManualNotesDetail(resource)", "the Manual Notes AI record form");
+await assertContains("src/server-connected-resources.js", "id=\"manualNotesForm\"", "the Manual Notes submission form");
+await assertContains("src/server-connected-resources.js", "kind:'manual_note',sourceId:'source_manual'", "the Manual Notes AI plan source context");
+await assertContains("src/server-connected-resources.js", "S.crmView='ai-records'", "the Manual Notes Review and Publish handoff");
 await assertContains("src/server-colorful-workspaces.js", 'await import("./server-fonts.js");', "the font wrapper handoff");
 await assertContains("src/server-colorful-workspaces.js", 'source.indexOf("<title>Constrava Dashboard</title>")', "dashboard-specific colorful stylesheet target");
 await assertContains("src/server-account-persistence.js", 'await import("./server-connected-resources.js");', "the connected resources wrapper handoff");
