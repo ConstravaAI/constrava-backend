@@ -136,6 +136,10 @@ await assertContains("src/server-runtime.js", "api('/api/records/drafts')", "the
 await assertContains("src/server-runtime.js", "S.emailConnections=out[3].connections", "the current dashboard load response shape");
 await assertContains("src/server.js", 'recordType: { type: "string", enum: ["Person", "Company", "Deal", "Task", "Note"] }', "the specific AI record type schema");
 await assertContains("src/server.js", "Never create a generic intake or placeholder record.", "the AI best-fit record instruction");
+await assertContains("src/server.js", 'scan(/\\bnext\\s+week\\b/gi, () => 7, "relative_week")', "the next-week date resolver");
+await assertContains("src/server.js", 'associatedDate: { type: "string" }', "the AI associated-date field");
+await assertContains("src/server.js", 'fields.associatedDate = associatedMatch.date', "the validated associated-date assignment");
+await assertContains("src/server.js", 'entry.recordType === "Task" ? associatedMatch : null', "the task due-date synchronization");
 await assertNotContains("src/server.js", 'action("create", "Intake"', "an Intake fallback action");
 await assertNotContains("src/server-runtime.js", '<option value="Intake">Intake</option>', "an Intake record-type option");
 await assertContains("src/server-runtime.js", 'id="crmPriorityCheck">AI Priority Check</button>', "the CRM hero priority action");
