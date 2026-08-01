@@ -144,6 +144,10 @@ await assertNotContains("src/server.js", 'action("create", "Intake"', "an Intake
 await assertNotContains("src/server-runtime.js", '<option value="Intake">Intake</option>', "an Intake record-type option");
 await assertContains("src/server-runtime.js", 'id="crmPriorityCheck">AI Priority Check</button>', "the CRM hero priority action");
 await assertContains("src/server-runtime.js", 'id="crmEditRecords">Edit Records</button>', "the CRM hero edit action");
+await assertContains("src/server-runtime.js", 'id="crmPlainTextRecord">Add record from plain text</button>', "the CRM hero plain-text action");
+await assertContains("src/server-runtime.js", "function ensurePlainTextRecordDialog()", "the CRM plain-text record dialog");
+await assertContains("src/server-runtime.js", "heroPlainText.onclick=openPlainTextRecordDialog", "the CRM plain-text action binding");
+await assertContains("src/server-runtime.js", "kind:'manual_note',sourceId:'source_manual'", "the shared Manual Notes record-planning source");
 await assertContains("src/server-runtime.js", "recordEditorBindCodeWithHeroActions", "the CRM hero action bindings");
 await assertContains("src/server-runtime.js", "el.style.display='none'", "the hidden duplicate CRM workspace actions");
 await assertContains("src/server-analytics.js", "await import(`${pathToFileURL(analyticsRuntimePath).href}?v=${Date.now()}`);", "the analytics runtime handoff");
