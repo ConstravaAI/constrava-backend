@@ -143,13 +143,37 @@ function seed() {
     identityRecordLinks: [],
     identityReconciliation: {},
     reports: [],
+    workspaces: [{ id: "demo", name: "Demo workspace", ownerUserId: "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }],
+    workspaceMembers: [],
     users: [],
     sessions: []
   };
 }
 
-function ensureUserWorkspace(storeData, user) {
+function defaultProjectName(user) {
+  const name = clean(user?.name || user?.email?.split("@")[0] || "My");
+  return name.toLowerCase().endsWith("s") ? `${name}' CRM` : `${name}'s CRM`;
+}
+
+function ensureWorkspaceProject(storeData, user) {
+  storeData.workspaces ||= [];
+  storeData.workspaceMembers ||= [];
   if (!user.workspaceId) user.workspaceId = `workspace_${user.id}`;
+  let workspace = storeData.workspaces.find((entry) => entry.id === user.workspaceId);
+  if (!workspace) {
+    const now = new Date().toISOString();
+    workspace = { id: user.workspaceId, name: defaultProjectName(user), ownerUserId: user.id, createdAt: user.createdAt || now, updatedAt: now };
+    storeData.workspaces.push(workspace);
+  }
+  if (!workspace.ownerUserId) workspace.ownerUserId = user.id;
+  if (!storeData.workspaceMembers.some((entry) => entry.workspaceId === workspace.id && entry.userId === user.id)) {
+    storeData.workspaceMembers.push({ id: id("member"), workspaceId: workspace.id, userId: user.id, role: workspace.ownerUserId === user.id ? "owner" : "member", status: "active", joinedAt: user.createdAt || new Date().toISOString(), lastOpenedAt: "" });
+  }
+  return workspace;
+}
+
+function ensureUserWorkspace(storeData, user) {
+  ensureWorkspaceProject(storeData, user);
   if (!storeData.records.some((record) => record.workspaceId === user.workspaceId)) storeData.records.push(...starterRecords(user.workspaceId));
 }
 
@@ -185,6 +209,8 @@ function normalize(storeData) {
   storeData.identityRecordLinks ||= [];
   storeData.identityReconciliation ||= {};
   storeData.reports ||= [];
+  storeData.workspaces ||= fresh.workspaces;
+  storeData.workspaceMembers ||= [];
   storeData.users ||= [];
   storeData.sessions ||= [];
   for (const connection of storeData.emailConnections) {
@@ -200,6 +226,8 @@ function normalize(storeData) {
   for (const source of fresh.sources) if (!storeData.sources.some((entry) => entry.id === source.id)) storeData.sources.push(source);
   for (const collection of [storeData.records, storeData.draftRecords, storeData.events, storeData.plans, storeData.reports]) for (const item of collection) item.workspaceId ||= "demo";
   if (!storeData.records.some((record) => record.workspaceId === "demo")) storeData.records.push(...starterRecords("demo"));
+  if (!storeData.workspaces.some((workspace) => workspace.id === "demo")) storeData.workspaces.push(fresh.workspaces[0]);
+  for (const user of storeData.users) ensureWorkspaceProject(storeData, user);
   ensureDeveloperAccount(storeData);
   return storeData;
 }
@@ -732,10 +760,20 @@ function verifyPassword(password, user) {
   return safeEqualText(hash, user.passwordHash);
 }
 
-function currentUser(req, storeData) {
+function currentSession(req, storeData) {
   const sessionId = parseCookies(req)[COOKIE_NAME];
   if (!sessionId) return null;
-  const session = storeData.sessions.find((entry) => entry.id === sessionId && (!entry.expiresAt || entry.expiresAt > new Date().toISOString()));
+  const now = new Date();
+  const session = storeData.sessions.find((entry) => entry.id === sessionId && (!entry.expiresAt || entry.expiresAt > now.toISOString())) || null;
+  if (session) {
+    session.lastSeenAt = now.toISOString();
+    session.expiresAt = new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
+  }
+  return session;
+}
+
+function currentUser(req, storeData) {
+  const session = currentSession(req, storeData);
   if (!session) return null;
   const user = storeData.users.find((entry) => entry.id === session.userId) || null;
   if (user) ensureUserWorkspace(storeData, user);
@@ -746,10 +784,48 @@ function publicUser(user) {
   return user ? { id: user.id, email: user.email, name: user.name, role: user.role || "user", workspaceId: user.workspaceId } : null;
 }
 
+function workspaceMembership(storeData, userId, workspaceId) {
+  return storeData.workspaceMembers.find((entry) => entry.userId === userId && entry.workspaceId === workspaceId && entry.status === "active") || null;
+}
+
+function projectsForUser(storeData, userId) {
+  return storeData.workspaceMembers
+    .filter((entry) => entry.userId === userId && entry.status === "active")
+    .map((membership) => {
+      const project = storeData.workspaces.find((entry) => entry.id === membership.workspaceId);
+      return project ? { project, membership } : null;
+    })
+    .filter(Boolean)
+    .sort((left, right) => String(right.membership.lastOpenedAt || right.project.updatedAt || "").localeCompare(String(left.membership.lastOpenedAt || left.project.updatedAt || "")));
+}
+
+function publicProject(storeData, project, membership) {
+  return {
+    id: project.id,
+    name: project.name,
+    role: membership?.role || "member",
+    memberCount: storeData.workspaceMembers.filter((entry) => entry.workspaceId === project.id && entry.status === "active").length,
+    recordCount: storeData.records.filter((entry) => entry.workspaceId === project.id).length,
+    lastOpenedAt: membership?.lastOpenedAt || "",
+    createdAt: project.createdAt || "",
+    updatedAt: project.updatedAt || ""
+  };
+}
+
+function activeWorkspaceContext(req, storeData) {
+  const session = currentSession(req, storeData);
+  if (!session?.activeWorkspaceId) return null;
+  const user = storeData.users.find((entry) => entry.id === session.userId);
+  if (!user) return null;
+  ensureUserWorkspace(storeData, user);
+  const membership = workspaceMembership(storeData, user.id, session.activeWorkspaceId);
+  const project = membership ? storeData.workspaces.find((entry) => entry.id === session.activeWorkspaceId) : null;
+  return project ? { workspaceId: project.id, demo: false, user, project, membership, session } : null;
+}
+
 function requestContext(req, url, storeData) {
   if (url.searchParams.get("demo") === "1") return { workspaceId: "demo", demo: true, user: null };
-  const user = currentUser(req, storeData);
-  return user ? { workspaceId: user.workspaceId, demo: false, user } : null;
+  return activeWorkspaceContext(req, storeData);
 }
 
 const SENSITIVE_FIELD_PATTERN = /pass(word|code)?|secret|token|credit.?card|card.?number|cvv|cvc|social.?security|\bssn\b|bank.?account|routing.?number/i;
@@ -1556,11 +1632,23 @@ function publicPage() {
 
 function signInPage() {
   const devConfigured = Boolean(process.env[DEV_LOGIN_KEY_ENV]);
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in | Constrava</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f7fbff;color:#071629;font-family:Inter,system-ui,sans-serif}.card{width:min(460px,calc(100% - 36px));background:white;border:1px solid #d9e3f2;border-radius:28px;padding:28px;box-shadow:0 24px 70px rgba(6,26,51,.10)}h1{color:#061a33;font-size:42px;letter-spacing:-.06em}label{font-weight:900;color:#263d5c}input{width:100%;border:1px solid #d9e3f2;border-radius:14px;padding:13px;margin:6px 0 12px;font:inherit}.tabs{display:flex;gap:8px}.tabs button,.submit,.back{flex:1;border:1px solid #d9e3f2;border-radius:999px;padding:12px;font:inherit;font-weight:900;cursor:pointer}.active,.submit{background:#061a33!important;color:white}.back{display:flex;justify-content:center;text-decoration:none;color:#061a33;margin-top:12px}.status{min-height:22px;color:#9d2b2b}.hint{font-size:13px;background:#eaf2ff;border:1px solid #d9e3f2;padding:10px;border-radius:14px}</style></head><body><main class="card"><h1 id="title">Sign in</h1><p id="copy">Enter your saved account details to open your dashboard.</p>${devConfigured ? `<p class="hint">Developer login is enabled for ${DEV_EMAIL}. Use the configured ${DEV_LOGIN_KEY_ENV} value as the password.</p>` : ""}<div class="tabs"><button id="loginTab" class="active">Sign in</button><button id="signupTab">Create account</button></div><form id="authForm"><div id="nameWrap" style="display:none"><label>Name</label><input name="name" autocomplete="name" placeholder="Your name"></div><label>Email</label><input name="email" type="email" autocomplete="email" required><label>Password</label><input name="password" type="password" autocomplete="current-password" required><button class="submit" id="submitBtn">Sign in</button></form><p class="status" id="status"></p><a class="back" href="/">Back to homepage</a></main><script>localStorage.removeItem("constrava_session_token");let mode="login";function setMode(next){mode=next;loginTab.classList.toggle("active",mode==="login");signupTab.classList.toggle("active",mode==="signup");nameWrap.style.display=mode==="signup"?"block":"none";title.textContent=mode==="signup"?"Create account":"Sign in";copy.textContent=mode==="signup"?"Create a saved account and open your dashboard.":"Enter your saved account details to open your dashboard.";submitBtn.textContent=mode==="signup"?"Create account":"Sign in";status.textContent=""}loginTab.onclick=function(){setMode("login")};signupTab.onclick=function(){setMode("signup")};authForm.onsubmit=async function(e){e.preventDefault();status.textContent="";submitBtn.disabled=true;try{const payload=Object.fromEntries(new FormData(authForm));const r=await fetch(mode==="signup"?"/api/auth/signup":"/api/auth/login",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const data=await r.json();if(!r.ok)throw new Error(data.error||"Authentication failed");location.href="/dashboard/"}catch(err){status.textContent=err.message}finally{submitBtn.disabled=false}};</script></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in | Constrava</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f7fbff;color:#071629;font-family:Inter,system-ui,sans-serif}.card{width:min(460px,calc(100% - 36px));background:white;border:1px solid #d9e3f2;border-radius:28px;padding:28px;box-shadow:0 24px 70px rgba(6,26,51,.10)}h1{color:#061a33;font-size:42px;letter-spacing:-.06em}label{font-weight:900;color:#263d5c}input{width:100%;border:1px solid #d9e3f2;border-radius:14px;padding:13px;margin:6px 0 12px;font:inherit}.tabs{display:flex;gap:8px}.tabs button,.submit,.back{flex:1;border:1px solid #d9e3f2;border-radius:999px;padding:12px;font:inherit;font-weight:900;cursor:pointer}.active,.submit{background:#061a33!important;color:white}.back{display:flex;justify-content:center;text-decoration:none;color:#061a33;margin-top:12px}.status{min-height:22px;color:#9d2b2b}.hint{font-size:13px;background:#eaf2ff;border:1px solid #d9e3f2;padding:10px;border-radius:14px}</style></head><body><main class="card"><h1 id="title">Sign in</h1><p id="copy">Enter your saved account details to choose a CRM project.</p>${devConfigured ? `<p class="hint">Developer login is enabled for ${DEV_EMAIL}. Use the configured ${DEV_LOGIN_KEY_ENV} value as the password.</p>` : ""}<div class="tabs"><button id="loginTab" class="active">Sign in</button><button id="signupTab">Create account</button></div><form id="authForm"><div id="nameWrap" style="display:none"><label>Name</label><input name="name" autocomplete="name" placeholder="Your name"></div><label>Email</label><input name="email" type="email" autocomplete="email" required><label>Password</label><input name="password" type="password" autocomplete="current-password" required><button class="submit" id="submitBtn">Sign in</button></form><p class="status" id="status"></p><a class="back" href="/">Back to homepage</a></main><script>localStorage.removeItem("constrava_session_token");let mode="login";function setMode(next){mode=next;loginTab.classList.toggle("active",mode==="login");signupTab.classList.toggle("active",mode==="signup");nameWrap.style.display=mode==="signup"?"block":"none";title.textContent=mode==="signup"?"Create account":"Sign in";copy.textContent=mode==="signup"?"Create a saved account and choose your first CRM project.":"Enter your saved account details to choose a CRM project.";submitBtn.textContent=mode==="signup"?"Create account":"Sign in";status.textContent=""}loginTab.onclick=function(){setMode("login")};signupTab.onclick=function(){setMode("signup")};authForm.onsubmit=async function(e){e.preventDefault();status.textContent="";submitBtn.disabled=true;try{const payload=Object.fromEntries(new FormData(authForm));const r=await fetch(mode==="signup"?"/api/auth/signup":"/api/auth/login",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const data=await r.json();if(!r.ok)throw new Error(data.error||"Authentication failed");location.href=data.next||"/projects"}catch(err){status.textContent=err.message}finally{submitBtn.disabled=false}};</script></body></html>`;
 }
 
-function appPage({ demo = false, user = null } = {}) {
-  const workspaceLabel = demo ? "Demo workspace" : `Personal workspace${user?.email ? " · " + user.email : ""}`;
+function projectSelectionPage({ user, projects, storeData }) {
+  const cards = projects.map(({ project, membership }) => publicProject(storeData, project, membership));
+  const projectMarkup = cards.length ? cards.map((project) => `<article class="project"><span class="role">${esc(project.role)}</span><div class="projectIcon">C</div><h3>${esc(project.name)}</h3><div class="meta"><span class="stat">${project.memberCount} ${project.memberCount === 1 ? "member" : "members"}</span><span class="stat">${project.recordCount} ${project.recordCount === 1 ? "record" : "records"}</span></div><button class="openButton" data-project="${esc(project.id)}">Open project</button></article>`).join("") : `<div class="empty"><h2>No CRM projects yet</h2><p>Create your first project to get started.</p></div>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Choose a CRM project | Constrava</title><style>
+:root{--navy:#071a34;--ink:#0d1d36;--muted:#67758a;--line:#dbe4f1;--violet:#7559ff;--cyan:#23c6db;--green:#35d08b}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 12% 5%,rgba(35,198,219,.16),transparent 28%),radial-gradient(circle at 88% 14%,rgba(117,89,255,.16),transparent 30%),#f6f8fd;color:var(--ink);font-family:Inter,system-ui,sans-serif}.top{height:76px;display:flex;align-items:center;justify-content:space-between;width:min(1180px,calc(100% - 36px));margin:auto}.brand{font-size:23px;font-weight:950;letter-spacing:-.04em;color:var(--navy)}.account{display:flex;align-items:center;gap:12px}.avatar{width:38px;height:38px;border-radius:13px;display:grid;place-items:center;background:linear-gradient(135deg,var(--violet),var(--cyan));color:white;font-weight:950}.accountCopy{font-size:13px;color:var(--muted)}.accountCopy b{display:block;color:var(--ink)}button{font:inherit;cursor:pointer}.logout{border:1px solid var(--line);background:white;border-radius:999px;padding:9px 14px;font-weight:850;color:var(--navy)}main{width:min(1180px,calc(100% - 36px));margin:40px auto 70px}.eyebrow{display:inline-flex;gap:8px;align-items:center;color:#5e48db;background:#ece8ff;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.06em}.eyebrow:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--green)}h1{font-size:clamp(42px,7vw,72px);line-height:.96;letter-spacing:-.075em;margin:20px 0 16px;color:var(--navy);max-width:820px}.lead{font-size:18px;line-height:1.6;color:var(--muted);max-width:660px}.sectionHead{display:flex;align-items:end;justify-content:space-between;gap:18px;margin:46px 0 16px}.sectionHead h2{margin:0;color:var(--navy);font-size:24px}.sectionHead p{margin:5px 0 0;color:var(--muted)}.newButton,.openButton{border:0;border-radius:14px;padding:12px 16px;font-weight:900}.newButton{color:white;background:linear-gradient(135deg,var(--violet),#4b91ff);box-shadow:0 12px 28px rgba(100,82,238,.24)}.projectGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.project{position:relative;overflow:hidden;background:rgba(255,255,255,.92);border:1px solid rgba(211,222,238,.9);border-radius:24px;padding:22px;box-shadow:0 18px 55px rgba(22,38,70,.08);min-height:245px;display:flex;flex-direction:column}.project:before{content:"";position:absolute;inset:0 0 auto;height:6px;background:linear-gradient(90deg,var(--violet),var(--cyan),var(--green))}.projectIcon{width:48px;height:48px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(135deg,#ede9ff,#dff9fb);color:#5944da;font-size:21px;font-weight:950}.role{position:absolute;right:20px;top:22px;border-radius:999px;padding:6px 10px;background:#eef3fb;color:#4f6078;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.project h3{margin:20px 0 6px;font-size:23px;color:var(--navy);letter-spacing:-.035em}.meta{display:flex;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:13px}.stat{background:#f5f7fb;border-radius:10px;padding:7px 9px}.openButton{margin-top:auto;width:100%;background:var(--navy);color:white}.openButton:disabled,.newButton:disabled{opacity:.6;cursor:wait}.status{min-height:24px;color:#a62b43;font-weight:700}.empty{grid-column:1/-1;padding:36px;border:1px dashed #b9c6d9;border-radius:24px;text-align:center;color:var(--muted)}dialog{width:min(480px,calc(100vw - 32px));border:1px solid var(--line);border-radius:24px;padding:0;box-shadow:0 30px 100px rgba(6,26,51,.26)}dialog::backdrop{background:rgba(7,26,52,.55)}.modal{padding:24px}.modal h2{margin:0 0 8px;color:var(--navy)}label{display:block;font-weight:900;margin-top:20px}input{width:100%;border:1px solid var(--line);border-radius:14px;padding:13px;margin-top:7px;font:inherit}.actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}.cancel{border:1px solid var(--line);background:white;border-radius:14px;padding:11px 15px;font-weight:900}@media(max-width:900px){.projectGrid{grid-template-columns:1fr 1fr}}@media(max-width:620px){.projectGrid{grid-template-columns:1fr}.accountCopy{display:none}.sectionHead{align-items:start;flex-direction:column}h1{font-size:46px}}
+</style></head><body><header class="top"><div class="brand">Constrava</div><div class="account"><div class="avatar">${esc((user.name || user.email || "U").slice(0, 1).toUpperCase())}</div><div class="accountCopy"><b>${esc(user.name || "Signed in")}</b>${esc(user.email)}</div><button class="logout" id="logoutButton">Log out</button></div></header><main><span class="eyebrow">CRM projects</span><h1>Choose where you’re working.</h1><p class="lead">Open a project you belong to, or create a new one. Everyone added to a shared project works from the same CRM records, resources, and analytics.</p><div class="sectionHead"><div><h2>Your projects</h2><p>${cards.length === 1 ? "1 project available" : `${cards.length} projects available`}</p></div><button class="newButton" id="newProjectButton">+ New CRM project</button></div><div class="projectGrid">${projectMarkup}</div><p class="status" id="status" aria-live="polite"></p></main><dialog id="projectDialog"><form class="modal" id="projectForm"><h2>Create a CRM project</h2><p style="color:var(--muted)">You’ll be the owner. Team access can be added to this project.</p><label>Project name<input name="name" required minlength="2" maxlength="80" placeholder="Example: Northwind Sales CRM" autofocus></label><div class="actions"><button type="button" class="cancel" id="cancelProject">Cancel</button><button class="newButton" id="createProject">Create and open</button></div></form></dialog><script>
+async function request(path,options){const response=await fetch(path,{...(options||{}),credentials:"include",headers:{"content-type":"application/json",...((options||{}).headers||{})}});const data=await response.json();if(response.status===401){location.href="/signin";return null}if(!response.ok)throw new Error(data.error||"Something went wrong");return data}
+async function openProject(projectId,button){status.textContent="";button.disabled=true;button.textContent="Opening…";try{const data=await request("/api/projects/"+encodeURIComponent(projectId)+"/open",{method:"POST"});if(data)location.href=data.dashboard||"/dashboard"}catch(error){status.textContent=error.message;button.disabled=false;button.textContent="Open project"}}
+document.querySelectorAll("[data-project]").forEach(function(button){button.onclick=function(){openProject(button.dataset.project,button)}});newProjectButton.onclick=function(){projectDialog.showModal()};cancelProject.onclick=function(){projectDialog.close()};projectForm.onsubmit=async function(event){event.preventDefault();status.textContent="";createProject.disabled=true;createProject.textContent="Creating…";try{const values=Object.fromEntries(new FormData(projectForm));const data=await request("/api/projects",{method:"POST",body:JSON.stringify(values)});if(data)await openProject(data.project.id,createProject)}catch(error){status.textContent=error.message;createProject.disabled=false;createProject.textContent="Create and open"}};logoutButton.onclick=async function(){await fetch("/api/auth/logout",{method:"POST",credentials:"include"});location.href="/"};
+</script></body></html>`;
+}
+
+function appPage({ demo = false, user = null, project = null } = {}) {
+  const workspaceLabel = demo ? "Demo workspace" : project?.name || "CRM project";
   const apiSuffix = demo ? "demo=1" : "";
   const signoutCopy = demo ? "Exit demo" : "Log out";
   const notificationButton = demo ? "" : `<div class="notifyWrap"><button class="settingsIcon notifyButton" id="notificationButton" title="Notifications" aria-label="Notifications" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path><path d="M10 21h4"></path></svg><span class="notifyDot" id="notificationDot">0</span></button><div class="notificationDropdown" id="notificationDropdown" aria-hidden="true"><div class="notificationHead"><div><b>Notifications</b><p>Priority records and system messages</p></div><button class="ghostSmall" id="openNotificationTab">Open tab</button></div><div class="notificationGrid"><section><h3>Highest priority records</h3><div id="priorityNotifications"></div></section><section><h3>Messages & notifications</h3><div id="messageNotifications"></div></section></div></div></div>`;
@@ -1574,10 +1662,11 @@ function appPage({ demo = false, user = null } = {}) {
 <style>
 :root{--blue:#061a33;--soft:#eaf2ff;--line:#d9e3f2;--muted:#607089;--bg:#f7fbff;--green:#24c875}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#071629;font-family:Inter,system-ui,sans-serif}.topbar{background:var(--blue);color:white;display:flex;align-items:center;justify-content:space-between;padding:14px 18px;position:sticky;top:0;z-index:10}.leftTools,.rightTools,.tabs{display:flex;align-items:center;gap:10px}.brand{font-weight:950;font-size:20px}.tab{border:0;background:transparent;color:#d8e6f8;font:inherit;font-weight:900;padding:11px 14px;border-radius:999px;cursor:pointer}.tab.active,.tab:hover{background:white;color:var(--blue)}.settingsIcon{width:42px;height:42px;border-radius:999px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08);color:white;font-size:19px;cursor:pointer;display:grid;place-items:center;padding:0}.settingsIcon svg{width:20px;height:20px;display:block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.settingsIcon.active,.settingsIcon:hover{background:white;color:var(--blue)}.logoutText{border:1px solid rgba(255,255,255,.28);background:white;color:var(--blue);border-radius:999px;padding:10px 15px;font:inherit;font-weight:950;cursor:pointer}.shell{width:min(1180px,calc(100% - 36px));margin:28px auto}.workspace{display:flex;justify-content:space-between;gap:14px;align-items:end;margin-bottom:18px}.workspace h1{margin:0;color:var(--blue);font-size:40px;letter-spacing:-.055em}.muted{color:var(--muted)}.grid{display:grid;gap:16px}.metrics{grid-template-columns:repeat(4,1fr)}.two{grid-template-columns:1.1fr .9fr}.card{background:white;border:1px solid var(--line);border-radius:18px;box-shadow:0 16px 40px rgba(6,26,51,.08)}.in{padding:18px}.metricValue{font-size:32px;font-weight:950;color:var(--blue)}.pill{display:inline-flex;padding:4px 9px;border-radius:999px;background:var(--soft);border:1px solid #bed0ea;color:var(--blue);font-size:12px;font-weight:900}.item{padding:13px 0;border-top:1px solid var(--line)}.item:first-child{border-top:0}.primary{background:var(--blue);color:white;border:0;padding:10px 14px;font-weight:900;border-radius:10px;cursor:pointer}.secondary,input,select,textarea{border:1px solid var(--line);background:white;padding:10px;border-radius:10px;font:inherit}textarea{width:100%;min-height:140px}.resource{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center}.resourceIcon{width:42px;height:42px;border-radius:14px;background:var(--soft);display:grid;place-items:center;color:var(--blue);font-size:20px}pre{white-space:pre-wrap;background:#061a33;color:#eef6ff;padding:14px;border-radius:12px;overflow:auto}.crmShell{display:grid;grid-template-columns:230px 1fr;gap:16px;align-items:start}.crmSide{background:white;border:1px solid var(--line);border-radius:18px;padding:10px;box-shadow:0 16px 40px rgba(6,26,51,.08);position:sticky;top:92px}.crmSideTitle{font-size:12px;font-weight:950;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:8px 10px}.crmTab{width:100%;border:0;background:transparent;text-align:left;padding:11px 12px;border-radius:12px;font:inherit;font-weight:900;color:#273d5c;cursor:pointer;display:flex;justify-content:space-between}.crmTab.active,.crmTab:hover{background:var(--soft);color:var(--blue)}.recordCard{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start}.fieldLine{font-size:13px;color:var(--muted);margin-top:4px}.empty{min-height:220px;display:grid;place-items:center;text-align:center;padding:34px}.empty h2{font-size:30px;margin:0 0 8px;color:var(--blue)}.empty p{max-width:560px;margin:0 auto;color:var(--muted)}dialog{border:1px solid var(--line);border-radius:18px;padding:0;box-shadow:0 24px 80px rgba(6,26,51,.22);max-width:min(680px,calc(100vw - 32px))}dialog::backdrop{background:rgba(6,26,51,.42)}.modalHead,.modalBody,.modalFoot{padding:18px}.modalFoot{border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}.notifyWrap{position:relative}.notifyButton{position:relative}.notifyDot{position:absolute;right:-3px;top:-4px;min-width:20px;height:20px;border-radius:999px;background:var(--green);color:#061a33;border:2px solid var(--blue);font-size:11px;font-weight:950;display:grid;place-items:center;padding:0 5px}.notificationDropdown{position:absolute;right:0;top:54px;width:min(720px,calc(100vw - 36px));background:white;color:#071629;border:1px solid var(--line);border-radius:22px;box-shadow:0 26px 80px rgba(3,17,36,.25);padding:16px;display:none}.notificationDropdown.open{display:block}.notificationHead{display:flex;justify-content:space-between;gap:12px;align-items:start;border-bottom:1px solid var(--line);padding-bottom:12px}.notificationHead p{margin:4px 0 0;color:var(--muted);font-size:13px}.ghostSmall{border:0;background:transparent;color:var(--blue);font:inherit;font-size:12px;font-weight:950;cursor:pointer;padding:7px 8px;border-radius:999px}.ghostSmall:hover{background:var(--soft)}.notificationGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px}.notificationGrid h3{margin:0 0 8px;color:var(--blue);font-size:15px}.noticeItem{padding:11px;border:1px solid var(--line);border-radius:14px;background:#fbfdff;margin-top:8px}.noticeItem b{color:var(--blue)}.noticeItem p{margin:5px 0 0;color:var(--muted);font-size:13px}.notificationPanel{display:grid;grid-template-columns:1fr 1fr;gap:16px}.notificationPanel .card{min-height:320px}@media(max-width:850px){.topbar{display:block}.leftTools{display:block}.tabs,.rightTools{margin-top:12px;overflow:auto}.workspace,.metrics,.two,.crmShell,.notificationGrid,.notificationPanel{display:block}.crmSide{position:static;margin-bottom:16px}.card{margin-bottom:16px}.notificationDropdown{position:fixed;left:18px;right:18px;top:112px;width:auto}.notifyWrap{display:inline-block}}
+.projectSwitch{display:inline-flex;align-items:center;gap:8px;max-width:210px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.09);color:white;border-radius:999px;padding:9px 13px;text-decoration:none;font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.projectSwitch:hover{background:white;color:var(--blue)}.projectSwitch svg{width:17px;height:17px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:2}@media(max-width:850px){.projectSwitch{max-width:180px}}
 </style>
 </head>
 <body>
-<header class="topbar"><div class="leftTools"><div class="brand">Constrava</div><nav class="tabs"><button class="tab active" data-tab="analytics">Analytics</button><button class="tab" data-tab="crm">CRM</button><button class="tab" data-tab="resources">Connected Resources</button></nav></div><div class="rightTools">${notificationButton}<button class="settingsIcon" id="settingsButton" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"></path></svg></button><button class="logoutText" id="logoutButton">${signoutCopy}</button></div></header>
+<header class="topbar"><div class="leftTools"><div class="brand">Constrava</div><nav class="tabs"><button class="tab active" data-tab="analytics">Analytics</button><button class="tab" data-tab="crm">CRM</button><button class="tab" data-tab="resources">Connected Resources</button></nav></div><div class="rightTools">${demo ? "" : `<a class="projectSwitch" href="/projects" title="Switch CRM project"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7h11l-3-3m3 3-3 3M16 17H5l3 3m-3-3 3-3"></path></svg>${esc(workspaceLabel)}</a>`}${notificationButton}<button class="settingsIcon" id="settingsButton" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1z"></path></svg></button><button class="logoutText" id="logoutButton">${signoutCopy}</button></div></header>
 <main class="shell"><section class="workspace"><div><p class="muted">${esc(workspaceLabel)}</p></div><div><input id="search" placeholder="Search records, tasks, leads..."> <button class="primary" id="aiAdd">AI Add</button></div></section><section id="app"></section></main>
 <dialog id="signoutDialog"><div class="modalHead"><h2>Are you sure?</h2></div><div class="modalBody"><p class="muted">This will ${demo ? "leave the demo" : "log you out"} and return you to the public homepage.</p></div><div class="modalFoot"><button class="secondary" id="cancelSignout">Cancel</button><button class="primary" id="confirmSignout">${signoutCopy}</button></div></dialog>
 <dialog id="planDialog"><div class="modalHead"><h2 id="planTitle"></h2></div><div class="modalBody" id="planBody"></div><div class="modalFoot"><button class="secondary" id="closePlan">Cancel</button><button class="primary" id="commitPlan">Commit selected</button></div></dialog>
@@ -1589,7 +1678,7 @@ const WORKSPACE_LABEL=${JSON.stringify(workspaceLabel)};
 let S={tab:"analytics",crmView:"overview",records:[],plans:[],plan:null,summary:null,sources:[],emailConnections:[],events:[],reports:[],snippet:""};
 const esc=function(v){return String(v==null?"":v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")};
 function url(p){return API_SUFFIX?p+(p.includes("?")?"&":"?")+API_SUFFIX:p}
-async function api(p,o){o=o||{};const r=await fetch(url(p),{...o,credentials:"include",headers:{"content-type":"application/json",...(o.headers||{})}});const d=await r.json();if(r.status===401){location.href="/signin";return null}if(!r.ok)throw Error(d.error||"Request failed");return d}
+async function api(p,o){o=o||{};const r=await fetch(url(p),{...o,credentials:"include",headers:{"content-type":"application/json",...(o.headers||{})}});const d=await r.json();if(r.status===401){location.href="/signin";return null}if(r.status===409&&d.code==="project_required"){location.href="/projects";return null}if(!r.ok)throw Error(d.error||"Request failed");return d}
 function money(v){return Number(v||0).toLocaleString(undefined,{style:"currency",currency:"USD",maximumFractionDigits:0})}
 function metric(n,v,t){return '<div class="card"><div class="in"><p class="muted">'+n+'</p><div class="metricValue">'+v+'</div><p class="muted">'+t+'</p></div></div>'}
 function recordFields(r){let f=r.fields||{};let out=[];if(f.email)out.push(f.email);if(f.companyName)out.push(f.companyName);if(f.stage)out.push('Stage: '+f.stage);if(f.value)out.push('Value: '+money(f.value));if(f.taskType)out.push('Task: '+f.taskType);if(f.associatedDate||f.dueDate)out.push('Date: '+(f.associatedDate||f.dueDate));if(f.rawText)out.push(f.rawText.slice(0,120));if(f.body)out.push(f.body.slice(0,120));return out.join(' · ')}
@@ -1629,7 +1718,11 @@ refresh('analytics');
 }
 
 async function auth(req, res, route, storeData) {
-  if (req.method === "GET" && route === "/api/auth/me") return send(res, currentUser(req, storeData) ? 200 : 401, { user: publicUser(currentUser(req, storeData)), developerAccountConfigured: Boolean(process.env[DEV_LOGIN_KEY_ENV]) });
+  if (req.method === "GET" && route === "/api/auth/me") {
+    const user = currentUser(req, storeData);
+    const active = user ? activeWorkspaceContext(req, storeData) : null;
+    return send(res, user ? 200 : 401, { user: publicUser(user), activeProject: active ? publicProject(storeData, active.project, active.membership) : null, next: active ? "/dashboard" : "/projects", developerAccountConfigured: Boolean(process.env[DEV_LOGIN_KEY_ENV]) });
+  }
   if (req.method === "POST" && route === "/api/auth/logout") {
     const sessionId = parseCookies(req)[COOKIE_NAME];
     storeData.sessions = storeData.sessions.filter((entry) => entry.id !== sessionId);
@@ -1659,10 +1752,10 @@ async function auth(req, res, route, storeData) {
       if (!user || !verifyPassword(password, user)) return send(res, 401, { error: "Email or password is incorrect." });
       ensureUserWorkspace(storeData, user);
     }
-    const session = { id: id("session"), userId: user.id, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString() };
+    const session = { id: id("session"), userId: user.id, activeWorkspaceId: "", createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString() };
     storeData.sessions.push(session);
     await saveStore(storeData);
-    return send(res, 200, { ok: true, user: publicUser(user) }, { "set-cookie": sessionCookie(req, session.id) });
+    return send(res, 200, { ok: true, user: publicUser(user), next: "/projects" }, { "set-cookie": sessionCookie(req, session.id) });
   }
   return send(res, 404, { error: "Auth route not found" });
 }
@@ -1687,6 +1780,78 @@ async function api(req, res, url, route) {
   }
   const storeData = await loadStore();
   if (route.startsWith("/api/auth/")) return await auth(req, res, route, storeData);
+  if (route === "/api/projects" || route.startsWith("/api/projects/")) {
+    const user = currentUser(req, storeData);
+    const session = currentSession(req, storeData);
+    if (!user || !session) return send(res, 401, { error: "Sign in required." });
+    if (req.method === "GET" && route === "/api/projects") {
+      const projects = projectsForUser(storeData, user.id).map(({ project, membership }) => publicProject(storeData, project, membership));
+      await saveStore(storeData);
+      return send(res, 200, { projects, activeProjectId: session.activeWorkspaceId || "" });
+    }
+    if (req.method === "POST" && route === "/api/projects") {
+      const body = await readBody(req);
+      const name = clean(body.name);
+      if (name.length < 2 || name.length > 80) return send(res, 400, { error: "Project name must be between 2 and 80 characters." });
+      const now = new Date().toISOString();
+      const project = { id: id("workspace"), name, ownerUserId: user.id, createdAt: now, updatedAt: now };
+      const membership = { id: id("member"), workspaceId: project.id, userId: user.id, role: "owner", status: "active", joinedAt: now, lastOpenedAt: "" };
+      storeData.workspaces.push(project);
+      storeData.workspaceMembers.push(membership);
+      await saveStore(storeData);
+      return send(res, 201, { project: publicProject(storeData, project, membership) });
+    }
+    const openMatch = route.match(/^\/api\/projects\/([^/]+)\/open$/);
+    if (req.method === "POST" && openMatch) {
+      const membership = workspaceMembership(storeData, user.id, openMatch[1]);
+      const project = membership ? storeData.workspaces.find((entry) => entry.id === membership.workspaceId) : null;
+      if (!project) return send(res, 404, { error: "CRM project not found or you do not have access." });
+      session.activeWorkspaceId = project.id;
+      membership.lastOpenedAt = new Date().toISOString();
+      project.updatedAt ||= membership.lastOpenedAt;
+      await saveStore(storeData);
+      return send(res, 200, { project: publicProject(storeData, project, membership), dashboard: "/dashboard" });
+    }
+    if (req.method === "POST" && route === "/api/projects/close") {
+      session.activeWorkspaceId = "";
+      await saveStore(storeData);
+      return send(res, 200, { ok: true, projects: "/projects" });
+    }
+    const membersMatch = route.match(/^\/api\/projects\/([^/]+)\/members$/);
+    if (membersMatch) {
+      const requesterMembership = workspaceMembership(storeData, user.id, membersMatch[1]);
+      const project = requesterMembership ? storeData.workspaces.find((entry) => entry.id === requesterMembership.workspaceId) : null;
+      if (!project) return send(res, 404, { error: "CRM project not found or you do not have access." });
+      if (req.method === "GET") {
+        const members = storeData.workspaceMembers.filter((entry) => entry.workspaceId === project.id && entry.status === "active").map((membership) => {
+          const member = storeData.users.find((entry) => entry.id === membership.userId);
+          return { id: membership.id, user: publicUser(member), role: membership.role, joinedAt: membership.joinedAt || "", lastOpenedAt: membership.lastOpenedAt || "" };
+        }).filter((entry) => entry.user);
+        return send(res, 200, { project: publicProject(storeData, project, requesterMembership), members });
+      }
+      if (req.method === "POST") {
+        if (!["owner", "admin"].includes(requesterMembership.role)) return send(res, 403, { error: "Only project owners and admins can add members." });
+        const body = await readBody(req);
+        const email = clean(body.email).toLowerCase();
+        const role = ["admin", "member"].includes(clean(body.role).toLowerCase()) ? clean(body.role).toLowerCase() : "member";
+        const memberUser = storeData.users.find((entry) => entry.email === email);
+        if (!memberUser) return send(res, 404, { error: "That person needs a Constrava account before they can be added." });
+        let membership = storeData.workspaceMembers.find((entry) => entry.workspaceId === project.id && entry.userId === memberUser.id);
+        const now = new Date().toISOString();
+        if (membership) {
+          membership.status = "active";
+          if (membership.role !== "owner") membership.role = role;
+        } else {
+          membership = { id: id("member"), workspaceId: project.id, userId: memberUser.id, role, status: "active", joinedAt: now, lastOpenedAt: "" };
+          storeData.workspaceMembers.push(membership);
+        }
+        project.updatedAt = now;
+        await saveStore(storeData);
+        return send(res, 200, { member: { id: membership.id, user: publicUser(memberUser), role: membership.role, joinedAt: membership.joinedAt, lastOpenedAt: membership.lastOpenedAt || "" } });
+      }
+    }
+    return send(res, 404, { error: "Project route not found." });
+  }
   if (req.method === "POST" && route === "/api/forms/ingest") {
     const body = await readBody(req);
     const connection = storeData.formConnections.find((entry) => entry.id === clean(body.connectionId));
@@ -1736,8 +1901,14 @@ async function api(req, res, url, route) {
     await saveStore(storeData);
     return redirect(res, "/dashboard?email_connected=1");
   }
-  const ctx = requestContext(req, url, storeData);
-  if (!ctx) return send(res, 401, { error: "Sign in required." });
+  let ctx = requestContext(req, url, storeData);
+  const publicWorkspaceId = clean(url.searchParams.get("workspaceId") || "");
+  if (!ctx && publicWorkspaceId && req.method === "POST" && ["/api/analytics/events", "/api/sources/form"].includes(route)) {
+    ctx = { workspaceId: publicWorkspaceId, demo: false, user: null, publicSource: true };
+  }
+  if (!ctx) return currentUser(req, storeData)
+    ? send(res, 409, { error: "Choose a CRM project first.", code: "project_required", projectsUrl: "/projects" })
+    : send(res, 401, { error: "Sign in required." });
   if (req.method === "GET" && route === "/api/dashboard/summary") {
     const identityReconciliation = reconcileWorkspaceIdentities(storeData, ctx.workspaceId);
     if (identityReconciliation.processed) await saveStore(storeData);
@@ -2155,13 +2326,22 @@ const webServer = http.createServer(async (req, res) => {
     if (route.startsWith("/api/")) return await api(req, res, url, route);
     if (route === "/demo") return html(res, appPage({ demo: true }));
     if (["/signin", "/login"].includes(route)) return html(res, signInPage());
+    if (["/projects", "/workspaces"].includes(route)) {
+      const storeData = await loadStore();
+      const user = currentUser(req, storeData);
+      if (!user) return redirect(res, "/signin");
+      const projects = projectsForUser(storeData, user.id);
+      await saveStore(storeData);
+      return html(res, projectSelectionPage({ user, projects, storeData }));
+    }
     if (["/dashboard", "/app"].includes(route)) {
       const storeData = await loadStore();
       const user = currentUser(req, storeData);
       if (!user) return redirect(res, "/signin");
-      ensureUserWorkspace(storeData, user);
+      const ctx = activeWorkspaceContext(req, storeData);
+      if (!ctx) return redirect(res, "/projects");
       await saveStore(storeData);
-      return html(res, appPage({ demo: false, user }));
+      return html(res, appPage({ demo: false, user, project: ctx.project }));
     }
     return html(res, publicPage());
   } catch (error) {

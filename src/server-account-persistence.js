@@ -47,7 +47,8 @@ const replacements = [
   if (!storeData.records.some((record) => record.workspaceId === workspaceId)) {
     storeData.records.push(...starterRecords(workspaceId));
   }
-}`
+}`,
+    satisfiedBy: "ensureWorkspaceProject(storeData, user);"
   },
   {
     old: `function currentUser(req, storeData) {
@@ -73,7 +74,8 @@ const replacements = [
     session.expiresAt = new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1000).toISOString();
   }
   return user;
-}`
+}`,
+    satisfiedBy: "function currentSession(req, storeData)"
   },
   {
     old: `  const ctx = requestContext(req, url, storeData);
@@ -83,7 +85,8 @@ const replacements = [
   if (!ctx && publicWorkspaceId && req.method === "POST" && ["/api/analytics/events", "/api/sources/form"].includes(route)) {
     ctx = { workspaceId: publicWorkspaceId, demo: false, user: null, publicSource: true };
   }
-  if (!ctx) return send(res, 401, { error: "Sign in required." });`
+  if (!ctx) return send(res, 401, { error: "Sign in required." });`,
+    satisfiedBy: "publicSource: true"
   },
   {
     old: `  if (req.method === "GET" && route === "/api/sources") return send(res, 200, { sources: storeData.sources, snippet: snippet() });`,
