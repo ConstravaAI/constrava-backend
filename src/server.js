@@ -145,6 +145,7 @@ function seed() {
     reports: [],
     workspaces: [{ id: "demo", name: "Demo workspace", ownerUserId: "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }],
     workspaceMembers: [],
+    workspaceInvitations: [],
     users: [],
     sessions: []
   };
@@ -158,6 +159,7 @@ function defaultProjectName(user) {
 function ensureWorkspaceProject(storeData, user) {
   storeData.workspaces ||= [];
   storeData.workspaceMembers ||= [];
+  storeData.workspaceInvitations ||= [];
   if (!user.workspaceId) user.workspaceId = `workspace_${user.id}`;
   let workspace = storeData.workspaces.find((entry) => entry.id === user.workspaceId);
   if (!workspace) {
@@ -174,7 +176,35 @@ function ensureWorkspaceProject(storeData, user) {
 
 function ensureUserWorkspace(storeData, user) {
   ensureWorkspaceProject(storeData, user);
+  acceptPendingInvitations(storeData, user);
   if (!storeData.records.some((record) => record.workspaceId === user.workspaceId)) storeData.records.push(...starterRecords(user.workspaceId));
+}
+
+function acceptPendingInvitations(storeData, user) {
+  storeData.workspaceInvitations ||= [];
+  const email = clean(user?.email).toLowerCase();
+  if (!email) return [];
+  const accepted = [];
+  for (const invitation of storeData.workspaceInvitations.filter((entry) => entry.email === email && entry.status === "pending")) {
+    const project = storeData.workspaces.find((entry) => entry.id === invitation.workspaceId);
+    if (!project) continue;
+    let membership = storeData.workspaceMembers.find((entry) => entry.workspaceId === project.id && entry.userId === user.id);
+    const now = new Date().toISOString();
+    if (membership) {
+      membership.status = "active";
+      if (membership.role !== "owner") membership.role = invitation.role || "member";
+    } else {
+      membership = { id: id("member"), workspaceId: project.id, userId: user.id, role: invitation.role || "member", status: "active", joinedAt: now, lastOpenedAt: "" };
+      storeData.workspaceMembers.push(membership);
+    }
+    invitation.status = "accepted";
+    invitation.userId = user.id;
+    invitation.acceptedAt = now;
+    invitation.updatedAt = now;
+    project.updatedAt = now;
+    accepted.push({ invitation, membership, project });
+  }
+  return accepted;
 }
 
 function ensureDeveloperAccount(storeData) {
@@ -211,6 +241,7 @@ function normalize(storeData) {
   storeData.reports ||= [];
   storeData.workspaces ||= fresh.workspaces;
   storeData.workspaceMembers ||= [];
+  storeData.workspaceInvitations ||= [];
   storeData.users ||= [];
   storeData.sessions ||= [];
   for (const connection of storeData.emailConnections) {
@@ -1637,13 +1668,25 @@ function signInPage() {
 
 function projectSelectionPage({ user, projects, storeData }) {
   const cards = projects.map(({ project, membership }) => publicProject(storeData, project, membership));
-  const projectMarkup = cards.length ? cards.map((project) => `<article class="project"><span class="role">${esc(project.role)}</span><div class="projectIcon">C</div><h3>${esc(project.name)}</h3><div class="meta"><span class="stat">${project.memberCount} ${project.memberCount === 1 ? "member" : "members"}</span><span class="stat">${project.recordCount} ${project.recordCount === 1 ? "record" : "records"}</span></div><button class="openButton" data-project="${esc(project.id)}">Open project</button></article>`).join("") : `<div class="empty"><h2>No CRM projects yet</h2><p>Create your first project to get started.</p></div>`;
+  const projectMarkup = cards.length ? cards.map((project) => `<article class="project"><span class="role">${esc(project.role === "member" ? "editor" : project.role)}</span><div class="projectIcon">C</div><h3>${esc(project.name)}</h3><div class="meta"><span class="stat">${project.memberCount} ${project.memberCount === 1 ? "person" : "people"}</span><span class="stat">${project.recordCount} ${project.recordCount === 1 ? "record" : "records"}</span></div><div class="projectActions"><button class="shareProject" data-share-project="${esc(project.id)}" data-share-name="${esc(project.name)}">Share</button><button class="openButton" data-project="${esc(project.id)}">Open project</button></div></article>`).join("") : `<div class="empty"><h2>No CRM projects yet</h2><p>Create your first project to get started.</p></div>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Choose a CRM project | Constrava</title><style>
 :root{--navy:#071a34;--ink:#0d1d36;--muted:#67758a;--line:#dbe4f1;--violet:#7559ff;--cyan:#23c6db;--green:#35d08b}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 12% 5%,rgba(35,198,219,.16),transparent 28%),radial-gradient(circle at 88% 14%,rgba(117,89,255,.16),transparent 30%),#f6f8fd;color:var(--ink);font-family:Inter,system-ui,sans-serif}.top{height:76px;display:flex;align-items:center;justify-content:space-between;width:min(1180px,calc(100% - 36px));margin:auto}.brand{font-size:23px;font-weight:950;letter-spacing:-.04em;color:var(--navy)}.account{display:flex;align-items:center;gap:12px}.avatar{width:38px;height:38px;border-radius:13px;display:grid;place-items:center;background:linear-gradient(135deg,var(--violet),var(--cyan));color:white;font-weight:950}.accountCopy{font-size:13px;color:var(--muted)}.accountCopy b{display:block;color:var(--ink)}button{font:inherit;cursor:pointer}.logout{border:1px solid var(--line);background:white;border-radius:999px;padding:9px 14px;font-weight:850;color:var(--navy)}main{width:min(1180px,calc(100% - 36px));margin:40px auto 70px}.eyebrow{display:inline-flex;gap:8px;align-items:center;color:#5e48db;background:#ece8ff;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.06em}.eyebrow:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--green)}h1{font-size:clamp(42px,7vw,72px);line-height:.96;letter-spacing:-.075em;margin:20px 0 16px;color:var(--navy);max-width:820px}.lead{font-size:18px;line-height:1.6;color:var(--muted);max-width:660px}.sectionHead{display:flex;align-items:end;justify-content:space-between;gap:18px;margin:46px 0 16px}.sectionHead h2{margin:0;color:var(--navy);font-size:24px}.sectionHead p{margin:5px 0 0;color:var(--muted)}.newButton,.openButton{border:0;border-radius:14px;padding:12px 16px;font-weight:900}.newButton{color:white;background:linear-gradient(135deg,var(--violet),#4b91ff);box-shadow:0 12px 28px rgba(100,82,238,.24)}.projectGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.project{position:relative;overflow:hidden;background:rgba(255,255,255,.92);border:1px solid rgba(211,222,238,.9);border-radius:24px;padding:22px;box-shadow:0 18px 55px rgba(22,38,70,.08);min-height:245px;display:flex;flex-direction:column}.project:before{content:"";position:absolute;inset:0 0 auto;height:6px;background:linear-gradient(90deg,var(--violet),var(--cyan),var(--green))}.projectIcon{width:48px;height:48px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(135deg,#ede9ff,#dff9fb);color:#5944da;font-size:21px;font-weight:950}.role{position:absolute;right:20px;top:22px;border-radius:999px;padding:6px 10px;background:#eef3fb;color:#4f6078;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.project h3{margin:20px 0 6px;font-size:23px;color:var(--navy);letter-spacing:-.035em}.meta{display:flex;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:13px}.stat{background:#f5f7fb;border-radius:10px;padding:7px 9px}.openButton{margin-top:auto;width:100%;background:var(--navy);color:white}.openButton:disabled,.newButton:disabled{opacity:.6;cursor:wait}.status{min-height:24px;color:#a62b43;font-weight:700}.empty{grid-column:1/-1;padding:36px;border:1px dashed #b9c6d9;border-radius:24px;text-align:center;color:var(--muted)}dialog{width:min(480px,calc(100vw - 32px));border:1px solid var(--line);border-radius:24px;padding:0;box-shadow:0 30px 100px rgba(6,26,51,.26)}dialog::backdrop{background:rgba(7,26,52,.55)}.modal{padding:24px}.modal h2{margin:0 0 8px;color:var(--navy)}label{display:block;font-weight:900;margin-top:20px}input{width:100%;border:1px solid var(--line);border-radius:14px;padding:13px;margin-top:7px;font:inherit}.actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}.cancel{border:1px solid var(--line);background:white;border-radius:14px;padding:11px 15px;font-weight:900}@media(max-width:900px){.projectGrid{grid-template-columns:1fr 1fr}}@media(max-width:620px){.projectGrid{grid-template-columns:1fr}.accountCopy{display:none}.sectionHead{align-items:start;flex-direction:column}h1{font-size:46px}}
 </style></head><body><header class="top"><div class="brand">Constrava</div><div class="account"><div class="avatar">${esc((user.name || user.email || "U").slice(0, 1).toUpperCase())}</div><div class="accountCopy"><b>${esc(user.name || "Signed in")}</b>${esc(user.email)}</div><button class="logout" id="logoutButton">Log out</button></div></header><main><span class="eyebrow">CRM projects</span><h1>Choose where you’re working.</h1><p class="lead">Open a project you belong to, or create a new one. Everyone added to a shared project works from the same CRM records, resources, and analytics.</p><div class="sectionHead"><div><h2>Your projects</h2><p>${cards.length === 1 ? "1 project available" : `${cards.length} projects available`}</p></div><button class="newButton" id="newProjectButton">+ New CRM project</button></div><div class="projectGrid">${projectMarkup}</div><p class="status" id="status" aria-live="polite"></p></main><dialog id="projectDialog"><form class="modal" id="projectForm"><h2>Create a CRM project</h2><p style="color:var(--muted)">You’ll be the owner. Team access can be added to this project.</p><label>Project name<input name="name" required minlength="2" maxlength="80" placeholder="Example: Northwind Sales CRM" autofocus></label><div class="actions"><button type="button" class="cancel" id="cancelProject">Cancel</button><button class="newButton" id="createProject">Create and open</button></div></form></dialog><script>
 async function request(path,options){const response=await fetch(path,{...(options||{}),credentials:"include",headers:{"content-type":"application/json",...((options||{}).headers||{})}});const data=await response.json();if(response.status===401){location.href="/signin";return null}if(!response.ok)throw new Error(data.error||"Something went wrong");return data}
+document.head.insertAdjacentHTML("beforeend",'<style>.projectActions{display:grid;grid-template-columns:auto 1fr;gap:9px;margin-top:auto}.projectActions .openButton{margin:0}.shareProject{border:1px solid var(--line);border-radius:14px;background:white;color:var(--navy);padding:12px 14px;font-weight:900}.shareProject:hover{background:#f0edff;border-color:#c7bcff}.shareDialog{width:min(650px,calc(100vw - 28px));max-width:650px}.shareModal{padding:24px}.shareHead{display:flex;justify-content:space-between;gap:18px;align-items:start}.shareHead h2{margin:0;color:var(--navy);font-size:28px}.shareHead p{margin:5px 0 0;color:var(--muted)}.shareClose{border:0;background:#f0f3f8;color:var(--navy);border-radius:999px;width:36px;height:36px;font-size:20px}.shareForm{display:grid;grid-template-columns:minmax(0,1fr) 135px auto;gap:8px;align-items:end;margin:22px 0}.shareForm label{margin:0;font-size:12px}.shareForm input,.shareForm select{width:100%;height:44px;margin-top:6px;border:1px solid var(--line);border-radius:12px;padding:0 11px;font:inherit;background:white}.shareForm button{height:44px}.shareMessage{min-height:20px;color:#15734b;font-size:13px;font-weight:800}.accessTitle{margin:18px 0 8px;color:var(--navy);font-size:14px}.accessRow{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--line)}.accessAvatar{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;background:linear-gradient(135deg,#e9e5ff,#dff9fb);color:#5944da;font-weight:950}.accessIdentity{min-width:0}.accessIdentity b,.accessIdentity span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.accessIdentity span{color:var(--muted);font-size:12px;margin-top:2px}.accessControls{display:flex;gap:7px;align-items:center}.accessControls select{border:1px solid var(--line);border-radius:10px;background:white;padding:8px;font:inherit;font-weight:800}.removeAccess{border:0;background:transparent;color:#a62b43;font-weight:900;padding:8px}.pendingBadge{border-radius:999px;background:#fff4d8;color:#805b00;padding:5px 8px;font-size:10px;font-weight:950;text-transform:uppercase}.shareDone{display:flex;justify-content:flex-end;margin-top:18px}.shareDone button{border:0;border-radius:12px;background:var(--navy);color:white;padding:11px 18px;font-weight:900}@media(max-width:620px){.shareForm{grid-template-columns:1fr}.accessRow{grid-template-columns:40px minmax(0,1fr)}.accessControls{grid-column:1/-1;justify-content:flex-end}.projectActions{grid-template-columns:1fr}}</style>');
+const CURRENT_USER_ID=${JSON.stringify(user.id)};
+const shareDialog=document.createElement("dialog");shareDialog.className="shareDialog";shareDialog.innerHTML='<div class="shareModal"><div class="shareHead"><div><h2 id="shareTitle">Share CRM project</h2><p id="shareSubtitle">Invite people and manage access.</p></div><button class="shareClose" id="shareClose" aria-label="Close">×</button></div><form class="shareForm" id="shareForm"><label>Email address<input name="email" type="email" placeholder="name@company.com" required></label><label>Access<select name="role"><option value="member">Editor</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select></label><button class="newButton" id="inviteButton">Share</button></form><p class="shareMessage" id="shareMessage" aria-live="polite"></p><h3 class="accessTitle">People with access</h3><div id="accessList"></div><div class="shareDone"><button id="shareDone">Done</button></div></div>';document.body.appendChild(shareDialog);
+let activeShareProject="",activeShareName="",shareAccess=null;
+function shareSafe(value){return String(value==null?"":value).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")}
+function shareRoleLabel(role){return role==="owner"?"Owner":role==="admin"?"Admin":role==="viewer"?"Viewer":"Editor"}
+function shareRoleOptions(role){return ['member','viewer','admin'].map(function(value){return '<option value="'+value+'" '+(value===role?'selected':'')+'>'+shareRoleLabel(value)+'</option>'}).join('')}
+function renderShareAccess(){if(!shareAccess)return;const canManage=shareAccess.canManage;shareForm.style.display=canManage?"grid":"none";shareSubtitle.textContent=canManage?"Invite people and manage their access.":"See who can access this CRM project.";let rows=shareAccess.members.map(function(member){const person=member.user||{};const isOwner=member.role==='owner';const controls=canManage&&!isOwner?'<div class="accessControls"><select data-member-role="'+shareSafe(member.id)+'">'+shareRoleOptions(member.role)+'</select><button class="removeAccess" data-remove-member="'+shareSafe(member.id)+'">Remove</button></div>':'<span class="pendingBadge">'+shareRoleLabel(member.role)+'</span>';return '<div class="accessRow"><div class="accessAvatar">'+shareSafe((person.name||person.email||'?').slice(0,1).toUpperCase())+'</div><div class="accessIdentity"><b>'+shareSafe(person.name||person.email) +(person.id===CURRENT_USER_ID?' (you)':'')+'</b><span>'+shareSafe(person.email)+'</span></div>'+controls+'</div>'}).join('');if(canManage)rows+=(shareAccess.invitations||[]).map(function(invite){return '<div class="accessRow"><div class="accessAvatar">✉</div><div class="accessIdentity"><b>'+shareSafe(invite.email)+'</b><span>Pending invitation · '+shareRoleLabel(invite.role)+'</span></div><div class="accessControls"><span class="pendingBadge">Pending</span><button class="removeAccess" data-cancel-invite="'+shareSafe(invite.id)+'">Cancel</button></div></div>'}).join('');accessList.innerHTML=rows||'<p style="color:var(--muted)">No one has access yet.</p>';bindShareRows()}
+function bindShareRows(){document.querySelectorAll('[data-member-role]').forEach(function(select){select.onchange=async function(){shareMessage.textContent="Saving access…";try{await request('/api/projects/'+encodeURIComponent(activeShareProject)+'/members/'+encodeURIComponent(select.dataset.memberRole),{method:'PATCH',body:JSON.stringify({role:select.value})});await loadShare(activeShareProject,activeShareName,false);shareMessage.textContent="Access updated."}catch(error){shareMessage.textContent=error.message}}});document.querySelectorAll('[data-remove-member]').forEach(function(button){button.onclick=async function(){if(!confirm('Remove this person from the project?'))return;try{await request('/api/projects/'+encodeURIComponent(activeShareProject)+'/members/'+encodeURIComponent(button.dataset.removeMember),{method:'DELETE'});await loadShare(activeShareProject,activeShareName,false);shareMessage.textContent="Access removed."}catch(error){shareMessage.textContent=error.message}}});document.querySelectorAll('[data-cancel-invite]').forEach(function(button){button.onclick=async function(){try{await request('/api/projects/'+encodeURIComponent(activeShareProject)+'/invitations/'+encodeURIComponent(button.dataset.cancelInvite),{method:'DELETE'});await loadShare(activeShareProject,activeShareName,false);shareMessage.textContent="Invitation canceled."}catch(error){shareMessage.textContent=error.message}}})}
+async function loadShare(projectId,projectName,openDialog=true){activeShareProject=projectId;activeShareName=projectName||"CRM project";shareTitle.textContent='Share “'+activeShareName+'”';shareMessage.textContent="";accessList.innerHTML='<p style="color:var(--muted)">Loading access…</p>';if(openDialog&&!shareDialog.open)shareDialog.showModal();try{shareAccess=await request('/api/projects/'+encodeURIComponent(projectId)+'/members');renderShareAccess()}catch(error){shareMessage.textContent=error.message}}
+shareClose.onclick=function(){shareDialog.close()};shareDone.onclick=function(){shareDialog.close()};shareForm.onsubmit=async function(event){event.preventDefault();inviteButton.disabled=true;inviteButton.textContent="Sharing…";shareMessage.textContent="";try{const values=Object.fromEntries(new FormData(shareForm));const result=await request('/api/projects/'+encodeURIComponent(activeShareProject)+'/members',{method:'POST',body:JSON.stringify(values)});shareForm.reset();await loadShare(activeShareProject,activeShareName,false);shareMessage.textContent=result.message}catch(error){shareMessage.textContent=error.message}finally{inviteButton.disabled=false;inviteButton.textContent="Share"}};
 async function openProject(projectId,button){status.textContent="";button.disabled=true;button.textContent="Opening…";try{const data=await request("/api/projects/"+encodeURIComponent(projectId)+"/open",{method:"POST"});if(data)location.href=data.dashboard||"/dashboard"}catch(error){status.textContent=error.message;button.disabled=false;button.textContent="Open project"}}
 document.querySelectorAll("[data-project]").forEach(function(button){button.onclick=function(){openProject(button.dataset.project,button)}});newProjectButton.onclick=function(){projectDialog.showModal()};cancelProject.onclick=function(){projectDialog.close()};projectForm.onsubmit=async function(event){event.preventDefault();status.textContent="";createProject.disabled=true;createProject.textContent="Creating…";try{const values=Object.fromEntries(new FormData(projectForm));const data=await request("/api/projects",{method:"POST",body:JSON.stringify(values)});if(data)await openProject(data.project.id,createProject)}catch(error){status.textContent=error.message;createProject.disabled=false;createProject.textContent="Create and open"}};logoutButton.onclick=async function(){await fetch("/api/auth/logout",{method:"POST",credentials:"include"});location.href="/"};
+document.querySelectorAll("[data-share-project]").forEach(function(button){button.onclick=function(){loadShare(button.dataset.shareProject,button.dataset.shareName)}});const requestedShare=new URLSearchParams(location.search).get("share");if(requestedShare){const requestedButton=document.querySelector('[data-share-project="'+CSS.escape(requestedShare)+'"]');if(requestedButton)loadShare(requestedShare,requestedButton.dataset.shareName)}
 </script></body></html>`;
 }
 
@@ -1663,6 +1706,7 @@ function appPage({ demo = false, user = null, project = null } = {}) {
 :root{--blue:#061a33;--soft:#eaf2ff;--line:#d9e3f2;--muted:#607089;--bg:#f7fbff;--green:#24c875}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:#071629;font-family:Inter,system-ui,sans-serif}.topbar{background:var(--blue);color:white;display:flex;align-items:center;justify-content:space-between;padding:14px 18px;position:sticky;top:0;z-index:10}.leftTools,.rightTools,.tabs{display:flex;align-items:center;gap:10px}.brand{font-weight:950;font-size:20px}.tab{border:0;background:transparent;color:#d8e6f8;font:inherit;font-weight:900;padding:11px 14px;border-radius:999px;cursor:pointer}.tab.active,.tab:hover{background:white;color:var(--blue)}.settingsIcon{width:42px;height:42px;border-radius:999px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.08);color:white;font-size:19px;cursor:pointer;display:grid;place-items:center;padding:0}.settingsIcon svg{width:20px;height:20px;display:block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.settingsIcon.active,.settingsIcon:hover{background:white;color:var(--blue)}.logoutText{border:1px solid rgba(255,255,255,.28);background:white;color:var(--blue);border-radius:999px;padding:10px 15px;font:inherit;font-weight:950;cursor:pointer}.shell{width:min(1180px,calc(100% - 36px));margin:28px auto}.workspace{display:flex;justify-content:space-between;gap:14px;align-items:end;margin-bottom:18px}.workspace h1{margin:0;color:var(--blue);font-size:40px;letter-spacing:-.055em}.muted{color:var(--muted)}.grid{display:grid;gap:16px}.metrics{grid-template-columns:repeat(4,1fr)}.two{grid-template-columns:1.1fr .9fr}.card{background:white;border:1px solid var(--line);border-radius:18px;box-shadow:0 16px 40px rgba(6,26,51,.08)}.in{padding:18px}.metricValue{font-size:32px;font-weight:950;color:var(--blue)}.pill{display:inline-flex;padding:4px 9px;border-radius:999px;background:var(--soft);border:1px solid #bed0ea;color:var(--blue);font-size:12px;font-weight:900}.item{padding:13px 0;border-top:1px solid var(--line)}.item:first-child{border-top:0}.primary{background:var(--blue);color:white;border:0;padding:10px 14px;font-weight:900;border-radius:10px;cursor:pointer}.secondary,input,select,textarea{border:1px solid var(--line);background:white;padding:10px;border-radius:10px;font:inherit}textarea{width:100%;min-height:140px}.resource{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center}.resourceIcon{width:42px;height:42px;border-radius:14px;background:var(--soft);display:grid;place-items:center;color:var(--blue);font-size:20px}pre{white-space:pre-wrap;background:#061a33;color:#eef6ff;padding:14px;border-radius:12px;overflow:auto}.crmShell{display:grid;grid-template-columns:230px 1fr;gap:16px;align-items:start}.crmSide{background:white;border:1px solid var(--line);border-radius:18px;padding:10px;box-shadow:0 16px 40px rgba(6,26,51,.08);position:sticky;top:92px}.crmSideTitle{font-size:12px;font-weight:950;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin:8px 10px}.crmTab{width:100%;border:0;background:transparent;text-align:left;padding:11px 12px;border-radius:12px;font:inherit;font-weight:900;color:#273d5c;cursor:pointer;display:flex;justify-content:space-between}.crmTab.active,.crmTab:hover{background:var(--soft);color:var(--blue)}.recordCard{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start}.fieldLine{font-size:13px;color:var(--muted);margin-top:4px}.empty{min-height:220px;display:grid;place-items:center;text-align:center;padding:34px}.empty h2{font-size:30px;margin:0 0 8px;color:var(--blue)}.empty p{max-width:560px;margin:0 auto;color:var(--muted)}dialog{border:1px solid var(--line);border-radius:18px;padding:0;box-shadow:0 24px 80px rgba(6,26,51,.22);max-width:min(680px,calc(100vw - 32px))}dialog::backdrop{background:rgba(6,26,51,.42)}.modalHead,.modalBody,.modalFoot{padding:18px}.modalFoot{border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}.notifyWrap{position:relative}.notifyButton{position:relative}.notifyDot{position:absolute;right:-3px;top:-4px;min-width:20px;height:20px;border-radius:999px;background:var(--green);color:#061a33;border:2px solid var(--blue);font-size:11px;font-weight:950;display:grid;place-items:center;padding:0 5px}.notificationDropdown{position:absolute;right:0;top:54px;width:min(720px,calc(100vw - 36px));background:white;color:#071629;border:1px solid var(--line);border-radius:22px;box-shadow:0 26px 80px rgba(3,17,36,.25);padding:16px;display:none}.notificationDropdown.open{display:block}.notificationHead{display:flex;justify-content:space-between;gap:12px;align-items:start;border-bottom:1px solid var(--line);padding-bottom:12px}.notificationHead p{margin:4px 0 0;color:var(--muted);font-size:13px}.ghostSmall{border:0;background:transparent;color:var(--blue);font:inherit;font-size:12px;font-weight:950;cursor:pointer;padding:7px 8px;border-radius:999px}.ghostSmall:hover{background:var(--soft)}.notificationGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px}.notificationGrid h3{margin:0 0 8px;color:var(--blue);font-size:15px}.noticeItem{padding:11px;border:1px solid var(--line);border-radius:14px;background:#fbfdff;margin-top:8px}.noticeItem b{color:var(--blue)}.noticeItem p{margin:5px 0 0;color:var(--muted);font-size:13px}.notificationPanel{display:grid;grid-template-columns:1fr 1fr;gap:16px}.notificationPanel .card{min-height:320px}@media(max-width:850px){.topbar{display:block}.leftTools{display:block}.tabs,.rightTools{margin-top:12px;overflow:auto}.workspace,.metrics,.two,.crmShell,.notificationGrid,.notificationPanel{display:block}.crmSide{position:static;margin-bottom:16px}.card{margin-bottom:16px}.notificationDropdown{position:fixed;left:18px;right:18px;top:112px;width:auto}.notifyWrap{display:inline-block}}
 .projectSwitch{display:inline-flex;align-items:center;gap:8px;max-width:210px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.09);color:white;border-radius:999px;padding:9px 13px;text-decoration:none;font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.projectSwitch:hover{background:white;color:var(--blue)}.projectSwitch svg{width:17px;height:17px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:2}@media(max-width:850px){.projectSwitch{max-width:180px}}
+.dashboardShare{display:inline-flex;align-items:center;border:1px solid rgba(255,255,255,.28);background:white;color:var(--blue);border-radius:999px;padding:9px 14px;text-decoration:none;font-weight:950}.dashboardShare:hover{background:#eaf2ff}
 </style>
 </head>
 <body>
@@ -1675,6 +1719,8 @@ localStorage.removeItem("constrava_session_token");
 const DEMO=${JSON.stringify(demo)};
 const API_SUFFIX=${JSON.stringify(apiSuffix)};
 const WORKSPACE_LABEL=${JSON.stringify(workspaceLabel)};
+const CURRENT_PROJECT_ID=${JSON.stringify(project?.id || "")};
+if(!DEMO&&CURRENT_PROJECT_ID){const link=document.createElement('a');link.className='dashboardShare';link.href='/projects?share='+encodeURIComponent(CURRENT_PROJECT_ID);link.textContent='Share';const tools=document.querySelector('.rightTools');const notifications=document.getElementById('notificationButton');if(tools)tools.insertBefore(link,notifications?notifications.closest('.notifyWrap'):tools.firstChild)}
 let S={tab:"analytics",crmView:"overview",records:[],plans:[],plan:null,summary:null,sources:[],emailConnections:[],events:[],reports:[],snippet:""};
 const esc=function(v){return String(v==null?"":v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")};
 function url(p){return API_SUFFIX?p+(p.includes("?")?"&":"?")+API_SUFFIX:p}
@@ -1822,33 +1868,78 @@ async function api(req, res, url, route) {
       const requesterMembership = workspaceMembership(storeData, user.id, membersMatch[1]);
       const project = requesterMembership ? storeData.workspaces.find((entry) => entry.id === requesterMembership.workspaceId) : null;
       if (!project) return send(res, 404, { error: "CRM project not found or you do not have access." });
+      const canManage = ["owner", "admin"].includes(requesterMembership.role);
       if (req.method === "GET") {
         const members = storeData.workspaceMembers.filter((entry) => entry.workspaceId === project.id && entry.status === "active").map((membership) => {
           const member = storeData.users.find((entry) => entry.id === membership.userId);
           return { id: membership.id, user: publicUser(member), role: membership.role, joinedAt: membership.joinedAt || "", lastOpenedAt: membership.lastOpenedAt || "" };
         }).filter((entry) => entry.user);
-        return send(res, 200, { project: publicProject(storeData, project, requesterMembership), members });
+        const invitations = canManage ? storeData.workspaceInvitations.filter((entry) => entry.workspaceId === project.id && entry.status === "pending").map((invitation) => ({ id: invitation.id, email: invitation.email, role: invitation.role, status: invitation.status, createdAt: invitation.createdAt || "" })) : [];
+        return send(res, 200, { project: publicProject(storeData, project, requesterMembership), members, invitations, canManage });
       }
       if (req.method === "POST") {
-        if (!["owner", "admin"].includes(requesterMembership.role)) return send(res, 403, { error: "Only project owners and admins can add members." });
+        if (!canManage) return send(res, 403, { error: "Only project owners and admins can invite people." });
         const body = await readBody(req);
         const email = clean(body.email).toLowerCase();
-        const role = ["admin", "member"].includes(clean(body.role).toLowerCase()) ? clean(body.role).toLowerCase() : "member";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return send(res, 400, { error: "Enter a valid email address." });
+        const requestedRole = clean(body.role).toLowerCase();
+        const role = ["admin", "member", "viewer"].includes(requestedRole) ? requestedRole : "member";
         const memberUser = storeData.users.find((entry) => entry.email === email);
-        if (!memberUser) return send(res, 404, { error: "That person needs a Constrava account before they can be added." });
-        let membership = storeData.workspaceMembers.find((entry) => entry.workspaceId === project.id && entry.userId === memberUser.id);
         const now = new Date().toISOString();
-        if (membership) {
-          membership.status = "active";
-          if (membership.role !== "owner") membership.role = role;
+        let invitation = storeData.workspaceInvitations.find((entry) => entry.workspaceId === project.id && entry.email === email && entry.status === "pending");
+        if (invitation) {
+          invitation.role = role;
+          invitation.invitedByUserId = user.id;
+          invitation.updatedAt = now;
         } else {
-          membership = { id: id("member"), workspaceId: project.id, userId: memberUser.id, role, status: "active", joinedAt: now, lastOpenedAt: "" };
-          storeData.workspaceMembers.push(membership);
+          invitation = { id: id("invite"), workspaceId: project.id, email, role, status: "pending", invitedByUserId: user.id, createdAt: now, updatedAt: now, acceptedAt: "", userId: "" };
+          storeData.workspaceInvitations.push(invitation);
         }
+        if (memberUser) acceptPendingInvitations(storeData, memberUser);
         project.updatedAt = now;
         await saveStore(storeData);
-        return send(res, 200, { member: { id: membership.id, user: publicUser(memberUser), role: membership.role, joinedAt: membership.joinedAt, lastOpenedAt: membership.lastOpenedAt || "" } });
+        const membership = memberUser ? workspaceMembership(storeData, memberUser.id, project.id) : null;
+        return send(res, memberUser ? 200 : 201, {
+          status: memberUser ? "added" : "invited",
+          message: memberUser ? `${memberUser.name || memberUser.email} now has access.` : `Invitation saved for ${email}. Access will activate when they sign in or create an account.`,
+          member: membership ? { id: membership.id, user: publicUser(memberUser), role: membership.role, joinedAt: membership.joinedAt, lastOpenedAt: membership.lastOpenedAt || "" } : null,
+          invitation: { id: invitation.id, email: invitation.email, role: invitation.role, status: invitation.status, createdAt: invitation.createdAt }
+        });
       }
+    }
+    const memberAccessMatch = route.match(/^\/api\/projects\/([^/]+)\/members\/([^/]+)$/);
+    if (memberAccessMatch) {
+      const requesterMembership = workspaceMembership(storeData, user.id, memberAccessMatch[1]);
+      if (!requesterMembership || !["owner", "admin"].includes(requesterMembership.role)) return send(res, 403, { error: "Only project owners and admins can change access." });
+      const membership = storeData.workspaceMembers.find((entry) => entry.id === memberAccessMatch[2] && entry.workspaceId === memberAccessMatch[1] && entry.status === "active");
+      if (!membership) return send(res, 404, { error: "Project member not found." });
+      if (membership.role === "owner") return send(res, 409, { error: "The project owner’s access cannot be changed." });
+      if (req.method === "PATCH") {
+        const role = clean((await readBody(req)).role).toLowerCase();
+        if (!["admin", "member", "viewer"].includes(role)) return send(res, 400, { error: "Choose Viewer, Editor, or Admin access." });
+        membership.role = role;
+        membership.updatedAt = new Date().toISOString();
+        await saveStore(storeData);
+        return send(res, 200, { member: membership });
+      }
+      if (req.method === "DELETE") {
+        membership.status = "removed";
+        membership.removedAt = new Date().toISOString();
+        for (const entry of storeData.sessions.filter((entry) => entry.userId === membership.userId && entry.activeWorkspaceId === membership.workspaceId)) entry.activeWorkspaceId = "";
+        await saveStore(storeData);
+        return send(res, 200, { ok: true });
+      }
+    }
+    const invitationAccessMatch = route.match(/^\/api\/projects\/([^/]+)\/invitations\/([^/]+)$/);
+    if (req.method === "DELETE" && invitationAccessMatch) {
+      const requesterMembership = workspaceMembership(storeData, user.id, invitationAccessMatch[1]);
+      if (!requesterMembership || !["owner", "admin"].includes(requesterMembership.role)) return send(res, 403, { error: "Only project owners and admins can cancel invitations." });
+      const invitation = storeData.workspaceInvitations.find((entry) => entry.id === invitationAccessMatch[2] && entry.workspaceId === invitationAccessMatch[1] && entry.status === "pending");
+      if (!invitation) return send(res, 404, { error: "Pending invitation not found." });
+      invitation.status = "revoked";
+      invitation.updatedAt = new Date().toISOString();
+      await saveStore(storeData);
+      return send(res, 200, { ok: true });
     }
     return send(res, 404, { error: "Project route not found." });
   }
@@ -1909,6 +2000,7 @@ async function api(req, res, url, route) {
   if (!ctx) return currentUser(req, storeData)
     ? send(res, 409, { error: "Choose a CRM project first.", code: "project_required", projectsUrl: "/projects" })
     : send(res, 401, { error: "Sign in required." });
+  if (ctx.membership?.role === "viewer" && req.method !== "GET") return send(res, 403, { error: "Viewer access is read-only." });
   if (req.method === "GET" && route === "/api/dashboard/summary") {
     const identityReconciliation = reconcileWorkspaceIdentities(storeData, ctx.workspaceId);
     if (identityReconciliation.processed) await saveStore(storeData);
