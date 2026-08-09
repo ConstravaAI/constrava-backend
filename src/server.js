@@ -135,6 +135,7 @@ function seed() {
     ingestionEvents: [],
     formConnections: [],
     emailConnections: [],
+    calendarConnections: [],
     websiteConnections: [],
     identityEntities: [],
     identityIdentifiers: [],
@@ -231,6 +232,7 @@ function normalize(storeData) {
   storeData.ingestionEvents ||= [];
   storeData.formConnections ||= [];
   storeData.emailConnections ||= [];
+  storeData.calendarConnections ||= [];
   storeData.websiteConnections ||= [];
   storeData.identityEntities ||= [];
   storeData.identityIdentifiers ||= [];
@@ -251,6 +253,13 @@ function normalize(storeData) {
     connection.accountUserId ||= storeData.users.find((user) => user.workspaceId === connection.workspaceId)?.id || "";
     connection.syncStats ||= { processed: 0, drafted: 0, committed: 0 };
     connection.syncStats.drafted ||= 0;
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
+    if (source && connection.status === "active" && connection.authorizationStatus === "authorized") source.status = "connected";
+  }
+  for (const connection of storeData.calendarConnections) {
+    connection.accountUserId ||= storeData.users.find((user) => user.workspaceId === connection.workspaceId)?.id || "";
+    connection.sync ||= { direction: "read_only", window: "upcoming_90", createTasks: true, attachNotes: true, includeDeclined: false, includePrivate: false };
+    connection.authorizationStatus ||= "credentials_required";
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
     if (source && connection.status === "active" && connection.authorizationStatus === "authorized") source.status = "connected";
   }
@@ -1024,6 +1033,98 @@ function emailProviderConfig(provider) {
   if (provider === "gmail") return { clientId: process.env.GMAIL_CLIENT_ID, clientSecret: process.env.GMAIL_CLIENT_SECRET, authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth", tokenUrl: "https://oauth2.googleapis.com/token", scope: "openid email https://www.googleapis.com/auth/gmail.readonly" };
   if (provider === "outlook") return { clientId: process.env.MICROSOFT_CLIENT_ID, clientSecret: process.env.MICROSOFT_CLIENT_SECRET, authorizeUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize", tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token", scope: "openid email offline_access Mail.Read" };
   return null;
+}
+
+function calendarProviderConfig(provider) {
+  if (provider === "google") return {
+    clientId: process.env.GOOGLE_CALENDAR_CLIENT_ID || process.env.GMAIL_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CALENDAR_CLIENT_SECRET || process.env.GMAIL_CLIENT_SECRET,
+    authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scope: "openid email https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly"
+  };
+  if (provider === "microsoft") return {
+    clientId: process.env.MICROSOFT_CALENDAR_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID,
+    clientSecret: process.env.MICROSOFT_CALENDAR_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET,
+    authorizeUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+    tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+    scope: "openid email offline_access Calendars.Read"
+  };
+  return null;
+}
+
+function calendarConnectionSafe(connection) {
+  const { oauthTokens, oauthStateHash, oauthStateExpiresAt, ...safe } = connection;
+  return { ...safe, credentialConfigured: Boolean(oauthTokens) };
+}
+
+function calendarProviderName(provider) {
+  return provider === "google" ? "Google Calendar" : provider === "microsoft" ? "Microsoft Outlook" : provider === "apple" ? "Apple iCloud" : provider === "ics" ? "ICS calendar feed" : "Calendar";
+}
+
+async function publicCalendarFeedUrl(value) {
+  let parsed;
+  try { parsed = new URL(clean(value)); } catch { throw Object.assign(new Error("Enter a valid HTTPS calendar feed URL."), { status: 400 }); }
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password) throw Object.assign(new Error("Calendar feeds must use a secure HTTPS URL without embedded credentials."), { status: 400 });
+  const addresses = await dns.lookup(parsed.hostname, { all: true });
+  if (!addresses.length || addresses.some((entry) => privateNetworkAddress(entry.address))) throw Object.assign(new Error("Calendar feeds must use a public internet address."), { status: 400 });
+  return parsed;
+}
+
+async function limitedCalendarResponseText(response, maxBytes = 2 * 1024 * 1024) {
+  const declared = Number(response.headers.get("content-length") || 0);
+  if (declared > maxBytes) throw Object.assign(new Error("That calendar feed is larger than the 2 MB connection limit."), { status: 413 });
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of response.body || []) {
+    const value = Buffer.from(chunk);
+    size += value.length;
+    if (size > maxBytes) throw Object.assign(new Error("That calendar feed is larger than the 2 MB connection limit."), { status: 413 });
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function verifyCalendarCredential(connection, body) {
+  if (connection.provider === "apple") {
+    const username = clean(body.username || connection.accountEmail).toLowerCase();
+    const appPassword = String(body.appPassword || "").trim();
+    if (!username || !appPassword) throw Object.assign(new Error("Enter the Apple Account email and an app-specific password."), { status: 400 });
+    const requestAppleCalendar = (endpoint) => fetch(endpoint, {
+      method: "PROPFIND",
+      headers: { authorization: `Basic ${Buffer.from(`${username}:${appPassword}`).toString("base64")}`, depth: "0", "content-type": "application/xml; charset=utf-8" },
+      body: '<?xml version="1.0" encoding="UTF-8"?><d:propfind xmlns:d="DAV:"><d:prop><d:current-user-principal/></d:prop></d:propfind>',
+      redirect: "manual",
+      signal: AbortSignal.timeout(15_000)
+    });
+    let response = await requestAppleCalendar("https://caldav.icloud.com/");
+    if ([301, 302, 307, 308].includes(response.status) && response.headers.get("location")) {
+      const redirected = new URL(response.headers.get("location"), "https://caldav.icloud.com/");
+      if (redirected.protocol !== "https:" || !(redirected.hostname === "icloud.com" || redirected.hostname.endsWith(".icloud.com"))) throw Object.assign(new Error("Apple returned an unsafe calendar redirect."), { status: 502 });
+      response = await requestAppleCalendar(redirected);
+    }
+    if (![200, 207].includes(response.status)) throw Object.assign(new Error("Apple rejected those calendar credentials. Check the app-specific password and try again."), { status: 409 });
+    connection.oauthTokens = encryptEmailTokens({ username, appPassword });
+  } else if (connection.provider === "ics") {
+    const feedUrl = await publicCalendarFeedUrl(body.feedUrl);
+    const response = await fetch(feedUrl, { headers: { accept: "text/calendar", "user-agent": "Constrava Calendar Connector/1.0" }, redirect: "error", signal: AbortSignal.timeout(15_000) });
+    const text = await limitedCalendarResponseText(response);
+    if (!response.ok || !/^BEGIN:VCALENDAR\b/m.test(text.slice(0, 250_000))) throw Object.assign(new Error("That URL did not return a readable ICS calendar feed."), { status: 409 });
+    connection.oauthTokens = encryptEmailTokens({ feedUrl: feedUrl.toString() });
+  } else {
+    const config = calendarProviderConfig(connection.provider);
+    if (!config?.clientId || !config?.clientSecret) throw Object.assign(new Error(`Calendar authorization is not configured for ${calendarProviderName(connection.provider)}.`), { status: 503 });
+    connection.authorizationReady = true;
+    connection.authorizationStatus = "ready";
+    connection.lastVerifiedAt = new Date().toISOString();
+    return connection;
+  }
+  connection.authorizationReady = true;
+  connection.authorizationStatus = "authorized";
+  connection.authorizedAt = new Date().toISOString();
+  connection.lastVerifiedAt = connection.authorizedAt;
+  connection.updatedAt = connection.authorizedAt;
+  return connection;
 }
 
 const GMAIL_READ_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
@@ -2004,6 +2105,34 @@ async function api(req, res, url, route) {
     await saveStore(storeData);
     return redirect(res, "/dashboard?email_connected=1");
   }
+  if (req.method === "GET" && route === "/api/calendar/oauth/callback") {
+    const state = clean(url.searchParams.get("state"));
+    const connection = storeData.calendarConnections.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
+    if (!connection) return send(res, 400, { error: "This calendar authorization link is invalid or expired." });
+    if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
+    const code = clean(url.searchParams.get("code"));
+    const config = calendarProviderConfig(connection.provider);
+    if (!config) return send(res, 400, { error: "This calendar provider does not use OAuth." });
+    const redirectUri = `${ORIGIN}/api/calendar/oauth/callback`;
+    const tokenBody = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, code, redirect_uri: redirectUri, grant_type: "authorization_code" });
+    if (connection.provider === "microsoft") tokenBody.set("scope", config.scope);
+    const tokenResponse = await fetch(config.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: tokenBody });
+    const tokens = await tokenResponse.json();
+    if (!tokenResponse.ok) return send(res, 502, { error: tokens.error_description || tokens.error || "Calendar authorization failed." });
+    connection.oauthTokens = encryptEmailTokens({ ...tokens, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });
+    connection.oauthStateHash = "";
+    connection.oauthStateExpiresAt = "";
+    connection.authorizationStatus = "authorized";
+    connection.status = "active";
+    connection.authorizedAt = new Date().toISOString();
+    connection.activatedAt = connection.authorizedAt;
+    connection.lastVerifiedAt = connection.authorizedAt;
+    connection.updatedAt = connection.authorizedAt;
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
+    if (source) source.status = "connected";
+    await saveStore(storeData);
+    return redirect(res, "/dashboard?calendar_connected=1");
+  }
   let ctx = requestContext(req, url, storeData);
   const publicWorkspaceId = clean(url.searchParams.get("workspaceId") || "");
   if (!ctx && publicWorkspaceId && req.method === "POST" && ["/api/analytics/events", "/api/sources/form"].includes(route)) {
@@ -2043,6 +2172,7 @@ async function api(req, res, url, route) {
   if (req.method === "GET" && route === "/api/website-connections") return send(res, 200, { connections: storeData.websiteConnections.filter((entry) => entry.workspaceId === ctx.workspaceId) });
   if (req.method === "GET" && route === "/api/ingestion-events") return send(res, 200, { events: storeData.ingestionEvents.filter((entry) => entry.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ oauthTokens, oauthStateHash, ...entry }) => ({ ...entry, automationPolicy: emailAutomationPolicy(entry.automationPolicy) })) });
+  if (req.method === "GET" && route === "/api/calendar-connections") return send(res, 200, { connections: storeData.calendarConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(calendarConnectionSafe) });
   if (req.method === "GET" && route === "/api/connected-resources") {
     const resources = storeData.sources
       .filter((entry) => entry.workspaceId === ctx.workspaceId && entry.status === "connected")
@@ -2051,7 +2181,7 @@ async function api(req, res, url, route) {
         name: entry.name,
         type: entry.type,
         status: entry.status,
-        resourceId: entry.type === "email" ? "email-inbox" : entry.type === "website_form" ? "website-forms" : entry.type === "website" ? "website-tracker" : entry.type === "manual_note" ? "manual-notes" : entry.type === "file_upload" ? "file-uploads" : "",
+        resourceId: entry.type === "email" ? "email-inbox" : entry.type === "calendar" ? "calendar" : entry.type === "website_form" ? "website-forms" : entry.type === "website" ? "website-tracker" : entry.type === "manual_note" ? "manual-notes" : entry.type === "file_upload" ? "file-uploads" : "",
         metadata: entry.metadata || {}
       }))
       .filter((entry) => entry.resourceId);
@@ -2089,6 +2219,101 @@ async function api(req, res, url, route) {
     await saveStore(storeData);
     const { oauthTokens, oauthStateHash, ...safeConnection } = connection;
     return send(res, 200, { connection: safeConnection });
+  }
+  if (req.method === "POST" && route === "/api/calendar-connections") {
+    const body = await readBody(req);
+    const provider = clean(body.provider).toLowerCase();
+    if (!["google", "microsoft", "apple", "ics"].includes(provider)) return send(res, 400, { error: "Choose Google, Microsoft, Apple iCloud, or an ICS calendar feed." });
+    const accountEmail = clean(body.accountEmail).toLowerCase();
+    if (provider !== "ics" && !/^\S+@\S+\.\S+$/.test(accountEmail)) return send(res, 400, { error: "Enter the email address used by this calendar." });
+    const config = calendarProviderConfig(provider);
+    const authorizationReady = provider === "apple" || provider === "ics" || Boolean(emailTokenKey() && config?.clientId && config?.clientSecret);
+    const now = new Date().toISOString();
+    const connection = {
+      id: id("calendar"), accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, sourceId: id("source_calendar"),
+      name: clean(body.name || `${calendarProviderName(provider)} connection`), provider, accountEmail,
+      calendarName: clean(body.calendarName || "Primary calendar"), timeZone: normalizeTimeZone(body.timeZone || DEFAULT_EMAIL_TIME_ZONE),
+      sync: { direction: "read_only", window: "upcoming_90", createTasks: true, attachNotes: true, includeDeclined: false, includePrivate: false },
+      status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady,
+      createdAt: now, updatedAt: now, authorizedAt: "", activatedAt: "", lastVerifiedAt: "", lastSyncAt: "", lastSyncError: "", oauthTokens: ""
+    };
+    storeData.calendarConnections.push(connection);
+    storeData.sources.push({ id: connection.sourceId, accountUserId: connection.accountUserId, workspaceId: ctx.workspaceId, name: connection.name, type: "calendar", status: "draft", metadata: { connectionId: connection.id, provider: connection.provider, calendarName: connection.calendarName, accountEmail: connection.accountEmail } });
+    await saveStore(storeData);
+    return send(res, 201, { connection: calendarConnectionSafe(connection) });
+  }
+  const calendarSettingsMatch = route.match(/^\/api\/calendar-connections\/([^/]+)$/);
+  if (req.method === "PATCH" && calendarSettingsMatch) {
+    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarSettingsMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Calendar connection not found." });
+    const body = await readBody(req);
+    if (body.name !== undefined) connection.name = clean(body.name) || connection.name;
+    if (body.accountEmail !== undefined) connection.accountEmail = clean(body.accountEmail).toLowerCase();
+    if (body.calendarName !== undefined) connection.calendarName = clean(body.calendarName) || "Primary calendar";
+    if (body.timeZone !== undefined) connection.timeZone = normalizeTimeZone(body.timeZone);
+    if (body.sync !== undefined) {
+      const requested = body.sync || {};
+      connection.sync = {
+        direction: "read_only",
+        window: ["upcoming_30", "upcoming_90", "past_30_upcoming_90"].includes(clean(requested.window)) ? clean(requested.window) : connection.sync?.window || "upcoming_90",
+        createTasks: Boolean(requested.createTasks), attachNotes: Boolean(requested.attachNotes), includeDeclined: Boolean(requested.includeDeclined), includePrivate: Boolean(requested.includePrivate)
+      };
+    }
+    connection.updatedAt = new Date().toISOString();
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
+    if (source) {
+      source.name = connection.name;
+      source.metadata = { ...(source.metadata || {}), connectionId: connection.id, provider: connection.provider, calendarName: connection.calendarName, accountEmail: connection.accountEmail };
+    }
+    await saveStore(storeData);
+    return send(res, 200, { connection: calendarConnectionSafe(connection) });
+  }
+  const calendarVerifyMatch = route.match(/^\/api\/calendar-connections\/([^/]+)\/verify$/);
+  if (req.method === "POST" && calendarVerifyMatch) {
+    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarVerifyMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Calendar connection not found." });
+    await verifyCalendarCredential(connection, await readBody(req));
+    await saveStore(storeData);
+    return send(res, 200, { connection: calendarConnectionSafe(connection), verified: true });
+  }
+  const calendarAuthorizeMatch = route.match(/^\/api\/calendar-connections\/([^/]+)\/authorize$/);
+  if (req.method === "POST" && calendarAuthorizeMatch) {
+    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Calendar connection not found." });
+    const config = calendarProviderConfig(connection.provider);
+    if (!config?.clientId || !config?.clientSecret) return send(res, 503, { error: `OAuth credentials are not configured for ${calendarProviderName(connection.provider)}.` });
+    if (!emailTokenKey()) return send(res, 503, { error: `${EMAIL_TOKEN_KEY_ENV} is not configured.` });
+    const state = crypto.randomBytes(32).toString("base64url");
+    connection.oauthStateHash = hashToken(state);
+    connection.oauthStateExpiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+    connection.updatedAt = new Date().toISOString();
+    const authorizeUrl = new URL(config.authorizeUrl);
+    authorizeUrl.searchParams.set("client_id", config.clientId);
+    authorizeUrl.searchParams.set("redirect_uri", `${ORIGIN}/api/calendar/oauth/callback`);
+    authorizeUrl.searchParams.set("response_type", "code");
+    authorizeUrl.searchParams.set("scope", config.scope);
+    authorizeUrl.searchParams.set("state", state);
+    if (connection.provider === "google") {
+      authorizeUrl.searchParams.set("access_type", "offline");
+      authorizeUrl.searchParams.set("prompt", "consent");
+      authorizeUrl.searchParams.set("include_granted_scopes", "false");
+      if (connection.accountEmail) authorizeUrl.searchParams.set("login_hint", connection.accountEmail);
+    }
+    await saveStore(storeData);
+    return send(res, 200, { authorizeUrl: authorizeUrl.toString() });
+  }
+  const calendarActivateMatch = route.match(/^\/api\/calendar-connections\/([^/]+)\/activate$/);
+  if (req.method === "POST" && calendarActivateMatch) {
+    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarActivateMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Calendar connection not found." });
+    if (connection.authorizationStatus !== "authorized") return send(res, 409, { error: "Verify or authorize this calendar before activation." });
+    connection.status = "active";
+    connection.activatedAt = new Date().toISOString();
+    connection.updatedAt = connection.activatedAt;
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
+    if (source) source.status = "connected";
+    await saveStore(storeData);
+    return send(res, 200, { connection: calendarConnectionSafe(connection) });
   }
   const emailMessagesMatch = route.match(/^\/api\/email-connections\/([^/]+)\/messages$/);
   if (req.method === "GET" && emailMessagesMatch) {
