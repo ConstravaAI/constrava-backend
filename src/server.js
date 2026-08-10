@@ -136,6 +136,7 @@ function seed() {
     formConnections: [],
     emailConnections: [],
     calendarConnections: [],
+    businessConnections: [],
     websiteConnections: [],
     identityEntities: [],
     identityIdentifiers: [],
@@ -233,6 +234,7 @@ function normalize(storeData) {
   storeData.formConnections ||= [];
   storeData.emailConnections ||= [];
   storeData.calendarConnections ||= [];
+  storeData.businessConnections ||= [];
   storeData.websiteConnections ||= [];
   storeData.identityEntities ||= [];
   storeData.identityIdentifiers ||= [];
@@ -259,6 +261,15 @@ function normalize(storeData) {
   for (const connection of storeData.calendarConnections) {
     connection.accountUserId ||= storeData.users.find((user) => user.workspaceId === connection.workspaceId)?.id || "";
     connection.sync ||= { direction: "read_only", window: "upcoming_90", createTasks: true, attachNotes: true, includeDeclined: false, includePrivate: false };
+    connection.authorizationStatus ||= "credentials_required";
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
+    if (source && connection.status === "active" && connection.authorizationStatus === "authorized") source.status = "connected";
+  }
+  for (const connection of storeData.businessConnections) {
+    connection.accountUserId ||= storeData.users.find((user) => user.workspaceId === connection.workspaceId)?.id || "";
+    connection.scope ||= { contacts: true, companies: true, deals: true, tasks: false, notes: false, includeArchived: false };
+    connection.mapping ||= { personName: "name", personEmail: "email", companyName: "company", dealName: "deal" };
+    connection.sync ||= { direction: "read_only", frequency: "manual", conflictStrategy: "review" };
     connection.authorizationStatus ||= "credentials_required";
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
     if (source && connection.status === "active" && connection.authorizationStatus === "authorized") source.status = "connected";
@@ -1125,6 +1136,72 @@ async function verifyCalendarCredential(connection, body) {
   connection.lastVerifiedAt = connection.authorizedAt;
   connection.updatedAt = connection.authorizedAt;
   return connection;
+}
+
+function businessProviderConfig(provider) {
+  if (provider === "hubspot") return {
+    clientId: process.env.HUBSPOT_CLIENT_ID,
+    clientSecret: process.env.HUBSPOT_CLIENT_SECRET,
+    authorizeUrl: "https://app.hubspot.com/oauth/authorize",
+    tokenUrl: "https://api.hubapi.com/oauth/v3/token",
+    scope: "oauth crm.objects.contacts.read crm.objects.companies.read crm.objects.deals.read",
+    tokenStyle: "form"
+  };
+  if (provider === "salesforce") return {
+    clientId: process.env.SALESFORCE_CLIENT_ID,
+    clientSecret: process.env.SALESFORCE_CLIENT_SECRET,
+    authorizeUrl: "https://login.salesforce.com/services/oauth2/authorize",
+    tokenUrl: "https://login.salesforce.com/services/oauth2/token",
+    scope: "api refresh_token",
+    tokenStyle: "form"
+  };
+  if (provider === "airtable") return {
+    clientId: process.env.AIRTABLE_CLIENT_ID,
+    clientSecret: process.env.AIRTABLE_CLIENT_SECRET,
+    authorizeUrl: "https://airtable.com/oauth2/v1/authorize",
+    tokenUrl: "https://airtable.com/oauth2/v1/token",
+    scope: "data.records:read schema.bases:read",
+    tokenStyle: "basic_form",
+    pkce: true
+  };
+  if (provider === "notion") return {
+    clientId: process.env.NOTION_CLIENT_ID,
+    clientSecret: process.env.NOTION_CLIENT_SECRET,
+    authorizeUrl: "https://api.notion.com/v1/oauth/authorize",
+    tokenUrl: "https://api.notion.com/v1/oauth/token",
+    scope: "",
+    tokenStyle: "basic_json"
+  };
+  if (provider === "google_sheets") return {
+    clientId: process.env.GOOGLE_SHEETS_CLIENT_ID || process.env.GMAIL_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_SHEETS_CLIENT_SECRET || process.env.GMAIL_CLIENT_SECRET,
+    authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scope: "openid email https://www.googleapis.com/auth/spreadsheets.readonly",
+    tokenStyle: "form"
+  };
+  return null;
+}
+
+function businessProviderName(provider) {
+  return provider === "hubspot" ? "HubSpot" : provider === "salesforce" ? "Salesforce" : provider === "airtable" ? "Airtable" : provider === "notion" ? "Notion" : provider === "google_sheets" ? "Google Sheets" : "Business tool";
+}
+
+function businessConnectionSafe(connection) {
+  const { oauthTokens, oauthStateHash, oauthStateExpiresAt, oauthPkceVerifier, ...safe } = connection;
+  return { ...safe, credentialConfigured: Boolean(oauthTokens), providerReady: Boolean(emailTokenKey() && businessProviderConfig(connection.provider)?.clientId && businessProviderConfig(connection.provider)?.clientSecret) };
+}
+
+function businessDefaultScope() {
+  return { contacts: true, companies: true, deals: true, tasks: false, notes: false, includeArchived: false };
+}
+
+function businessDefaultMapping() {
+  return { personName: "name", personEmail: "email", companyName: "company", dealName: "deal" };
+}
+
+function businessDefaultSync() {
+  return { direction: "read_only", frequency: "manual", conflictStrategy: "review" };
 }
 
 const GMAIL_READ_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
@@ -2133,6 +2210,55 @@ async function api(req, res, url, route) {
     await saveStore(storeData);
     return redirect(res, "/dashboard?calendar_connected=1");
   }
+  if (req.method === "GET" && route === "/api/business-tools/oauth/callback") {
+    const state = clean(url.searchParams.get("state"));
+    const connection = storeData.businessConnections.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
+    if (!connection) return send(res, 400, { error: "This business-tool authorization link is invalid or expired." });
+    if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
+    const code = clean(url.searchParams.get("code"));
+    const config = businessProviderConfig(connection.provider);
+    if (!config?.clientId || !config?.clientSecret || !code) return send(res, 400, { error: "This business-tool authorization could not be completed." });
+    const redirectUri = `${ORIGIN}/api/business-tools/oauth/callback`;
+    let tokenHeaders = { "content-type": "application/x-www-form-urlencoded" };
+    let tokenBody;
+    if (config.tokenStyle === "basic_json") {
+      tokenHeaders = { "content-type": "application/json", authorization: `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}` };
+      tokenBody = JSON.stringify({ grant_type: "authorization_code", code, redirect_uri: redirectUri });
+    } else {
+      const values = { client_id: config.clientId, client_secret: config.clientSecret, code, redirect_uri: redirectUri, grant_type: "authorization_code" };
+      if (config.pkce) {
+        const verifier = decryptEmailTokens(connection.oauthPkceVerifier)?.codeVerifier;
+        if (!verifier) return send(res, 400, { error: "The Airtable authorization verifier is missing or expired." });
+        values.code_verifier = verifier;
+        tokenHeaders.authorization = `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`;
+      }
+      tokenBody = new URLSearchParams(values);
+    }
+    const tokenResponse = await fetch(config.tokenUrl, { method: "POST", headers: tokenHeaders, body: tokenBody, signal: AbortSignal.timeout(15_000) });
+    const tokenText = await tokenResponse.text();
+    let tokens;
+    try { tokens = JSON.parse(tokenText); } catch { tokens = {}; }
+    if (!tokenResponse.ok) return send(res, 502, { error: clean(tokens.error_description || tokens.message || tokens.error || "Business-tool authorization failed.") });
+    connection.oauthTokens = encryptEmailTokens({ ...tokens, expiresAt: tokens.expires_in ? Date.now() + Number(tokens.expires_in) * 1000 : 0 });
+    connection.oauthStateHash = "";
+    connection.oauthStateExpiresAt = "";
+    connection.oauthPkceVerifier = "";
+    connection.authorizationStatus = "authorized";
+    connection.status = "active";
+    connection.authorizedAt = new Date().toISOString();
+    connection.activatedAt = connection.authorizedAt;
+    connection.lastVerifiedAt = connection.authorizedAt;
+    connection.updatedAt = connection.authorizedAt;
+    if (tokens.instance_url) connection.instanceUrl = clean(tokens.instance_url);
+    if (tokens.workspace_name && !connection.accountLabel) connection.accountLabel = clean(tokens.workspace_name);
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
+    if (source) {
+      source.status = "connected";
+      source.metadata = { ...(source.metadata || {}), connectionId: connection.id, provider: connection.provider, accountLabel: connection.accountLabel, instanceUrl: connection.instanceUrl || "" };
+    }
+    await saveStore(storeData);
+    return redirect(res, "/dashboard?business_tool_connected=1");
+  }
   let ctx = requestContext(req, url, storeData);
   const publicWorkspaceId = clean(url.searchParams.get("workspaceId") || "");
   if (!ctx && publicWorkspaceId && req.method === "POST" && ["/api/analytics/events", "/api/sources/form"].includes(route)) {
@@ -2173,6 +2299,7 @@ async function api(req, res, url, route) {
   if (req.method === "GET" && route === "/api/ingestion-events") return send(res, 200, { events: storeData.ingestionEvents.filter((entry) => entry.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ oauthTokens, oauthStateHash, ...entry }) => ({ ...entry, automationPolicy: emailAutomationPolicy(entry.automationPolicy) })) });
   if (req.method === "GET" && route === "/api/calendar-connections") return send(res, 200, { connections: storeData.calendarConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(calendarConnectionSafe) });
+  if (req.method === "GET" && route === "/api/business-connections") return send(res, 200, { connections: storeData.businessConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(businessConnectionSafe) });
   if (req.method === "GET" && route === "/api/connected-resources") {
     const resources = storeData.sources
       .filter((entry) => entry.workspaceId === ctx.workspaceId && entry.status === "connected")
@@ -2181,7 +2308,7 @@ async function api(req, res, url, route) {
         name: entry.name,
         type: entry.type,
         status: entry.status,
-        resourceId: entry.type === "email" ? "email-inbox" : entry.type === "calendar" ? "calendar" : entry.type === "website_form" ? "website-forms" : entry.type === "website" ? "website-tracker" : entry.type === "manual_note" ? "manual-notes" : entry.type === "file_upload" ? "file-uploads" : "",
+        resourceId: entry.type === "email" ? "email-inbox" : entry.type === "calendar" ? "calendar" : entry.type === "business_tool" ? "crm-tools" : entry.type === "website_form" ? "website-forms" : entry.type === "website" ? "website-tracker" : entry.type === "manual_note" ? "manual-notes" : entry.type === "file_upload" ? "file-uploads" : "",
         metadata: entry.metadata || {}
       }))
       .filter((entry) => entry.resourceId);
@@ -2314,6 +2441,113 @@ async function api(req, res, url, route) {
     if (source) source.status = "connected";
     await saveStore(storeData);
     return send(res, 200, { connection: calendarConnectionSafe(connection) });
+  }
+  if (req.method === "POST" && route === "/api/business-connections") {
+    const body = await readBody(req);
+    const provider = clean(body.provider).toLowerCase();
+    if (!["hubspot", "salesforce", "airtable", "notion", "google_sheets"].includes(provider)) return send(res, 400, { error: "Choose HubSpot, Salesforce, Airtable, Notion, or Google Sheets." });
+    const config = businessProviderConfig(provider);
+    const authorizationReady = Boolean(emailTokenKey() && config?.clientId && config?.clientSecret);
+    const now = new Date().toISOString();
+    const connection = {
+      id: id("business"), accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, sourceId: id("source_business"),
+      name: clean(body.name || `${businessProviderName(provider)} connection`), provider,
+      accountLabel: clean(body.accountLabel || ""), instanceUrl: clean(body.instanceUrl || ""), containerName: clean(body.containerName || ""),
+      scope: businessDefaultScope(), mapping: businessDefaultMapping(), sync: businessDefaultSync(),
+      status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady,
+      createdAt: now, updatedAt: now, authorizedAt: "", activatedAt: "", lastVerifiedAt: "", lastSyncAt: "", lastSyncError: "", oauthTokens: "", oauthPkceVerifier: ""
+    };
+    storeData.businessConnections.push(connection);
+    storeData.sources.push({ id: connection.sourceId, accountUserId: connection.accountUserId, workspaceId: ctx.workspaceId, name: connection.name, type: "business_tool", status: "draft", metadata: { connectionId: connection.id, provider: connection.provider, accountLabel: connection.accountLabel, containerName: connection.containerName } });
+    await saveStore(storeData);
+    return send(res, 201, { connection: businessConnectionSafe(connection) });
+  }
+  const businessSettingsMatch = route.match(/^\/api\/business-connections\/([^/]+)$/);
+  if (req.method === "PATCH" && businessSettingsMatch) {
+    const connection = storeData.businessConnections.find((entry) => entry.id === businessSettingsMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Business-tool connection not found." });
+    const body = await readBody(req);
+    if (body.name !== undefined) connection.name = clean(body.name) || connection.name;
+    if (body.accountLabel !== undefined) connection.accountLabel = clean(body.accountLabel);
+    if (body.instanceUrl !== undefined) connection.instanceUrl = clean(body.instanceUrl);
+    if (body.containerName !== undefined) connection.containerName = clean(body.containerName);
+    if (body.scope !== undefined) {
+      const requested = body.scope || {};
+      connection.scope = {
+        contacts: Boolean(requested.contacts), companies: Boolean(requested.companies), deals: Boolean(requested.deals),
+        tasks: Boolean(requested.tasks), notes: Boolean(requested.notes), includeArchived: Boolean(requested.includeArchived)
+      };
+      if (![connection.scope.contacts, connection.scope.companies, connection.scope.deals, connection.scope.tasks, connection.scope.notes].some(Boolean)) return send(res, 400, { error: "Choose at least one data type to connect." });
+    }
+    if (body.mapping !== undefined) {
+      const requested = body.mapping || {};
+      connection.mapping = {
+        personName: clean(requested.personName || "name").slice(0, 120), personEmail: clean(requested.personEmail || "email").slice(0, 120),
+        companyName: clean(requested.companyName || "company").slice(0, 120), dealName: clean(requested.dealName || "deal").slice(0, 120)
+      };
+    }
+    if (body.sync !== undefined) {
+      const requested = body.sync || {};
+      connection.sync = {
+        direction: "read_only",
+        frequency: ["manual", "daily", "hourly"].includes(clean(requested.frequency)) ? clean(requested.frequency) : "manual",
+        conflictStrategy: ["review", "source_wins", "skip"].includes(clean(requested.conflictStrategy)) ? clean(requested.conflictStrategy) : "review"
+      };
+    }
+    connection.updatedAt = new Date().toISOString();
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
+    if (source) {
+      source.name = connection.name;
+      source.metadata = { ...(source.metadata || {}), connectionId: connection.id, provider: connection.provider, accountLabel: connection.accountLabel, containerName: connection.containerName, instanceUrl: connection.instanceUrl };
+    }
+    await saveStore(storeData);
+    return send(res, 200, { connection: businessConnectionSafe(connection) });
+  }
+  const businessAuthorizeMatch = route.match(/^\/api\/business-connections\/([^/]+)\/authorize$/);
+  if (req.method === "POST" && businessAuthorizeMatch) {
+    const connection = storeData.businessConnections.find((entry) => entry.id === businessAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Business-tool connection not found." });
+    const config = businessProviderConfig(connection.provider);
+    if (!config?.clientId || !config?.clientSecret) return send(res, 503, { error: `OAuth credentials are not configured for ${businessProviderName(connection.provider)}.` });
+    if (!emailTokenKey()) return send(res, 503, { error: `${EMAIL_TOKEN_KEY_ENV} is not configured.` });
+    const state = crypto.randomBytes(32).toString("base64url");
+    connection.oauthStateHash = hashToken(state);
+    connection.oauthStateExpiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+    connection.updatedAt = new Date().toISOString();
+    const authorizeUrl = new URL(config.authorizeUrl);
+    authorizeUrl.searchParams.set("client_id", config.clientId);
+    authorizeUrl.searchParams.set("redirect_uri", `${ORIGIN}/api/business-tools/oauth/callback`);
+    authorizeUrl.searchParams.set("response_type", "code");
+    if (config.scope) authorizeUrl.searchParams.set("scope", config.scope);
+    authorizeUrl.searchParams.set("state", state);
+    if (connection.provider === "airtable") {
+      const codeVerifier = crypto.randomBytes(64).toString("base64url");
+      connection.oauthPkceVerifier = encryptEmailTokens({ codeVerifier });
+      authorizeUrl.searchParams.set("code_challenge", crypto.createHash("sha256").update(codeVerifier).digest("base64url"));
+      authorizeUrl.searchParams.set("code_challenge_method", "S256");
+    }
+    if (connection.provider === "notion") authorizeUrl.searchParams.set("owner", "user");
+    if (connection.provider === "google_sheets") {
+      authorizeUrl.searchParams.set("access_type", "offline");
+      authorizeUrl.searchParams.set("prompt", "consent");
+      authorizeUrl.searchParams.set("include_granted_scopes", "false");
+      if (connection.accountLabel && /^\S+@\S+\.\S+$/.test(connection.accountLabel)) authorizeUrl.searchParams.set("login_hint", connection.accountLabel);
+    }
+    await saveStore(storeData);
+    return send(res, 200, { authorizeUrl: authorizeUrl.toString() });
+  }
+  const businessActivateMatch = route.match(/^\/api\/business-connections\/([^/]+)\/activate$/);
+  if (req.method === "POST" && businessActivateMatch) {
+    const connection = storeData.businessConnections.find((entry) => entry.id === businessActivateMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Business-tool connection not found." });
+    if (connection.authorizationStatus !== "authorized") return send(res, 409, { error: "Authorize this business tool before activation." });
+    connection.status = "active";
+    connection.activatedAt ||= new Date().toISOString();
+    connection.updatedAt = new Date().toISOString();
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
+    if (source) source.status = "connected";
+    await saveStore(storeData);
+    return send(res, 200, { connection: businessConnectionSafe(connection) });
   }
   const emailMessagesMatch = route.match(/^\/api\/email-connections\/([^/]+)\/messages$/);
   if (req.method === "GET" && emailMessagesMatch) {
