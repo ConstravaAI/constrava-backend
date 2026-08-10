@@ -137,6 +137,7 @@ function seed() {
     emailConnections: [],
     calendarConnections: [],
     businessConnections: [],
+    messagingConnections: [],
     websiteConnections: [],
     identityEntities: [],
     identityIdentifiers: [],
@@ -235,6 +236,7 @@ function normalize(storeData) {
   storeData.emailConnections ||= [];
   storeData.calendarConnections ||= [];
   storeData.businessConnections ||= [];
+  storeData.messagingConnections ||= [];
   storeData.websiteConnections ||= [];
   storeData.identityEntities ||= [];
   storeData.identityIdentifiers ||= [];
@@ -270,6 +272,14 @@ function normalize(storeData) {
     connection.scope ||= { contacts: true, companies: true, deals: true, tasks: false, notes: false, includeArchived: false };
     connection.mapping ||= { personName: "name", personEmail: "email", companyName: "company", dealName: "deal" };
     connection.sync ||= { direction: "read_only", frequency: "manual", conflictStrategy: "review" };
+    connection.authorizationStatus ||= "credentials_required";
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
+    if (source && connection.status === "active" && connection.authorizationStatus === "authorized") source.status = "connected";
+  }
+  for (const connection of storeData.messagingConnections) {
+    connection.accountUserId ||= storeData.users.find((user) => user.workspaceId === connection.workspaceId)?.id || "";
+    connection.scope ||= { publicChannels: true, privateChannels: false, directMessages: false, supportConversations: true, smsInbound: true };
+    connection.rules ||= { direction: "read_only", frequency: "manual", createContacts: true, createTasks: true, attachNotes: true, automationPolicy: "review" };
     connection.authorizationStatus ||= "credentials_required";
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
     if (source && connection.status === "active" && connection.authorizationStatus === "authorized") source.status = "connected";
@@ -1202,6 +1212,78 @@ function businessDefaultMapping() {
 
 function businessDefaultSync() {
   return { direction: "read_only", frequency: "manual", conflictStrategy: "review" };
+}
+
+function messagingProviderConfig(provider) {
+  if (provider === "slack") return {
+    clientId: process.env.SLACK_CLIENT_ID,
+    clientSecret: process.env.SLACK_CLIENT_SECRET,
+    authorizeUrl: "https://slack.com/oauth/v2/authorize",
+    tokenUrl: "https://slack.com/api/oauth.v2.access",
+    scope: "channels:read,channels:history,groups:read,groups:history",
+    tokenStyle: "basic_form"
+  };
+  if (provider === "microsoft_teams") return {
+    clientId: process.env.MICROSOFT_TEAMS_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID,
+    clientSecret: process.env.MICROSOFT_TEAMS_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET,
+    authorizeUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+    tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+    scope: "openid email offline_access Channel.ReadBasic.All ChannelMessage.Read.All Chat.Read",
+    tokenStyle: "form"
+  };
+  if (provider === "intercom") return {
+    clientId: process.env.INTERCOM_CLIENT_ID,
+    clientSecret: process.env.INTERCOM_CLIENT_SECRET,
+    authorizeUrl: "https://app.intercom.com/oauth",
+    tokenUrl: "https://api.intercom.io/auth/eagle/token",
+    scope: "",
+    tokenStyle: "intercom_form"
+  };
+  return null;
+}
+
+function messagingProviderName(provider) {
+  return provider === "slack" ? "Slack" : provider === "microsoft_teams" ? "Microsoft Teams" : provider === "intercom" ? "Intercom" : provider === "twilio" ? "Twilio SMS" : provider === "webhook" ? "Custom webhook" : "Messaging";
+}
+
+function messagingProviderUsesOAuth(provider) {
+  return ["slack", "microsoft_teams", "intercom"].includes(provider);
+}
+
+function messagingDefaultScope() {
+  return { publicChannels: true, privateChannels: false, directMessages: false, supportConversations: true, smsInbound: true };
+}
+
+function messagingDefaultRules() {
+  return { direction: "read_only", frequency: "manual", createContacts: true, createTasks: true, attachNotes: true, automationPolicy: "review" };
+}
+
+function messagingConnectionSafe(connection) {
+  const { oauthTokens, oauthStateHash, oauthStateExpiresAt, webhookTokenHash, ...safe } = connection;
+  const config = messagingProviderConfig(connection.provider);
+  const providerReady = messagingProviderUsesOAuth(connection.provider) ? Boolean(emailTokenKey() && config?.clientId && config?.clientSecret) : Boolean(emailTokenKey());
+  return { ...safe, credentialConfigured: Boolean(oauthTokens || webhookTokenHash), providerReady, webhookUrl: connection.provider === "webhook" ? `${ORIGIN}/api/messaging/ingest?connectionId=${encodeURIComponent(connection.id)}` : "" };
+}
+
+async function verifyTwilioMessagingCredential(connection, body) {
+  const accountSid = clean(body.accountSid).toUpperCase();
+  const apiKeySid = clean(body.apiKeySid).toUpperCase();
+  const apiKeySecret = String(body.apiKeySecret || "").trim();
+  if (!/^AC[0-9A-F]{32}$/.test(accountSid) || !/^SK[0-9A-F]{32}$/.test(apiKeySid) || !apiKeySecret) throw Object.assign(new Error("Enter a valid Twilio Account SID, API Key SID, and API Key Secret."), { status: 400 });
+  const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}.json`, {
+    headers: { authorization: `Basic ${Buffer.from(`${apiKeySid}:${apiKeySecret}`).toString("base64")}`, accept: "application/json" },
+    signal: AbortSignal.timeout(15_000)
+  });
+  if (!response.ok) throw Object.assign(new Error("Twilio rejected those API credentials. Use a restricted API key with account read access."), { status: 409 });
+  const account = await response.json();
+  connection.oauthTokens = encryptEmailTokens({ accountSid, apiKeySid, apiKeySecret });
+  connection.accountLabel ||= clean(account.friendly_name || accountSid);
+  connection.authorizationReady = true;
+  connection.authorizationStatus = "authorized";
+  connection.authorizedAt = new Date().toISOString();
+  connection.lastVerifiedAt = connection.authorizedAt;
+  connection.updatedAt = connection.authorizedAt;
+  return connection;
 }
 
 const GMAIL_READ_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
@@ -2259,6 +2341,77 @@ async function api(req, res, url, route) {
     await saveStore(storeData);
     return redirect(res, "/dashboard?business_tool_connected=1");
   }
+  if (req.method === "GET" && route === "/api/messaging/oauth/callback") {
+    const state = clean(url.searchParams.get("state"));
+    const connection = storeData.messagingConnections.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
+    if (!connection) return send(res, 400, { error: "This messaging authorization link is invalid or expired." });
+    if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
+    const code = String(url.searchParams.get("code") || "").trim();
+    const config = messagingProviderConfig(connection.provider);
+    if (!config?.clientId || !config?.clientSecret || !code) return send(res, 400, { error: "This messaging authorization could not be completed." });
+    const redirectUri = `${ORIGIN}/api/messaging/oauth/callback`;
+    const values = { code, client_id: config.clientId, client_secret: config.clientSecret };
+    let tokenHeaders = { "content-type": "application/x-www-form-urlencoded" };
+    if (config.tokenStyle !== "intercom_form") values.redirect_uri = redirectUri;
+    if (connection.provider === "microsoft_teams") {
+      values.grant_type = "authorization_code";
+      values.scope = config.scope;
+    }
+    if (config.tokenStyle === "basic_form") {
+      tokenHeaders.authorization = `Basic ${Buffer.from(`${config.clientId}:${config.clientSecret}`).toString("base64")}`;
+      delete values.client_id;
+      delete values.client_secret;
+    }
+    const tokenResponse = await fetch(config.tokenUrl, { method: "POST", headers: tokenHeaders, body: new URLSearchParams(values), signal: AbortSignal.timeout(15_000) });
+    const tokenText = await tokenResponse.text();
+    let tokens;
+    try { tokens = JSON.parse(tokenText); } catch { tokens = {}; }
+    if (!tokenResponse.ok || tokens.ok === false) return send(res, 502, { error: clean(tokens.error_description || tokens.message || tokens.error || "Messaging authorization failed.") });
+    connection.oauthTokens = encryptEmailTokens({ ...tokens, expiresAt: tokens.expires_in ? Date.now() + Number(tokens.expires_in) * 1000 : 0 });
+    connection.oauthStateHash = "";
+    connection.oauthStateExpiresAt = "";
+    connection.authorizationStatus = "authorized";
+    connection.status = "active";
+    connection.authorizedAt = new Date().toISOString();
+    connection.activatedAt = connection.authorizedAt;
+    connection.lastVerifiedAt = connection.authorizedAt;
+    connection.updatedAt = connection.authorizedAt;
+    if (tokens.team?.name) connection.accountLabel = clean(tokens.team.name);
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
+    if (source) {
+      source.status = "connected";
+      source.metadata = { ...(source.metadata || {}), connectionId: connection.id, provider: connection.provider, accountLabel: connection.accountLabel, channelNames: connection.channelNames };
+    }
+    await saveStore(storeData);
+    return redirect(res, "/dashboard?messaging_connected=1");
+  }
+  if (req.method === "POST" && route === "/api/messaging/ingest") {
+    const body = await readBody(req);
+    const connectionId = clean(url.searchParams.get("connectionId") || body.connectionId);
+    const token = clean(req.headers["x-constrava-token"]);
+    const connection = storeData.messagingConnections.find((entry) => entry.id === connectionId && entry.provider === "webhook");
+    if (!connection || !token || !connection.webhookTokenHash || !safeEqualText(connection.webhookTokenHash, hashToken(token))) return send(res, 401, { error: "Valid messaging webhook authorization is required." });
+    if (connection.status !== "active" || connection.authorizationStatus !== "authorized") return send(res, 409, { error: "This messaging webhook is not active." });
+    const text = clean(body.text || body.message || body.body);
+    if (!text) return send(res, 400, { error: "A message text value is required." });
+    const payload = {
+      from: clean(body.from || body.sender || body.user || "Unknown sender"),
+      channel: clean(body.channel || body.inbox || connection.channelNames || "Custom webhook"),
+      subject: clean(body.subject || "Messaging activity"),
+      body: text,
+      receivedAt: clean(body.receivedAt || body.timestamp || new Date().toISOString()),
+      messageId: clean(body.messageId || body.id || id("message")),
+      metadata: body.metadata && typeof body.metadata === "object" ? body.metadata : {}
+    };
+    const result = await processIngestion(storeData, { workspaceId: connection.workspaceId, connection, payload, kind: "message", providerSubmissionId: `webhook:${connection.id}:${payload.messageId}`, stageDrafts: true });
+    connection.lastSyncAt = new Date().toISOString();
+    connection.lastSyncError = "";
+    connection.syncStats ||= { processed: 0, drafted: 0 };
+    connection.syncStats.processed += result.duplicate ? 0 : 1;
+    connection.syncStats.drafted += result.plan?.draftRecordIds?.length || 0;
+    await saveStore(storeData);
+    return send(res, 202, { accepted: true, duplicate: result.duplicate, eventId: result.event.id, status: result.event.status, drafts: result.plan?.draftRecordIds?.length || 0, reviewUrl: "/dashboard#crm-review" });
+  }
   let ctx = requestContext(req, url, storeData);
   const publicWorkspaceId = clean(url.searchParams.get("workspaceId") || "");
   if (!ctx && publicWorkspaceId && req.method === "POST" && ["/api/analytics/events", "/api/sources/form"].includes(route)) {
@@ -2300,6 +2453,7 @@ async function api(req, res, url, route) {
   if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ oauthTokens, oauthStateHash, ...entry }) => ({ ...entry, automationPolicy: emailAutomationPolicy(entry.automationPolicy) })) });
   if (req.method === "GET" && route === "/api/calendar-connections") return send(res, 200, { connections: storeData.calendarConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(calendarConnectionSafe) });
   if (req.method === "GET" && route === "/api/business-connections") return send(res, 200, { connections: storeData.businessConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(businessConnectionSafe) });
+  if (req.method === "GET" && route === "/api/messaging-connections") return send(res, 200, { connections: storeData.messagingConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(messagingConnectionSafe) });
   if (req.method === "GET" && route === "/api/connected-resources") {
     const resources = storeData.sources
       .filter((entry) => entry.workspaceId === ctx.workspaceId && entry.status === "connected")
@@ -2308,7 +2462,7 @@ async function api(req, res, url, route) {
         name: entry.name,
         type: entry.type,
         status: entry.status,
-        resourceId: entry.type === "email" ? "email-inbox" : entry.type === "calendar" ? "calendar" : entry.type === "business_tool" ? "crm-tools" : entry.type === "website_form" ? "website-forms" : entry.type === "website" ? "website-tracker" : entry.type === "manual_note" ? "manual-notes" : entry.type === "file_upload" ? "file-uploads" : "",
+        resourceId: entry.type === "email" ? "email-inbox" : entry.type === "calendar" ? "calendar" : entry.type === "business_tool" ? "crm-tools" : entry.type === "messaging" ? "messaging" : entry.type === "website_form" ? "website-forms" : entry.type === "website" ? "website-tracker" : entry.type === "manual_note" ? "manual-notes" : entry.type === "file_upload" ? "file-uploads" : "",
         metadata: entry.metadata || {}
       }))
       .filter((entry) => entry.resourceId);
@@ -2548,6 +2702,117 @@ async function api(req, res, url, route) {
     if (source) source.status = "connected";
     await saveStore(storeData);
     return send(res, 200, { connection: businessConnectionSafe(connection) });
+  }
+  if (req.method === "POST" && route === "/api/messaging-connections") {
+    const body = await readBody(req);
+    const provider = clean(body.provider).toLowerCase();
+    if (!["slack", "microsoft_teams", "intercom", "twilio", "webhook"].includes(provider)) return send(res, 400, { error: "Choose Slack, Microsoft Teams, Intercom, Twilio SMS, or a custom webhook." });
+    const config = messagingProviderConfig(provider);
+    const authorizationReady = messagingProviderUsesOAuth(provider) ? Boolean(emailTokenKey() && config?.clientId && config?.clientSecret) : Boolean(emailTokenKey());
+    const webhookToken = provider === "webhook" ? crypto.randomBytes(32).toString("base64url") : "";
+    const now = new Date().toISOString();
+    const connection = {
+      id: id("messaging"), accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, sourceId: id("source_messaging"),
+      name: clean(body.name || `${messagingProviderName(provider)} connection`), provider,
+      accountLabel: clean(body.accountLabel || ""), channelNames: clean(body.channelNames || ""), phoneNumber: clean(body.phoneNumber || ""),
+      scope: messagingDefaultScope(), rules: messagingDefaultRules(),
+      status: "draft", authorizationStatus: webhookToken ? "authorized" : authorizationReady ? "ready" : "credentials_required", authorizationReady,
+      createdAt: now, updatedAt: now, authorizedAt: webhookToken ? now : "", activatedAt: "", lastVerifiedAt: webhookToken ? now : "", lastSyncAt: "", lastSyncError: "", syncStats: { processed: 0, drafted: 0 },
+      oauthTokens: "", webhookTokenHash: webhookToken ? hashToken(webhookToken) : ""
+    };
+    storeData.messagingConnections.push(connection);
+    storeData.sources.push({ id: connection.sourceId, accountUserId: connection.accountUserId, workspaceId: ctx.workspaceId, name: connection.name, type: "messaging", status: "draft", metadata: { connectionId: connection.id, provider: connection.provider, accountLabel: connection.accountLabel, channelNames: connection.channelNames, phoneNumber: connection.phoneNumber } });
+    await saveStore(storeData);
+    return send(res, 201, { connection: messagingConnectionSafe(connection), webhookToken: webhookToken || undefined });
+  }
+  const messagingSettingsMatch = route.match(/^\/api\/messaging-connections\/([^/]+)$/);
+  if (req.method === "PATCH" && messagingSettingsMatch) {
+    const connection = storeData.messagingConnections.find((entry) => entry.id === messagingSettingsMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Messaging connection not found." });
+    const body = await readBody(req);
+    if (body.name !== undefined) connection.name = clean(body.name) || connection.name;
+    if (body.accountLabel !== undefined) connection.accountLabel = clean(body.accountLabel);
+    if (body.channelNames !== undefined) connection.channelNames = clean(body.channelNames);
+    if (body.phoneNumber !== undefined) connection.phoneNumber = clean(body.phoneNumber);
+    if (body.scope !== undefined) {
+      const requested = body.scope || {};
+      connection.scope = {
+        publicChannels: Boolean(requested.publicChannels), privateChannels: Boolean(requested.privateChannels), directMessages: Boolean(requested.directMessages),
+        supportConversations: Boolean(requested.supportConversations), smsInbound: Boolean(requested.smsInbound)
+      };
+      if (!Object.values(connection.scope).some(Boolean)) return send(res, 400, { error: "Choose at least one type of conversation to include." });
+    }
+    if (body.rules !== undefined) {
+      const requested = body.rules || {};
+      connection.rules = {
+        direction: "read_only",
+        frequency: ["manual", "daily", "near_realtime"].includes(clean(requested.frequency)) ? clean(requested.frequency) : "manual",
+        createContacts: Boolean(requested.createContacts), createTasks: Boolean(requested.createTasks), attachNotes: Boolean(requested.attachNotes),
+        automationPolicy: ["review", "automatic", "high_confidence"].includes(clean(requested.automationPolicy)) ? clean(requested.automationPolicy) : "review"
+      };
+    }
+    connection.updatedAt = new Date().toISOString();
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
+    if (source) {
+      source.name = connection.name;
+      source.metadata = { ...(source.metadata || {}), connectionId: connection.id, provider: connection.provider, accountLabel: connection.accountLabel, channelNames: connection.channelNames, phoneNumber: connection.phoneNumber };
+    }
+    await saveStore(storeData);
+    return send(res, 200, { connection: messagingConnectionSafe(connection) });
+  }
+  const messagingVerifyMatch = route.match(/^\/api\/messaging-connections\/([^/]+)\/verify$/);
+  if (req.method === "POST" && messagingVerifyMatch) {
+    const connection = storeData.messagingConnections.find((entry) => entry.id === messagingVerifyMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Messaging connection not found." });
+    if (connection.provider !== "twilio") return send(res, 400, { error: "This messaging provider does not use API-key verification." });
+    await verifyTwilioMessagingCredential(connection, await readBody(req));
+    await saveStore(storeData);
+    return send(res, 200, { connection: messagingConnectionSafe(connection), verified: true });
+  }
+  const messagingAuthorizeMatch = route.match(/^\/api\/messaging-connections\/([^/]+)\/authorize$/);
+  if (req.method === "POST" && messagingAuthorizeMatch) {
+    const connection = storeData.messagingConnections.find((entry) => entry.id === messagingAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Messaging connection not found." });
+    const config = messagingProviderConfig(connection.provider);
+    if (!messagingProviderUsesOAuth(connection.provider) || !config?.clientId || !config?.clientSecret) return send(res, 503, { error: `OAuth credentials are not configured for ${messagingProviderName(connection.provider)}.` });
+    if (!emailTokenKey()) return send(res, 503, { error: `${EMAIL_TOKEN_KEY_ENV} is not configured.` });
+    const state = crypto.randomBytes(32).toString("base64url");
+    connection.oauthStateHash = hashToken(state);
+    connection.oauthStateExpiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+    connection.updatedAt = new Date().toISOString();
+    const authorizeUrl = new URL(config.authorizeUrl);
+    authorizeUrl.searchParams.set("client_id", config.clientId);
+    authorizeUrl.searchParams.set("redirect_uri", `${ORIGIN}/api/messaging/oauth/callback`);
+    authorizeUrl.searchParams.set("response_type", "code");
+    if (config.scope) authorizeUrl.searchParams.set("scope", config.scope);
+    authorizeUrl.searchParams.set("state", state);
+    if (connection.provider === "microsoft_teams") authorizeUrl.searchParams.set("response_mode", "query");
+    await saveStore(storeData);
+    return send(res, 200, { authorizeUrl: authorizeUrl.toString() });
+  }
+  const messagingActivateMatch = route.match(/^\/api\/messaging-connections\/([^/]+)\/activate$/);
+  if (req.method === "POST" && messagingActivateMatch) {
+    const connection = storeData.messagingConnections.find((entry) => entry.id === messagingActivateMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Messaging connection not found." });
+    if (connection.authorizationStatus !== "authorized") return send(res, 409, { error: "Authorize or verify this messaging provider before activation." });
+    connection.status = "active";
+    connection.activatedAt ||= new Date().toISOString();
+    connection.updatedAt = new Date().toISOString();
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
+    if (source) source.status = "connected";
+    await saveStore(storeData);
+    return send(res, 200, { connection: messagingConnectionSafe(connection) });
+  }
+  const messagingTokenMatch = route.match(/^\/api\/messaging-connections\/([^/]+)\/webhook-token$/);
+  if (req.method === "POST" && messagingTokenMatch) {
+    const connection = storeData.messagingConnections.find((entry) => entry.id === messagingTokenMatch[1] && entry.workspaceId === ctx.workspaceId && entry.provider === "webhook");
+    if (!connection) return send(res, 404, { error: "Messaging webhook not found." });
+    const webhookToken = crypto.randomBytes(32).toString("base64url");
+    connection.webhookTokenHash = hashToken(webhookToken);
+    connection.authorizationStatus = "authorized";
+    connection.updatedAt = new Date().toISOString();
+    await saveStore(storeData);
+    return send(res, 200, { connection: messagingConnectionSafe(connection), webhookToken });
   }
   const emailMessagesMatch = route.match(/^\/api\/email-connections\/([^/]+)\/messages$/);
   if (req.method === "GET" && emailMessagesMatch) {
