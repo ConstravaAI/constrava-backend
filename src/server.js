@@ -264,6 +264,7 @@ function normalize(storeData) {
     connection.accountUserId ||= storeData.users.find((user) => user.workspaceId === connection.workspaceId)?.id || "";
     connection.sync ||= { direction: "read_only", window: "upcoming_90", createTasks: true, attachNotes: true, includeDeclined: false, includePrivate: false };
     connection.authorizationStatus ||= "credentials_required";
+    connection.oauthRedirectUri ||= "";
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
     if (source && connection.status === "active" && connection.authorizationStatus === "authorized") source.status = "connected";
   }
@@ -1072,6 +1073,17 @@ function calendarProviderConfig(provider) {
     scope: "openid email offline_access Calendars.Read"
   };
   return null;
+}
+
+function calendarOAuthRedirectUri(req) {
+  const forwardedProtocol = clean(req?.headers?.["x-forwarded-proto"]).split(",")[0].toLowerCase();
+  const forwardedHost = clean(req?.headers?.["x-forwarded-host"]).split(",")[0];
+  const requestHost = forwardedHost || clean(req?.headers?.host);
+  const safeHost = /^[a-z0-9.-]+(?::\d{1,5})?$/i.test(requestHost) ? requestHost : "";
+  const protocol = ["http", "https"].includes(forwardedProtocol) ? forwardedProtocol : req?.socket?.encrypted ? "https" : "http";
+  const requestOrigin = safeHost ? `${protocol}://${safeHost}` : "";
+  const fallbackOrigin = String(ORIGIN || "").trim().replace(/\/+$/, "");
+  return `${requestOrigin || fallbackOrigin}/api/calendar/oauth/callback`;
 }
 
 function calendarConnectionSafe(connection) {
@@ -2272,12 +2284,22 @@ async function api(req, res, url, route) {
     const code = clean(url.searchParams.get("code"));
     const config = calendarProviderConfig(connection.provider);
     if (!config) return send(res, 400, { error: "This calendar provider does not use OAuth." });
-    const redirectUri = `${ORIGIN}/api/calendar/oauth/callback`;
+    const redirectUri = connection.oauthRedirectUri || calendarOAuthRedirectUri(req);
     const tokenBody = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, code, redirect_uri: redirectUri, grant_type: "authorization_code" });
     if (connection.provider === "microsoft") tokenBody.set("scope", config.scope);
     const tokenResponse = await fetch(config.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: tokenBody });
     const tokens = await tokenResponse.json();
     if (!tokenResponse.ok) return send(res, 502, { error: tokens.error_description || tokens.error || "Calendar authorization failed." });
+    if (connection.provider === "google" && tokens.access_token) {
+      try {
+        const profileResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", { headers: { authorization: `Bearer ${tokens.access_token}`, accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
+        if (profileResponse.ok) {
+          const profile = await profileResponse.json();
+          const selectedEmail = clean(profile.email).toLowerCase();
+          if (/^\S+@\S+\.\S+$/.test(selectedEmail)) connection.accountEmail = selectedEmail;
+        }
+      } catch {}
+    }
     connection.oauthTokens = encryptEmailTokens({ ...tokens, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });
     connection.oauthStateHash = "";
     connection.oauthStateExpiresAt = "";
@@ -2288,7 +2310,10 @@ async function api(req, res, url, route) {
     connection.lastVerifiedAt = connection.authorizedAt;
     connection.updatedAt = connection.authorizedAt;
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
-    if (source) source.status = "connected";
+    if (source) {
+      source.status = "connected";
+      source.metadata = { ...(source.metadata || {}), connectionId: connection.id, provider: connection.provider, calendarName: connection.calendarName, accountEmail: connection.accountEmail };
+    }
     await saveStore(storeData);
     return redirect(res, "/dashboard?calendar_connected=1");
   }
@@ -2451,7 +2476,7 @@ async function api(req, res, url, route) {
   if (req.method === "GET" && route === "/api/website-connections") return send(res, 200, { connections: storeData.websiteConnections.filter((entry) => entry.workspaceId === ctx.workspaceId) });
   if (req.method === "GET" && route === "/api/ingestion-events") return send(res, 200, { events: storeData.ingestionEvents.filter((entry) => entry.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ oauthTokens, oauthStateHash, ...entry }) => ({ ...entry, automationPolicy: emailAutomationPolicy(entry.automationPolicy) })) });
-  if (req.method === "GET" && route === "/api/calendar-connections") return send(res, 200, { connections: storeData.calendarConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(calendarConnectionSafe) });
+  if (req.method === "GET" && route === "/api/calendar-connections") return send(res, 200, { connections: storeData.calendarConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => calendarConnectionSafe({ ...entry, oauthRedirectUri: ["google", "microsoft"].includes(entry.provider) ? calendarOAuthRedirectUri(req) : "" })) });
   if (req.method === "GET" && route === "/api/business-connections") return send(res, 200, { connections: storeData.businessConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(businessConnectionSafe) });
   if (req.method === "GET" && route === "/api/messaging-connections") return send(res, 200, { connections: storeData.messagingConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(messagingConnectionSafe) });
   if (req.method === "GET" && route === "/api/connected-resources") {
@@ -2515,7 +2540,7 @@ async function api(req, res, url, route) {
       name: clean(body.name || `${calendarProviderName(provider)} connection`), provider, accountEmail,
       calendarName: clean(body.calendarName || "Primary calendar"), timeZone: normalizeTimeZone(body.timeZone || DEFAULT_EMAIL_TIME_ZONE),
       sync: { direction: "read_only", window: "upcoming_90", createTasks: true, attachNotes: true, includeDeclined: false, includePrivate: false },
-      status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady,
+      status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, oauthRedirectUri: ["google", "microsoft"].includes(provider) ? calendarOAuthRedirectUri(req) : "",
       createdAt: now, updatedAt: now, authorizedAt: "", activatedAt: "", lastVerifiedAt: "", lastSyncAt: "", lastSyncError: "", oauthTokens: ""
     };
     storeData.calendarConnections.push(connection);
@@ -2540,6 +2565,7 @@ async function api(req, res, url, route) {
         createTasks: Boolean(requested.createTasks), attachNotes: Boolean(requested.attachNotes), includeDeclined: Boolean(requested.includeDeclined), includePrivate: Boolean(requested.includePrivate)
       };
     }
+    if (["google", "microsoft"].includes(connection.provider)) connection.oauthRedirectUri = calendarOAuthRedirectUri(req);
     connection.updatedAt = new Date().toISOString();
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
     if (source) {
@@ -2570,15 +2596,15 @@ async function api(req, res, url, route) {
     connection.updatedAt = new Date().toISOString();
     const authorizeUrl = new URL(config.authorizeUrl);
     authorizeUrl.searchParams.set("client_id", config.clientId);
-    authorizeUrl.searchParams.set("redirect_uri", `${ORIGIN}/api/calendar/oauth/callback`);
+    connection.oauthRedirectUri = calendarOAuthRedirectUri(req);
+    authorizeUrl.searchParams.set("redirect_uri", connection.oauthRedirectUri);
     authorizeUrl.searchParams.set("response_type", "code");
     authorizeUrl.searchParams.set("scope", config.scope);
     authorizeUrl.searchParams.set("state", state);
     if (connection.provider === "google") {
       authorizeUrl.searchParams.set("access_type", "offline");
-      authorizeUrl.searchParams.set("prompt", "consent");
+      authorizeUrl.searchParams.set("prompt", "select_account consent");
       authorizeUrl.searchParams.set("include_granted_scopes", "false");
-      if (connection.accountEmail) authorizeUrl.searchParams.set("login_hint", connection.accountEmail);
     }
     await saveStore(storeData);
     return send(res, 200, { authorizeUrl: authorizeUrl.toString() });
