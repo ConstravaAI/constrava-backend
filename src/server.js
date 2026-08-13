@@ -2605,6 +2605,7 @@ async function api(req, res, url, route) {
       authorizeUrl.searchParams.set("access_type", "offline");
       authorizeUrl.searchParams.set("prompt", "select_account consent");
       authorizeUrl.searchParams.set("include_granted_scopes", "false");
+      if (connection.accountEmail) authorizeUrl.searchParams.set("login_hint", connection.accountEmail);
     }
     await saveStore(storeData);
     return send(res, 200, { authorizeUrl: authorizeUrl.toString() });
