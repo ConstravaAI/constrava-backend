@@ -3207,10 +3207,12 @@ const webServer = http.createServer(async (req, res) => {
     });
   }
 });
-webServer.listen(PORT, () => {
-  console.log(`Constrava is running at ${ORIGIN}`);
-  if (postgresPool) void ensurePostgresStore().catch(() => {});
-});
+if (process.env.CONSTRAVA_GENERATE_ONLY !== "1") {
+  webServer.listen(PORT, () => {
+    console.log(`Constrava is running at ${ORIGIN}`);
+    if (postgresPool) void ensurePostgresStore().catch(() => {});
+  });
+}
 
 let emailSyncRunning = false;
 async function syncActiveEmailConnections() {

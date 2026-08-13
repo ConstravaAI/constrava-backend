@@ -2,3 +2,5 @@ data/store.json
 node_modules/
 .npm-cache/
 .env
+src/.server*.generated.js
+src/.server-runtime-responsive.js
