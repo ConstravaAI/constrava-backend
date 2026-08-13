@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const srcDir = path.join(projectRoot, "src");
 const failures = [];
-const requiredStartScript = "node src/server-tracker-analytics.js";
+const requiredStartScript = "node scripts/start-runtime.mjs";
 
 async function readProjectFile(relativePath) {
   try {
@@ -108,7 +108,10 @@ async function validateEncodedScopeWrapper() {
 
 const packageJson = JSON.parse(await readProjectFile("package.json") || "{}");
 if (packageJson.scripts?.start !== requiredStartScript) {
-  fail("package.json start script must stay pointed at src/server-tracker-analytics.js.");
+  fail("package.json start script must use the generated-runtime launcher.");
+}
+if (packageJson.scripts?.postinstall !== "npm run build:runtime") {
+  fail("package.json postinstall script must generate the production runtime during the build phase.");
 }
 
 const sourceFileNames = (await fs.readdir(srcDir))
@@ -120,6 +123,9 @@ for (const fileName of sourceFileNames) {
 }
 
 await assertContains("src/server-tracker-analytics.js", 'import "./server-remove-analytics-title.js";', "the analytics title wrapper handoff");
+await assertContains("scripts/generate-runtime.mjs", 'process.env.CONSTRAVA_GENERATE_ONLY = "1";', "the build-only runtime flag");
+await assertContains("scripts/start-runtime.mjs", 'path.join(root, "src", ".server.generated.js")', "the generated production server target");
+await assertContains("src/server.js", 'process.env.CONSTRAVA_GENERATE_ONLY !== "1"', "the build-only listener guard");
 await assertContains("src/server-remove-analytics-title.js", 'await import("./server-notification-icon.js");', "the notification wrapper handoff");
 await assertContains("src/server-notification-icon.js", 'await import("./server-tab-loading-state.js");', "the tab loading wrapper handoff");
 await assertContains("src/server.js", 'aria-label="Notifications"', "the encoding-safe notification control");
