@@ -139,6 +139,10 @@ await assertContains("src/server-responsive.js", "await import(`${pathToFileURL(
 await assertContains("src/server-responsive.js", "function aiDraftText\\\\(", "the AI record renderer preservation boundary");
 await assertContains("src/server-runtime.js", "function aiRecordsContent()", "the AI record queue renderer");
 await assertContains("src/server-runtime.js", "api('/api/records/drafts')", "the Review and Publish draft loader");
+await assertContains("src/server.js", 'route === "/api/calendar-connections/sync"', "the calendar refresh review endpoint");
+await assertContains("src/server.js", "google-calendar:${connection.id}:${event.id}", "calendar event duplicate protection");
+await assertContains("src/server-runtime.js", "api('/api/calendar-connections/sync'", "the website-refresh calendar review trigger");
+await assertContains("src/server-runtime.js", "S.aiRecords=(refreshed&&refreshed.records)", "the refreshed Review and Publish calendar drafts");
 await assertContains("src/server-runtime.js", "S.emailConnections=out[3].connections", "the current dashboard load response shape");
 await assertContains("src/server.js", 'recordType: { type: "string", enum: ["Person", "Company", "Deal", "Task", "Note"] }', "the specific AI record type schema");
 await assertContains("src/server.js", "Never create a generic intake or placeholder record.", "the AI best-fit record instruction");
