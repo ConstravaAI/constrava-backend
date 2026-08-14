@@ -142,6 +142,9 @@ await assertContains("src/server-runtime.js", "api('/api/records/drafts')", "the
 await assertContains("src/server.js", 'route === "/api/calendar-connections/sync"', "the calendar refresh review endpoint");
 await assertContains("src/server.js", "google-calendar:${connection.id}:${event.id}", "calendar event duplicate protection");
 await assertContains("src/server.js", "/calendar/v3/users/me/calendarList", "secondary Google Calendar discovery");
+await assertContains("src/server.js", "calendarScanMatch", "the Google Calendar picker scan endpoint");
+await assertContains("src/server.js", "calendarSelectionConfigured", "saved Google Calendar selection behavior");
+await assertContains("src/server-connected-resources.js", "calendarPickerForm", "the Google Calendar selection interface");
 await assertContains("src/server.js", "connection.calendarSyncTokens[calendar.id]", "per-calendar incremental sync cursors");
 await assertContains("src/server-runtime.js", "api('/api/calendar-connections/sync'", "the website-refresh calendar review trigger");
 await assertContains("src/server-runtime.js", "S.aiRecords=(refreshed&&refreshed.records)", "the refreshed Review and Publish calendar drafts");
