@@ -264,6 +264,7 @@ function normalize(storeData) {
     connection.accountUserId ||= storeData.users.find((user) => user.workspaceId === connection.workspaceId)?.id || "";
     connection.sync ||= { direction: "read_only", window: "upcoming_90", createTasks: true, attachNotes: true, includeDeclined: false, includePrivate: false };
     connection.syncStats ||= { processed: 0, drafted: 0, ignored: 0 };
+    connection.calendarSyncTokens ||= {};
     connection.authorizationStatus ||= "credentials_required";
     connection.oauthRedirectUri ||= "";
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
@@ -1088,7 +1089,7 @@ function calendarOAuthRedirectUri(req) {
 }
 
 function calendarConnectionSafe(connection) {
-  const { oauthTokens, oauthStateHash, oauthStateExpiresAt, calendarSyncToken, ...safe } = connection;
+  const { oauthTokens, oauthStateHash, oauthStateExpiresAt, calendarSyncToken, calendarSyncTokens, ...safe } = connection;
   return { ...safe, credentialConfigured: Boolean(oauthTokens) };
 }
 
@@ -1561,7 +1562,7 @@ function calendarEventInWindow(connection, event) {
   return start.getTime() >= now - lowerDays * 86_400_000 && start.getTime() <= now + upperDays * 86_400_000;
 }
 
-function googleCalendarEventPayload(connection, event) {
+function googleCalendarEventPayload(connection, event, calendar) {
   const accountEmail = clean(connection.accountEmail).toLowerCase();
   const attendees = (event.attendees || []).filter((entry) => clean(entry.email).toLowerCase() !== accountEmail);
   const organizerEmail = clean(event.organizer?.email).toLowerCase();
@@ -1579,7 +1580,8 @@ function googleCalendarEventPayload(connection, event) {
     organizer: externalOrganizer,
     attendees: attendees.map((entry) => ({ name: clean(entry.displayName), email: clean(entry.email), responseStatus: clean(entry.responseStatus) })),
     meetingUrl: conferenceUrl,
-    calendarName: clean(connection.calendarName || "Primary calendar"),
+    calendarName: clean(calendar?.summary || connection.calendarName || "Primary calendar"),
+    calendarId: clean(calendar?.id),
     eventId: clean(event.id),
     eventUrl: clean(event.htmlLink),
     receivedAt: clean(event.updated || event.created || new Date().toISOString())
@@ -1594,28 +1596,52 @@ function shouldReviewGoogleCalendarEvent(connection, event) {
   return calendarEventInWindow(connection, event);
 }
 
-async function fetchGoogleCalendarChanges(connection, accessToken, retried = false) {
+async function fetchGoogleCalendarList(accessToken) {
+  const headers = { authorization: `Bearer ${accessToken}`, accept: "application/json" };
+  const calendars = [];
+  let pageToken = "";
+  let pages = 0;
+  do {
+    const requestUrl = new URL("https://www.googleapis.com/calendar/v3/users/me/calendarList");
+    requestUrl.searchParams.set("maxResults", "250");
+    requestUrl.searchParams.set("minAccessRole", "reader");
+    if (pageToken) requestUrl.searchParams.set("pageToken", pageToken);
+    const response = await fetch(requestUrl, { headers, signal: AbortSignal.timeout(15_000) });
+    const data = await response.json();
+    if (!response.ok) throw Object.assign(new Error(data.error?.message || "Could not read the Google Calendar list."), { status: response.status === 401 ? 401 : 502 });
+    calendars.push(...(data.items || []).filter((entry) => entry.id && !entry.deleted && entry.accessRole !== "freeBusyReader"));
+    pageToken = clean(data.nextPageToken);
+    pages += 1;
+  } while (pageToken && pages < 10);
+  if (pageToken) throw Object.assign(new Error("The Google account has too many calendars to review safely in one refresh."), { status: 503 });
+  return calendars.slice(0, 50);
+}
+
+async function fetchGoogleCalendarChanges(connection, accessToken, calendar, retried = false) {
   const headers = { authorization: `Bearer ${accessToken}`, accept: "application/json" };
   const events = [];
+  const calendarId = clean(calendar?.id);
+  if (!calendarId) return { events, nextSyncToken: "" };
+  connection.calendarSyncTokens ||= {};
+  const syncToken = clean(connection.calendarSyncTokens[calendarId]);
   let pageToken = "";
   let nextSyncToken = "";
   let pages = 0;
   do {
-    const requestUrl = new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events");
+    const requestUrl = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`);
     requestUrl.searchParams.set("maxResults", "250");
     requestUrl.searchParams.set("singleEvents", "true");
     requestUrl.searchParams.set("showDeleted", "true");
-    if (connection.calendarSyncToken) requestUrl.searchParams.set("syncToken", connection.calendarSyncToken);
+    if (syncToken) requestUrl.searchParams.set("syncToken", syncToken);
     else {
       const startedAt = new Date(connection.calendarSyncStartedAt || connection.authorizedAt || Date.now());
       requestUrl.searchParams.set("updatedMin", new Date(startedAt.getTime() - 120_000).toISOString());
     }
     if (pageToken) requestUrl.searchParams.set("pageToken", pageToken);
     const response = await fetch(requestUrl, { headers, signal: AbortSignal.timeout(15_000) });
-    if (response.status === 410 && connection.calendarSyncToken && !retried) {
-      connection.calendarSyncToken = "";
-      connection.calendarSyncStartedAt = connection.lastSyncAt || new Date().toISOString();
-      return fetchGoogleCalendarChanges(connection, accessToken, true);
+    if (response.status === 410 && syncToken && !retried) {
+      delete connection.calendarSyncTokens[calendarId];
+      return fetchGoogleCalendarChanges(connection, accessToken, calendar, true);
     }
     const data = await response.json();
     if (!response.ok) throw Object.assign(new Error(data.error?.message || "Could not read Google Calendar events."), { status: response.status === 401 ? 401 : 502 });
@@ -1643,18 +1669,23 @@ async function syncCalendarConnection(storeData, connection) {
   if (connection.status !== "active" || connection.authorizationStatus !== "authorized") return { processed: 0, drafted: 0, ignored: 0, skipped: true };
   if (connection.provider !== "google") return { processed: 0, drafted: 0, ignored: 0, skipped: true };
   const tokens = await calendarProviderTokens(connection);
-  const { events, nextSyncToken } = await fetchGoogleCalendarChanges(connection, tokens.access_token);
+  const calendars = await fetchGoogleCalendarList(tokens.access_token);
   let processed = 0, drafted = 0, ignored = 0;
-  for (const event of events) {
-    if (!shouldReviewGoogleCalendarEvent(connection, event)) { ignored += 1; continue; }
-    const payload = googleCalendarEventPayload(connection, event);
-    const result = await processIngestion(storeData, { workspaceId: connection.workspaceId, connection, payload, kind: "calendar_event", providerSubmissionId: `google-calendar:${connection.id}:${event.id}`, stageDrafts: true });
-    if (result.duplicate) continue;
-    processed += 1;
-    drafted += result.plan?.draftRecordIds?.length || 0;
+  connection.calendarSyncTokens ||= {};
+  for (const calendar of calendars) {
+    const { events, nextSyncToken } = await fetchGoogleCalendarChanges(connection, tokens.access_token, calendar);
+    for (const event of events) {
+      if (!shouldReviewGoogleCalendarEvent(connection, event)) { ignored += 1; continue; }
+      const payload = googleCalendarEventPayload(connection, event, calendar);
+      const result = await processIngestion(storeData, { workspaceId: connection.workspaceId, connection, payload, kind: "calendar_event", providerSubmissionId: `google-calendar:${connection.id}:${event.id}`, stageDrafts: true });
+      if (result.duplicate) continue;
+      processed += 1;
+      drafted += result.plan?.draftRecordIds?.length || 0;
+    }
+    if (nextSyncToken) connection.calendarSyncTokens[calendar.id] = nextSyncToken;
   }
   const now = new Date().toISOString();
-  if (nextSyncToken) connection.calendarSyncToken = nextSyncToken;
+  connection.calendarSyncToken = "";
   connection.calendarSyncStartedAt ||= connection.authorizedAt || now;
   connection.lastSyncAt = now;
   connection.lastSyncError = "";
@@ -1813,6 +1844,7 @@ async function makeLocalPlan(input, workspaceId, storeData = null) {
   const companyMatch = candidates.find((entry) => entry.type === "Company" && entry.reasons.includes("exact_company"));
   const priorityData = priority(rawText, fields);
   const tags = tagsFor(rawText, fields);
+  const calendarTaskTitle = input.kind === "calendar_event" ? clean(input.payload?.subject) : "";
   const plan = {
     planId: id("plan"),
     workspaceId,
@@ -1826,7 +1858,7 @@ async function makeLocalPlan(input, workspaceId, storeData = null) {
   if (fields.companyName) plan.actions.push(action(companyMatch ? "update" : "create", "Company", { name: fields.companyName }, priorityData, tags, companyMatch ? "Matched the existing company by exact name." : "Company-like name detected.", companyMatch?.id || null, candidates));
   if (fields.name || fields.email) plan.actions.push(action(personMatch ? "update" : "create", "Person", { name: fields.name || fields.email.split("@")[0] || "New Contact", email: fields.email, companyName: fields.companyName }, priorityData, tags, personMatch ? "Matched the existing contact by exact email." : "Contact details detected.", personMatch?.id || null, candidates));
   if (/quote|proposal|estimate|budget|project|contract|automation|website|app|build/i.test(rawText)) plan.actions.push(action("create_deal", "Deal", { title: fields.request || "New opportunity", value: fields.value, stage: priorityData.score > 75 ? "qualified" : "new", ...associatedDateFields }, priorityData, tags, "Opportunity language found."));
-  if (/follow|call|email|schedule|meeting|tomorrow|today|next\s+(?:week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:days?|weeks?)/i.test(rawText)) plan.actions.push(action("create_task", "Task", { title: fields.companyName ? `Follow up with ${fields.companyName}` : "Follow up on new record", taskType: /call|meeting|schedule/i.test(rawText) ? "call" : "email", ...associatedDateFields, ...(resolvedDueDate ? { dueDate: resolvedDueDate, dueDateSource: dateContext.resolvedDates[0].phrase } : {}) }, priorityData, ["needs follow-up", ...tags], resolvedDueDate ? `Next-action language found; ${dateContext.resolvedDates[0].phrase} resolves to ${resolvedDueDate} in ${dateContext.timeZone}.` : "Next-action language found."));
+  if (/follow|call|email|schedule|meeting|tomorrow|today|next\s+(?:week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|in\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:days?|weeks?)/i.test(rawText)) plan.actions.push(action("create_task", "Task", { title: calendarTaskTitle || (fields.companyName ? `Follow up with ${fields.companyName}` : "Follow up on new record"), taskType: /call|meeting|schedule/i.test(rawText) ? "call" : "email", ...associatedDateFields, ...(resolvedDueDate ? { dueDate: resolvedDueDate, dueDateSource: dateContext.resolvedDates[0].phrase } : {}) }, priorityData, ["needs follow-up", ...tags], resolvedDueDate ? `Next-action language found; ${dateContext.resolvedDates[0].phrase} resolves to ${resolvedDueDate} in ${dateContext.timeZone}.` : "Next-action language found."));
   plan.actions.push(action("attach_note", "Note", { title: plan.actions.length ? "Source note" : fields.request || "Business note", body: rawText, ...associatedDateFields }, priorityData, tags, plan.actions.length ? "Keep the original context attached." : "No stronger entity or action signal was found, so preserve the information as a reviewable note."));
   return plan;
 }
@@ -2462,6 +2494,7 @@ async function api(req, res, url, route) {
     connection.activatedAt = connection.authorizedAt;
     connection.calendarSyncStartedAt = connection.authorizedAt;
     connection.calendarSyncToken = "";
+    connection.calendarSyncTokens = {};
     connection.lastVerifiedAt = connection.authorizedAt;
     connection.updatedAt = connection.authorizedAt;
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
