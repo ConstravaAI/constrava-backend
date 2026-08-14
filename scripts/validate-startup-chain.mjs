@@ -141,6 +141,8 @@ await assertContains("src/server-runtime.js", "function aiRecordsContent()", "th
 await assertContains("src/server-runtime.js", "api('/api/records/drafts')", "the Review and Publish draft loader");
 await assertContains("src/server.js", 'route === "/api/calendar-connections/sync"', "the calendar refresh review endpoint");
 await assertContains("src/server.js", "google-calendar:${connection.id}:${event.id}", "calendar event duplicate protection");
+await assertContains("src/server.js", "/calendar/v3/users/me/calendarList", "secondary Google Calendar discovery");
+await assertContains("src/server.js", "connection.calendarSyncTokens[calendar.id]", "per-calendar incremental sync cursors");
 await assertContains("src/server-runtime.js", "api('/api/calendar-connections/sync'", "the website-refresh calendar review trigger");
 await assertContains("src/server-runtime.js", "S.aiRecords=(refreshed&&refreshed.records)", "the refreshed Review and Publish calendar drafts");
 await assertContains("src/server-runtime.js", "S.emailConnections=out[3].connections", "the current dashboard load response shape");

@@ -73,8 +73,11 @@ try {
   const afterFirst = JSON.parse(await readFile(dataFile, "utf8"));
   assert.equal(afterFirst.records.filter((record) => record.workspaceId === "workspace_test").length, 1, "calendar review must not publish records directly");
   assert.ok(afterFirst.draftRecords.length > 0, "calendar review should create reviewable CRM drafts");
+  assert.ok(afterFirst.draftRecords.some((record) => record.type === "Task" && /call/i.test(record.title)), "a clear task on a secondary calendar should create a Task draft");
   assert.equal(afterFirst.ingestionEvents.length, 1);
-  assert.equal(afterFirst.calendarConnections[0].calendarSyncToken, "calendar-sync-token-test");
+  assert.equal(afterFirst.ingestionEvents[0].payload.calendarName, "Test Calendar");
+  assert.equal(afterFirst.calendarConnections[0].calendarSyncTokens["owner@example.com"], "primary-calendar-sync-token-test");
+  assert.equal(afterFirst.calendarConnections[0].calendarSyncTokens.calendar_test_secondary, "secondary-calendar-sync-token-test");
 
   const draftCount = afterFirst.draftRecords.length;
   const second = await sync();
