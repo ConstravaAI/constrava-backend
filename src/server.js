@@ -265,6 +265,9 @@ function normalize(storeData) {
     connection.sync ||= { direction: "read_only", window: "upcoming_90", createTasks: true, attachNotes: true, includeDeclined: false, includePrivate: false };
     connection.syncStats ||= { processed: 0, drafted: 0, ignored: 0 };
     connection.calendarSyncTokens ||= {};
+    connection.availableCalendars = Array.isArray(connection.availableCalendars) ? connection.availableCalendars.map(calendarOptionSafe).filter((entry) => entry.id).slice(0, 50) : [];
+    connection.selectedCalendarIds = Array.isArray(connection.selectedCalendarIds) ? [...new Set(connection.selectedCalendarIds.map(clean).filter(Boolean))].slice(0, 50) : [];
+    connection.calendarSelectionConfigured = Boolean(connection.calendarSelectionConfigured);
     connection.authorizationStatus ||= "credentials_required";
     connection.oauthRedirectUri ||= "";
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
@@ -1093,6 +1096,23 @@ function calendarConnectionSafe(connection) {
   return { ...safe, credentialConfigured: Boolean(oauthTokens) };
 }
 
+function calendarOptionSafe(calendar) {
+  return {
+    id: clean(calendar?.id),
+    name: clean(calendar?.summary || calendar?.name || "Untitled calendar"),
+    description: clean(calendar?.description),
+    primary: Boolean(calendar?.primary),
+    accessRole: clean(calendar?.accessRole || "reader"),
+    backgroundColor: /^#[0-9a-f]{6}$/i.test(clean(calendar?.backgroundColor)) ? clean(calendar.backgroundColor) : "#7357ff"
+  };
+}
+
+function rememberAvailableCalendars(connection, calendars) {
+  connection.availableCalendars = (calendars || []).map(calendarOptionSafe).filter((entry) => entry.id).slice(0, 50);
+  if (!connection.calendarSelectionConfigured) connection.selectedCalendarIds = connection.availableCalendars.map((entry) => entry.id);
+  return connection.availableCalendars;
+}
+
 function calendarProviderName(provider) {
   return provider === "google" ? "Google Calendar" : provider === "microsoft" ? "Microsoft Outlook" : provider === "apple" ? "Apple iCloud" : provider === "ics" ? "ICS calendar feed" : "Calendar";
 }
@@ -1669,7 +1689,10 @@ async function syncCalendarConnection(storeData, connection) {
   if (connection.status !== "active" || connection.authorizationStatus !== "authorized") return { processed: 0, drafted: 0, ignored: 0, skipped: true };
   if (connection.provider !== "google") return { processed: 0, drafted: 0, ignored: 0, skipped: true };
   const tokens = await calendarProviderTokens(connection);
-  const calendars = await fetchGoogleCalendarList(tokens.access_token);
+  const discoveredCalendars = await fetchGoogleCalendarList(tokens.access_token);
+  rememberAvailableCalendars(connection, discoveredCalendars);
+  const selectedCalendarIds = connection.calendarSelectionConfigured ? new Set(connection.selectedCalendarIds || []) : null;
+  const calendars = selectedCalendarIds ? discoveredCalendars.filter((calendar) => selectedCalendarIds.has(clean(calendar.id))) : discoveredCalendars;
   let processed = 0, drafted = 0, ignored = 0;
   connection.calendarSyncTokens ||= {};
   for (const calendar of calendars) {
@@ -2495,6 +2518,17 @@ async function api(req, res, url, route) {
     connection.calendarSyncStartedAt = connection.authorizedAt;
     connection.calendarSyncToken = "";
     connection.calendarSyncTokens = {};
+    connection.availableCalendars = [];
+    connection.selectedCalendarIds = [];
+    connection.calendarSelectionConfigured = false;
+    if (connection.provider === "google" && tokens.access_token) {
+      try {
+        rememberAvailableCalendars(connection, await fetchGoogleCalendarList(tokens.access_token));
+        connection.lastCalendarDiscoveryError = "";
+      } catch (error) {
+        connection.lastCalendarDiscoveryError = clean(error?.message || "Could not scan Google calendars yet.");
+      }
+    }
     connection.lastVerifiedAt = connection.authorizedAt;
     connection.updatedAt = connection.authorizedAt;
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
@@ -2734,7 +2768,8 @@ async function api(req, res, url, route) {
       calendarName: clean(body.calendarName || "Primary calendar"), timeZone: normalizeTimeZone(body.timeZone || DEFAULT_EMAIL_TIME_ZONE),
       sync: { direction: "read_only", window: "upcoming_90", createTasks: true, attachNotes: true, includeDeclined: false, includePrivate: false },
       status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, oauthRedirectUri: ["google", "microsoft"].includes(provider) ? calendarOAuthRedirectUri(req) : "",
-      createdAt: now, updatedAt: now, authorizedAt: "", activatedAt: "", lastVerifiedAt: "", lastSyncAt: "", lastSyncError: "", oauthTokens: ""
+      createdAt: now, updatedAt: now, authorizedAt: "", activatedAt: "", lastVerifiedAt: "", lastSyncAt: "", lastSyncError: "", oauthTokens: "",
+      availableCalendars: [], selectedCalendarIds: [], calendarSelectionConfigured: false
     };
     storeData.calendarConnections.push(connection);
     storeData.sources.push({ id: connection.sourceId, accountUserId: connection.accountUserId, workspaceId: ctx.workspaceId, name: connection.name, type: "calendar", status: "draft", metadata: { connectionId: connection.id, provider: connection.provider, calendarName: connection.calendarName, accountEmail: connection.accountEmail } });
@@ -2758,6 +2793,15 @@ async function api(req, res, url, route) {
         createTasks: Boolean(requested.createTasks), attachNotes: Boolean(requested.attachNotes), includeDeclined: Boolean(requested.includeDeclined), includePrivate: Boolean(requested.includePrivate)
       };
     }
+    if (body.selectedCalendarIds !== undefined) {
+      if (connection.provider !== "google") return send(res, 400, { error: "Individual calendar selection is currently available for Google Calendar connections." });
+      if (!Array.isArray(body.selectedCalendarIds)) return send(res, 400, { error: "Choose calendars from the scanned Google Calendar list." });
+      const availableIds = new Set((connection.availableCalendars || []).map((entry) => clean(entry.id)).filter(Boolean));
+      const selectedCalendarIds = [...new Set(body.selectedCalendarIds.map(clean).filter((entry) => availableIds.has(entry)))].slice(0, 50);
+      if (!selectedCalendarIds.length) return send(res, 400, { error: "Choose at least one calendar for CRM review." });
+      connection.selectedCalendarIds = selectedCalendarIds;
+      connection.calendarSelectionConfigured = true;
+    }
     if (["google", "microsoft"].includes(connection.provider)) connection.oauthRedirectUri = calendarOAuthRedirectUri(req);
     connection.updatedAt = new Date().toISOString();
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
@@ -2767,6 +2811,20 @@ async function api(req, res, url, route) {
     }
     await saveStore(storeData);
     return send(res, 200, { connection: calendarConnectionSafe(connection) });
+  }
+  const calendarScanMatch = route.match(/^\/api\/calendar-connections\/([^/]+)\/calendars\/scan$/);
+  if (req.method === "POST" && calendarScanMatch) {
+    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarScanMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Calendar connection not found." });
+    if (connection.provider !== "google") return send(res, 400, { error: "Calendar scanning is currently available for Google Calendar connections." });
+    if (connection.authorizationStatus !== "authorized") return send(res, 409, { error: "Authorize the Google account before scanning its calendars." });
+    const tokens = await calendarProviderTokens(connection);
+    const calendars = rememberAvailableCalendars(connection, await fetchGoogleCalendarList(tokens.access_token));
+    connection.lastCalendarDiscoveryAt = new Date().toISOString();
+    connection.lastCalendarDiscoveryError = "";
+    connection.updatedAt = connection.lastCalendarDiscoveryAt;
+    await saveStore(storeData);
+    return send(res, 200, { connection: calendarConnectionSafe(connection), calendars });
   }
   const calendarVerifyMatch = route.match(/^\/api\/calendar-connections\/([^/]+)\/verify$/);
   if (req.method === "POST" && calendarVerifyMatch) {
