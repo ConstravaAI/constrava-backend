@@ -65,8 +65,25 @@ async function sync() {
   return data;
 }
 
+async function calendarRequest(pathname, options = {}) {
+  const response = await fetch(`${origin}${pathname}`, {
+    method: options.method || "POST",
+    headers: { cookie: "constrava_session=session_test", "content-type": "application/json" },
+    body: options.body === undefined ? "{}" : JSON.stringify(options.body)
+  });
+  const data = await response.json();
+  assert.equal(response.status, options.status || 200, JSON.stringify(data));
+  return data;
+}
+
 try {
   await waitForServer();
+  const discovery = await calendarRequest("/api/calendar-connections/calendar_test/calendars/scan");
+  assert.equal(discovery.calendars.length, 2, "the connected Google account calendars should be discoverable");
+  assert.ok(discovery.calendars.some((calendar) => calendar.primary), "the calendar list should identify the primary calendar");
+  const selection = await calendarRequest("/api/calendar-connections/calendar_test", { method: "PATCH", body: { selectedCalendarIds: ["calendar_test_secondary"] } });
+  assert.deepEqual(selection.connection.selectedCalendarIds, ["calendar_test_secondary"]);
+  assert.equal(selection.connection.calendarSelectionConfigured, true);
   const first = await sync();
   assert.equal(first.processed, 1);
   assert.ok(first.drafted > 0);
@@ -76,8 +93,10 @@ try {
   assert.ok(afterFirst.draftRecords.some((record) => record.type === "Task" && /call/i.test(record.title)), "a clear task on a secondary calendar should create a Task draft");
   assert.equal(afterFirst.ingestionEvents.length, 1);
   assert.equal(afterFirst.ingestionEvents[0].payload.calendarName, "Test Calendar");
-  assert.equal(afterFirst.calendarConnections[0].calendarSyncTokens["owner@example.com"], "primary-calendar-sync-token-test");
+  assert.equal(afterFirst.calendarConnections[0].calendarSyncTokens["owner@example.com"], undefined, "unselected calendars must not be scanned for events");
   assert.equal(afterFirst.calendarConnections[0].calendarSyncTokens.calendar_test_secondary, "secondary-calendar-sync-token-test");
+  assert.equal(afterFirst.calendarConnections[0].availableCalendars.length, 2);
+  assert.deepEqual(afterFirst.calendarConnections[0].selectedCalendarIds, ["calendar_test_secondary"]);
 
   const draftCount = afterFirst.draftRecords.length;
   const second = await sync();
