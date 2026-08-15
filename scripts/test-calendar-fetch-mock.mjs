@@ -14,6 +14,9 @@ globalThis.fetch = async function calendarTestFetch(input, init) {
   if (url.href === "https://openidconnect.googleapis.com/v1/userinfo") {
     return new Response(JSON.stringify({ email: "owner@example.com", name: "Calendar Owner" }), { status: 200, headers: { "content-type": "application/json" } });
   }
+  if (url.href === "https://gmail.googleapis.com/gmail/v1/users/me/profile") {
+    return new Response(JSON.stringify({ emailAddress: "owner@example.com", messagesTotal: 42, threadsTotal: 18 }), { status: 200, headers: { "content-type": "application/json" } });
+  }
   if (url.origin === "https://www.googleapis.com" && url.pathname === "/calendar/v3/users/me/calendarList") {
     return new Response(JSON.stringify({
       items: [
