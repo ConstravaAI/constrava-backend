@@ -268,6 +268,8 @@ function normalize(storeData) {
     account.authorizationStatus ||= account.oauthTokens ? "authorized" : "ready";
     account.enabledResources ||= { gmail: true, calendar: true };
     account.oauthClient ||= "calendar";
+    account.selectedApps = Array.isArray(account.selectedApps) ? [...new Set(account.selectedApps.map(clean).filter((appId) => GOOGLE_APP_CATALOG.some((app) => app.id === appId)))] : googleAuthorizedApps(account);
+    account.appScan ||= { status: "not_scanned", scannedAt: "", apps: [] };
   }
   for (const connection of storeData.calendarConnections) {
     connection.accountUserId ||= storeData.users.find((user) => user.workspaceId === connection.workspaceId)?.id || "";
@@ -1089,22 +1091,38 @@ function calendarProviderConfig(provider) {
   return null;
 }
 
-const GOOGLE_SHARED_SCOPES = [
-  "openid",
-  "email",
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
-  "https://www.googleapis.com/auth/calendar.events.readonly"
+const GOOGLE_IDENTITY_SCOPES = ["openid", "email"];
+const GOOGLE_APP_CATALOG = [
+  { id: "gmail", name: "Gmail", resource: "Email inbox", description: "Review incoming email for CRM activity.", scopes: ["https://www.googleapis.com/auth/gmail.readonly"] },
+  { id: "calendar", name: "Google Calendar", resource: "Calendar", description: "Review selected calendars for meetings, tasks, and follow-ups.", scopes: ["https://www.googleapis.com/auth/calendar.calendarlist.readonly", "https://www.googleapis.com/auth/calendar.events.readonly"] },
+  { id: "drive", name: "Google Drive", resource: "File uploads", description: "Find Drive files that can be brought into the project.", scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly"] },
+  { id: "contacts", name: "Google Contacts", resource: "CRM", description: "Check whether Google Contacts is available for contact enrichment.", scopes: ["https://www.googleapis.com/auth/contacts.readonly"] },
+  { id: "sheets", name: "Google Sheets", resource: "CRM and business tools", description: "Find spreadsheets that can support CRM imports and workflows.", scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly", "https://www.googleapis.com/auth/spreadsheets.readonly"] },
+  { id: "forms", name: "Google Forms", resource: "Forms", description: "Find forms that can become customer-intake sources.", scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly", "https://www.googleapis.com/auth/forms.body.readonly", "https://www.googleapis.com/auth/forms.responses.readonly"] }
 ];
+const GOOGLE_SHARED_SCOPES = [...GOOGLE_IDENTITY_SCOPES, ...GOOGLE_APP_CATALOG.filter((app) => ["gmail", "calendar"].includes(app.id)).flatMap((app) => app.scopes)];
 
-function googleAccountProviderConfig(oauthClient = "calendar") {
+function googleApps(ids) {
+  const selected = new Set(Array.isArray(ids) ? ids.map(clean) : []);
+  return GOOGLE_APP_CATALOG.filter((app) => selected.has(app.id));
+}
+
+function googleScopesForApps(ids) {
+  return [...new Set([...GOOGLE_IDENTITY_SCOPES, ...googleApps(ids).flatMap((app) => app.scopes)])];
+}
+
+function googleAppCatalogSafe() {
+  return GOOGLE_APP_CATALOG.map(({ scopes, ...app }) => ({ ...app, permissions: scopes.length }));
+}
+
+function googleAccountProviderConfig(oauthClient = "calendar", scopes = GOOGLE_SHARED_SCOPES) {
   const useGmailClient = oauthClient === "gmail";
   return {
     clientId: useGmailClient ? process.env.GMAIL_CLIENT_ID : process.env.GOOGLE_CALENDAR_CLIENT_ID || process.env.GMAIL_CLIENT_ID,
     clientSecret: useGmailClient ? process.env.GMAIL_CLIENT_SECRET : process.env.GOOGLE_CALENDAR_CLIENT_SECRET || process.env.GMAIL_CLIENT_SECRET,
     authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
-    scope: GOOGLE_SHARED_SCOPES.join(" ")
+    scope: scopes.join(" ")
   };
 }
 
@@ -1113,11 +1131,22 @@ function hasGoogleSharedScopes(tokens) {
   return GOOGLE_SHARED_SCOPES.filter((scope) => scope.startsWith("https://")).every((scope) => granted.has(scope));
 }
 
+function googleGrantedScopeSet(account, tokens = {}) {
+  let stored = {};
+  try { stored = account?.oauthTokens ? decryptEmailTokens(account.oauthTokens) : {}; } catch {}
+  return new Set(`${stored.scope || ""} ${tokens.scope || ""}`.split(/\s+/).filter(Boolean));
+}
+
+function googleAuthorizedApps(account) {
+  const granted = googleGrantedScopeSet(account);
+  return GOOGLE_APP_CATALOG.filter((app) => app.scopes.every((scope) => granted.has(scope))).map((app) => app.id);
+}
+
 function googleAccountSafe(account, storeData) {
-  const { oauthTokens, oauthStateHash, oauthStateExpiresAt, ...safe } = account;
+  const { oauthTokens, oauthStateHash, oauthStateExpiresAt, oauthRequestedScopes, pendingApps, ...safe } = account;
   const linkedEmail = storeData?.emailConnections?.filter((entry) => entry.workspaceId === account.workspaceId && entry.googleAccountId === account.id).length || 0;
   const linkedCalendars = storeData?.calendarConnections?.filter((entry) => entry.workspaceId === account.workspaceId && entry.googleAccountId === account.id).length || 0;
-  return { ...safe, credentialConfigured: Boolean(oauthTokens), linkedResources: { email: linkedEmail, calendar: linkedCalendars } };
+  return { ...safe, selectedApps: Array.isArray(account.selectedApps) ? account.selectedApps : [], authorizedApps: googleAuthorizedApps(account), credentialConfigured: Boolean(oauthTokens), linkedResources: { email: linkedEmail, calendar: linkedCalendars } };
 }
 
 function linkedGoogleAccount(storeData, connection) {
@@ -1147,14 +1176,19 @@ async function googleIdentity(tokens) {
   }
 }
 
-function saveGoogleAccountOAuth(storeData, { account, connection, tokens, email, displayName, oauthClient }) {
+function saveGoogleAccountOAuth(storeData, { account, connection, tokens, email, displayName, oauthClient, selectedApps = [] }) {
   const workspaceId = account?.workspaceId || connection?.workspaceId || "";
   const normalizedEmail = clean(email || account?.email || connection?.emailAddress || connection?.accountEmail).toLowerCase();
-  let savedAccount = account || storeData.googleAccounts.find((entry) => entry.workspaceId === workspaceId && entry.email === normalizedEmail);
+  const matchingAccount = storeData.googleAccounts.find((entry) => entry.workspaceId === workspaceId && entry.email === normalizedEmail && entry.id !== account?.id);
+  let savedAccount = matchingAccount || account;
   const now = new Date().toISOString();
   if (!savedAccount) {
     savedAccount = { id: id("google"), accountUserId: connection?.accountUserId || "", workspaceId, name: "Google Workspace", createdAt: now };
     storeData.googleAccounts.push(savedAccount);
+  }
+  if (matchingAccount && account && matchingAccount.id !== account.id) {
+    for (const linked of [...(storeData.emailConnections || []), ...(storeData.calendarConnections || [])]) if (linked.googleAccountId === account.id) linked.googleAccountId = matchingAccount.id;
+    storeData.googleAccounts.splice(storeData.googleAccounts.indexOf(account), 1);
   }
   let previousTokens = {};
   try { previousTokens = savedAccount.oauthTokens ? decryptEmailTokens(savedAccount.oauthTokens) : {}; } catch {}
@@ -1166,7 +1200,8 @@ function saveGoogleAccountOAuth(storeData, { account, connection, tokens, email,
   savedAccount.status = "active";
   savedAccount.authorizationStatus = "authorized";
   savedAccount.authorizationReady = true;
-  savedAccount.enabledResources = { gmail: true, calendar: true };
+  savedAccount.selectedApps = [...new Set([...(savedAccount.selectedApps || []), ...selectedApps])].filter((appId) => GOOGLE_APP_CATALOG.some((app) => app.id === appId));
+  savedAccount.enabledResources = Object.fromEntries(savedAccount.selectedApps.map((appId) => [appId, true]));
   savedAccount.oauthClient = oauthClient === "gmail" ? "gmail" : "calendar";
   savedAccount.oauthTokens = encryptEmailTokens(nextTokens);
   savedAccount.oauthStateHash = "";
@@ -1181,24 +1216,86 @@ function saveGoogleAccountOAuth(storeData, { account, connection, tokens, email,
   return savedAccount;
 }
 
-async function completeGoogleAccountAuthorization(account, code, redirectUri) {
-  const config = googleAccountProviderConfig(account.oauthClient);
+async function completeGoogleAccountAuthorization(storeData, account, code, redirectUri) {
+  const requestedApps = Array.isArray(account.pendingApps) ? account.pendingApps : ["gmail", "calendar"];
+  const requestedScopes = Array.isArray(account.oauthRequestedScopes) && account.oauthRequestedScopes.length ? account.oauthRequestedScopes : googleScopesForApps(requestedApps);
+  const config = googleAccountProviderConfig(account.oauthClient, requestedScopes);
   const tokenBody = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, code, redirect_uri: redirectUri, grant_type: "authorization_code" });
   const tokenResponse = await fetch(config.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: tokenBody });
   const tokens = await tokenResponse.json();
   if (!tokenResponse.ok) return { error: tokens.error_description || tokens.error || "Google account authorization failed." };
   account.oauthStateHash = "";
   account.oauthStateExpiresAt = "";
-  if (!hasGoogleSharedScopes(tokens)) {
+  const granted = googleGrantedScopeSet(account, tokens);
+  const missingScopes = requestedScopes.filter((scope) => scope.startsWith("https://") && !granted.has(scope));
+  if (missingScopes.length) {
     account.status = "permission_required";
     account.authorizationStatus = "permission_required";
-    account.lastError = "Approve both read-only Gmail and Calendar permissions to connect the Google account once.";
+    account.lastError = "Approve the selected read-only Google app permissions to finish setup.";
     account.updatedAt = new Date().toISOString();
     return { permissionRequired: true };
   }
   const identity = await googleIdentity(tokens);
-  saveGoogleAccountOAuth({ googleAccounts: [account] }, { account, tokens, email: identity.email || account.email, displayName: identity.displayName, oauthClient: account.oauthClient });
-  return { account };
+  const savedAccount = saveGoogleAccountOAuth(storeData, { account, tokens: { ...tokens, scope: [...granted].join(" ") }, email: identity.email || account.email, displayName: identity.displayName, oauthClient: account.oauthClient, selectedApps: requestedApps });
+  account.pendingApps = [];
+  account.oauthRequestedScopes = [];
+  return { account: savedAccount };
+}
+
+async function googleAccountTokens(account) {
+  const tokens = decryptEmailTokens(account.oauthTokens);
+  if (!tokens) throw Object.assign(new Error("Connect this Google account before scanning apps."), { status: 409 });
+  if (!tokens.expiresAt || tokens.expiresAt > Date.now() + 60_000) return tokens;
+  const config = googleAccountProviderConfig(account.oauthClient, googleScopesForApps(account.selectedApps));
+  if (!tokens.refresh_token || !config.clientId || !config.clientSecret) throw Object.assign(new Error("Google authorization expired. Reconnect the account."), { status: 401 });
+  const body = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, refresh_token: tokens.refresh_token, grant_type: "refresh_token" });
+  const response = await fetch(config.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body, signal: AbortSignal.timeout(15_000) });
+  const fresh = await response.json();
+  if (!response.ok) throw Object.assign(new Error(fresh.error_description || fresh.error || "Could not refresh Google authorization."), { status: 502 });
+  const next = { ...tokens, ...fresh, scope: fresh.scope || tokens.scope, refresh_token: fresh.refresh_token || tokens.refresh_token, expiresAt: Date.now() + Number(fresh.expires_in || 3600) * 1000 };
+  account.oauthTokens = encryptEmailTokens(next);
+  account.updatedAt = new Date().toISOString();
+  return next;
+}
+
+async function googleProbe(accessToken, input) {
+  const url = new URL(input.url);
+  for (const [key, value] of Object.entries(input.params || {})) url.searchParams.set(key, value);
+  const response = await fetch(url, { headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
+  let data = {};
+  try { data = await response.json(); } catch {}
+  if (!response.ok) {
+    const message = clean(data?.error?.message || data?.error_description || `Google returned ${response.status}.`);
+    const setupRequired = response.status === 403 && /disabled|not been used|access not configured|enable/i.test(message);
+    return { status: setupRequired ? "setup_required" : response.status === 401 || response.status === 403 ? "permission_required" : "error", detail: message || "Could not check this Google app." };
+  }
+  return input.summarize(data);
+}
+
+async function scanGoogleApp(account, app, tokens, granted) {
+  if (!account.selectedApps.includes(app.id)) return { id: app.id, status: "not_selected", detail: "Select this app to request access." };
+  if (!app.scopes.every((scope) => granted.has(scope))) return { id: app.id, status: "permission_required", detail: "Google permission is still required." };
+  const probes = {
+    gmail: { url: "https://gmail.googleapis.com/gmail/v1/users/me/profile", summarize: (data) => ({ status: "detected", count: Number(data.messagesTotal || 0), detail: data.emailAddress ? `Mailbox found for ${clean(data.emailAddress)}.` : "Gmail is available." }) },
+    calendar: { url: "https://www.googleapis.com/calendar/v3/users/me/calendarList", params: { maxResults: "250" }, summarize: (data) => ({ status: "detected", count: (data.items || []).length, detail: `${(data.items || []).length} calendar${(data.items || []).length === 1 ? "" : "s"} found.` }) },
+    drive: { url: "https://www.googleapis.com/drive/v3/about", params: { fields: "user,storageQuota" }, summarize: (data) => ({ status: "detected", detail: data.user?.displayName ? `Drive found for ${clean(data.user.displayName)}.` : "Google Drive is available." }) },
+    contacts: { url: "https://people.googleapis.com/v1/people/me/connections", params: { pageSize: "1", personFields: "names,emailAddresses" }, summarize: (data) => ({ status: "detected", count: Number(data.totalItems || data.totalPeople || (data.connections || []).length), detail: "Google Contacts is available." }) },
+    sheets: { url: "https://www.googleapis.com/drive/v3/files", params: { pageSize: "10", fields: "files(id,name)", q: "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false" }, summarize: (data) => ({ status: "detected", count: (data.files || []).length, detail: `${(data.files || []).length}${(data.files || []).length === 10 ? "+" : ""} spreadsheet${(data.files || []).length === 1 ? "" : "s"} found.` }) },
+    forms: { url: "https://www.googleapis.com/drive/v3/files", params: { pageSize: "10", fields: "files(id,name)", q: "mimeType='application/vnd.google-apps.form' and trashed=false" }, summarize: (data) => ({ status: "detected", count: (data.files || []).length, detail: `${(data.files || []).length}${(data.files || []).length === 10 ? "+" : ""} form${(data.files || []).length === 1 ? "" : "s"} found.` }) }
+  };
+  const result = await googleProbe(tokens.access_token, probes[app.id]);
+  return { id: app.id, ...result };
+}
+
+async function scanGoogleAccountApps(account) {
+  const tokens = await googleAccountTokens(account);
+  const granted = googleGrantedScopeSet(account, tokens);
+  const apps = await Promise.all(GOOGLE_APP_CATALOG.map((app) => scanGoogleApp(account, app, tokens, granted)));
+  const now = new Date().toISOString();
+  account.appScan = { status: "complete", scannedAt: now, apps };
+  account.lastScannedAt = now;
+  account.updatedAt = now;
+  return account.appScan;
 }
 
 function calendarOAuthRedirectUri(req) {
@@ -2578,7 +2675,7 @@ async function api(req, res, url, route) {
     const sharedGoogleAccount = storeData.googleAccounts.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
     if (sharedGoogleAccount) {
       if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
-      const result = await completeGoogleAccountAuthorization(sharedGoogleAccount, clean(url.searchParams.get("code")), `${ORIGIN}/api/email/oauth/callback`);
+      const result = await completeGoogleAccountAuthorization(storeData, sharedGoogleAccount, clean(url.searchParams.get("code")), `${ORIGIN}/api/email/oauth/callback`);
       await saveStore(storeData);
       if (result.error) return send(res, 502, { error: result.error });
       if (result.permissionRequired) return redirect(res, "/dashboard?google_account_scope_required=1");
@@ -2609,7 +2706,7 @@ async function api(req, res, url, route) {
     let savedGoogleAccount = null;
     if (connection.provider === "gmail") {
       const identity = await googleIdentity(tokens);
-      savedGoogleAccount = saveGoogleAccountOAuth(storeData, { connection, tokens, email: identity.email || connection.emailAddress, displayName: identity.displayName, oauthClient: "gmail" });
+      savedGoogleAccount = saveGoogleAccountOAuth(storeData, { connection, tokens, email: identity.email || connection.emailAddress, displayName: identity.displayName, oauthClient: "gmail", selectedApps: ["gmail", "calendar"] });
       connection.emailAddress = savedGoogleAccount.email;
     } else {
       connection.oauthTokens = encryptEmailTokens({ ...tokens, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });
@@ -2633,7 +2730,7 @@ async function api(req, res, url, route) {
     if (sharedGoogleAccount) {
       if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
       const redirectUri = calendarOAuthRedirectUri(req);
-      const result = await completeGoogleAccountAuthorization(sharedGoogleAccount, clean(url.searchParams.get("code")), redirectUri);
+      const result = await completeGoogleAccountAuthorization(storeData, sharedGoogleAccount, clean(url.searchParams.get("code")), redirectUri);
       await saveStore(storeData);
       if (result.error) return send(res, 502, { error: result.error });
       if (result.permissionRequired) return redirect(res, "/dashboard?google_account_scope_required=1");
@@ -2669,7 +2766,7 @@ async function api(req, res, url, route) {
     }
     let savedGoogleAccount = null;
     if (connection.provider === "google") {
-      savedGoogleAccount = saveGoogleAccountOAuth(storeData, { connection, tokens, email: googleProfile.email || connection.accountEmail, displayName: googleProfile.displayName, oauthClient: "calendar" });
+      savedGoogleAccount = saveGoogleAccountOAuth(storeData, { connection, tokens, email: googleProfile.email || connection.accountEmail, displayName: googleProfile.displayName, oauthClient: "calendar", selectedApps: ["gmail", "calendar"] });
       connection.accountEmail = savedGoogleAccount.email;
     } else {
       connection.oauthTokens = encryptEmailTokens({ ...tokens, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });
@@ -2862,7 +2959,7 @@ async function api(req, res, url, route) {
   if (req.method === "GET" && route === "/api/form-connections") return send(res, 200, { connections: storeData.formConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ tokenHash, ...entry }) => entry) });
   if (req.method === "GET" && route === "/api/website-connections") return send(res, 200, { connections: storeData.websiteConnections.filter((entry) => entry.workspaceId === ctx.workspaceId) });
   if (req.method === "GET" && route === "/api/ingestion-events") return send(res, 200, { events: storeData.ingestionEvents.filter((entry) => entry.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
-  if (req.method === "GET" && route === "/api/google-accounts") return send(res, 200, { accounts: storeData.googleAccounts.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => googleAccountSafe(entry, storeData)) });
+  if (req.method === "GET" && route === "/api/google-accounts") return send(res, 200, { accounts: storeData.googleAccounts.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => googleAccountSafe(entry, storeData)), apps: googleAppCatalogSafe() });
   if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ oauthTokens, oauthStateHash, ...entry }) => ({ ...entry, automationPolicy: emailAutomationPolicy(entry.automationPolicy) })) });
   if (req.method === "GET" && route === "/api/calendar-connections") return send(res, 200, { connections: storeData.calendarConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => calendarConnectionSafe({ ...entry, oauthRedirectUri: ["google", "microsoft"].includes(entry.provider) ? calendarOAuthRedirectUri(req) : "" })) });
   if (req.method === "POST" && route === "/api/calendar-connections/sync") {
@@ -2896,7 +2993,7 @@ async function api(req, res, url, route) {
     const config = googleAccountProviderConfig();
     const authorizationReady = Boolean(emailTokenKey() && config.clientId && config.clientSecret);
     const now = new Date().toISOString();
-    const account = { id: id("google"), accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, name: clean(body.name || "Google Workspace"), displayName: "", email, status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, enabledResources: { gmail: true, calendar: true }, oauthClient: "calendar", oauthTokens: "", oauthRedirectUri: calendarOAuthRedirectUri(req), authorizedAt: "", lastError: "", createdAt: now, updatedAt: now };
+    const account = { id: id("google"), accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, name: clean(body.name || "Google Workspace"), displayName: "", email, status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, enabledResources: {}, selectedApps: [], appScan: { status: "not_scanned", scannedAt: "", apps: [] }, oauthClient: "calendar", oauthTokens: "", oauthRedirectUri: calendarOAuthRedirectUri(req), authorizedAt: "", lastError: "", createdAt: now, updatedAt: now };
     storeData.googleAccounts.push(account);
     await saveStore(storeData);
     return send(res, 201, { account: googleAccountSafe(account, storeData) });
@@ -2905,7 +3002,9 @@ async function api(req, res, url, route) {
   if (req.method === "POST" && googleAccountAuthorizeMatch) {
     const account = storeData.googleAccounts.find((entry) => entry.id === googleAccountAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId);
     if (!account) return send(res, 404, { error: "Google account connection not found." });
-    const config = googleAccountProviderConfig(account.oauthClient);
+    account.pendingApps = [];
+    account.oauthRequestedScopes = GOOGLE_IDENTITY_SCOPES;
+    const config = googleAccountProviderConfig(account.oauthClient, account.oauthRequestedScopes);
     if (!config.clientId || !config.clientSecret) return send(res, 503, { error: "Google OAuth credentials are not configured." });
     if (!emailTokenKey()) return send(res, 503, { error: `${EMAIL_TOKEN_KEY_ENV} is not configured.` });
     const state = crypto.randomBytes(32).toString("base64url");
@@ -2921,10 +3020,54 @@ async function api(req, res, url, route) {
     authorizeUrl.searchParams.set("state", state);
     authorizeUrl.searchParams.set("access_type", "offline");
     authorizeUrl.searchParams.set("prompt", "select_account consent");
-    authorizeUrl.searchParams.set("include_granted_scopes", "false");
+    authorizeUrl.searchParams.set("include_granted_scopes", "true");
     if (account.email) authorizeUrl.searchParams.set("login_hint", account.email);
     await saveStore(storeData);
     return send(res, 200, { authorizeUrl: authorizeUrl.toString() });
+  }
+  const googleAppsAuthorizeMatch = route.match(/^\/api\/google-accounts\/([^/]+)\/apps\/authorize$/);
+  if (req.method === "POST" && googleAppsAuthorizeMatch) {
+    const account = storeData.googleAccounts.find((entry) => entry.id === googleAppsAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!account) return send(res, 404, { error: "Google account connection not found." });
+    const body = await readBody(req);
+    const selectedApps = [...new Set((Array.isArray(body.apps) ? body.apps : []).map(clean))].filter((appId) => GOOGLE_APP_CATALOG.some((app) => app.id === appId));
+    account.selectedApps = selectedApps;
+    account.enabledResources = Object.fromEntries(selectedApps.map((appId) => [appId, true]));
+    account.appScan = { status: "pending", scannedAt: account.appScan?.scannedAt || "", apps: account.appScan?.apps || [] };
+    account.updatedAt = new Date().toISOString();
+    if (!selectedApps.length) {
+      await saveStore(storeData);
+      return send(res, 200, { account: googleAccountSafe(account, storeData), authorizeUrl: "" });
+    }
+    account.pendingApps = selectedApps;
+    account.oauthRequestedScopes = googleScopesForApps(selectedApps);
+    const config = googleAccountProviderConfig(account.oauthClient, account.oauthRequestedScopes);
+    if (!config.clientId || !config.clientSecret) return send(res, 503, { error: "Google OAuth credentials are not configured." });
+    if (!emailTokenKey()) return send(res, 503, { error: `${EMAIL_TOKEN_KEY_ENV} is not configured.` });
+    const state = crypto.randomBytes(32).toString("base64url");
+    account.oauthStateHash = hashToken(state);
+    account.oauthStateExpiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+    account.oauthRedirectUri = account.oauthClient === "gmail" ? `${ORIGIN}/api/email/oauth/callback` : calendarOAuthRedirectUri(req);
+    const authorizeUrl = new URL(config.authorizeUrl);
+    authorizeUrl.searchParams.set("client_id", config.clientId);
+    authorizeUrl.searchParams.set("redirect_uri", account.oauthRedirectUri);
+    authorizeUrl.searchParams.set("response_type", "code");
+    authorizeUrl.searchParams.set("scope", config.scope);
+    authorizeUrl.searchParams.set("state", state);
+    authorizeUrl.searchParams.set("access_type", "offline");
+    authorizeUrl.searchParams.set("prompt", "consent");
+    authorizeUrl.searchParams.set("include_granted_scopes", "true");
+    if (account.email) authorizeUrl.searchParams.set("login_hint", account.email);
+    await saveStore(storeData);
+    return send(res, 200, { authorizeUrl: authorizeUrl.toString() });
+  }
+  const googleAppsScanMatch = route.match(/^\/api\/google-accounts\/([^/]+)\/apps\/scan$/);
+  if (req.method === "POST" && googleAppsScanMatch) {
+    const account = storeData.googleAccounts.find((entry) => entry.id === googleAppsScanMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!account) return send(res, 404, { error: "Google account connection not found." });
+    const scan = await scanGoogleAccountApps(account);
+    await saveStore(storeData);
+    return send(res, 200, { account: googleAccountSafe(account, storeData), scan });
   }
   const emailSettingsMatch = route.match(/^\/api\/email-connections\/([^/]+)$/);
   if (req.method === "PATCH" && emailSettingsMatch) {
