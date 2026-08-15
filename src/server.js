@@ -136,6 +136,7 @@ function seed() {
     formConnections: [],
     emailConnections: [],
     googleAccounts: [],
+    microsoftAccounts: [],
     calendarConnections: [],
     businessConnections: [],
     messagingConnections: [],
@@ -236,6 +237,7 @@ function normalize(storeData) {
   storeData.formConnections ||= [];
   storeData.emailConnections ||= [];
   storeData.googleAccounts ||= [];
+  storeData.microsoftAccounts ||= [];
   storeData.calendarConnections ||= [];
   storeData.businessConnections ||= [];
   storeData.messagingConnections ||= [];
@@ -269,6 +271,14 @@ function normalize(storeData) {
     account.enabledResources ||= { gmail: true, calendar: true };
     account.oauthClient ||= "calendar";
     account.selectedApps = Array.isArray(account.selectedApps) ? [...new Set(account.selectedApps.map(clean).filter((appId) => GOOGLE_APP_CATALOG.some((app) => app.id === appId)))] : googleAuthorizedApps(account);
+    account.appScan ||= { status: "not_scanned", scannedAt: "", apps: [] };
+  }
+  for (const account of storeData.microsoftAccounts) {
+    account.accountUserId ||= storeData.users.find((user) => user.workspaceId === account.workspaceId)?.id || "";
+    account.status ||= account.oauthTokens ? "active" : "draft";
+    account.authorizationStatus ||= account.oauthTokens ? "authorized" : "ready";
+    account.oauthClient ||= "outlook";
+    account.selectedApps = Array.isArray(account.selectedApps) ? [...new Set(account.selectedApps.map(clean).filter((appId) => MICROSOFT_APP_CATALOG.some((app) => app.id === appId)))] : microsoftAuthorizedApps(account);
     account.appScan ||= { status: "not_scanned", scannedAt: "", apps: [] };
   }
   for (const connection of storeData.calendarConnections) {
@@ -1069,7 +1079,7 @@ function decryptEmailTokens(value) {
 
 function emailProviderConfig(provider) {
   if (provider === "gmail") return { clientId: process.env.GMAIL_CLIENT_ID, clientSecret: process.env.GMAIL_CLIENT_SECRET, authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth", tokenUrl: "https://oauth2.googleapis.com/token", scope: "openid email https://www.googleapis.com/auth/gmail.readonly" };
-  if (provider === "outlook") return { clientId: process.env.MICROSOFT_CLIENT_ID, clientSecret: process.env.MICROSOFT_CLIENT_SECRET, authorizeUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize", tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token", scope: "openid email offline_access Mail.Read" };
+  if (provider === "outlook") return { clientId: process.env.MICROSOFT_CLIENT_ID, clientSecret: process.env.MICROSOFT_CLIENT_SECRET, authorizeUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize", tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token", scope: "openid email offline_access User.Read Mail.Read Calendars.Read" };
   return null;
 }
 
@@ -1086,7 +1096,7 @@ function calendarProviderConfig(provider) {
     clientSecret: process.env.MICROSOFT_CALENDAR_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET,
     authorizeUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
     tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
-    scope: "openid email offline_access Calendars.Read"
+    scope: "openid email offline_access User.Read Mail.Read Calendars.Read"
   };
   return null;
 }
@@ -1298,6 +1308,192 @@ async function scanGoogleAccountApps(account) {
   return account.appScan;
 }
 
+const MICROSOFT_IDENTITY_SCOPES = ["openid", "email", "offline_access", "User.Read"];
+const MICROSOFT_APP_CATALOG = [
+  { id: "mail", name: "Outlook Mail", resource: "Email inbox", description: "Review incoming Outlook email for CRM activity.", scopes: ["Mail.Read"] },
+  { id: "calendar", name: "Outlook Calendar", resource: "Calendar", description: "Review Microsoft calendars for meetings and follow-ups.", scopes: ["Calendars.Read"] },
+  { id: "onedrive", name: "OneDrive", resource: "File uploads", description: "Find Microsoft files that can be brought into the project.", scopes: ["Files.Read"] },
+  { id: "contacts", name: "Microsoft Contacts", resource: "CRM", description: "Check Outlook contacts for future CRM enrichment.", scopes: ["Contacts.Read"] },
+  { id: "teams", name: "Microsoft Teams", resource: "Messaging", description: "Find Teams available to a work or school account.", scopes: ["Team.ReadBasic.All"] },
+  { id: "excel", name: "Microsoft Excel", resource: "CRM and business tools", description: "Find Excel workbooks available through OneDrive.", scopes: ["Files.Read"] }
+];
+const MICROSOFT_RESOURCE_SCOPES = [...MICROSOFT_IDENTITY_SCOPES, "Mail.Read", "Calendars.Read"];
+
+function microsoftApps(ids) {
+  const selected = new Set(Array.isArray(ids) ? ids.map(clean) : []);
+  return MICROSOFT_APP_CATALOG.filter((app) => selected.has(app.id));
+}
+
+function microsoftScopesForApps(ids) {
+  return [...new Set([...MICROSOFT_IDENTITY_SCOPES, ...microsoftApps(ids).flatMap((app) => app.scopes)])];
+}
+
+function microsoftAppCatalogSafe() {
+  return MICROSOFT_APP_CATALOG.map(({ scopes, ...app }) => ({ ...app, permissions: scopes.length }));
+}
+
+function microsoftAccountProviderConfig(oauthClient = "outlook", scopes = MICROSOFT_RESOURCE_SCOPES) {
+  const calendarClient = oauthClient === "calendar";
+  const teamsClient = oauthClient === "teams";
+  return {
+    clientId: teamsClient ? process.env.MICROSOFT_TEAMS_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID : calendarClient ? process.env.MICROSOFT_CALENDAR_CLIENT_ID || process.env.MICROSOFT_CLIENT_ID : process.env.MICROSOFT_CLIENT_ID,
+    clientSecret: teamsClient ? process.env.MICROSOFT_TEAMS_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET : calendarClient ? process.env.MICROSOFT_CALENDAR_CLIENT_SECRET || process.env.MICROSOFT_CLIENT_SECRET : process.env.MICROSOFT_CLIENT_SECRET,
+    authorizeUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+    tokenUrl: "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+    scope: scopes.join(" ")
+  };
+}
+
+function microsoftGrantedScopeSet(account, tokens = {}) {
+  let stored = {};
+  try { stored = account?.oauthTokens ? decryptEmailTokens(account.oauthTokens) : {}; } catch {}
+  return new Set(`${stored.scope || ""} ${tokens.scope || ""}`.split(/\s+/).filter(Boolean).map((scope) => scope.toLowerCase()));
+}
+
+function microsoftAuthorizedApps(account) {
+  const granted = microsoftGrantedScopeSet(account);
+  return MICROSOFT_APP_CATALOG.filter((app) => app.scopes.every((scope) => granted.has(scope.toLowerCase()))).map((app) => app.id);
+}
+
+function microsoftAccountSafe(account, storeData) {
+  const { oauthTokens, oauthStateHash, oauthStateExpiresAt, oauthRequestedScopes, pendingApps, ...safe } = account;
+  const linkedEmail = storeData?.emailConnections?.filter((entry) => entry.workspaceId === account.workspaceId && entry.microsoftAccountId === account.id).length || 0;
+  const linkedCalendars = storeData?.calendarConnections?.filter((entry) => entry.workspaceId === account.workspaceId && entry.microsoftAccountId === account.id).length || 0;
+  return { ...safe, selectedApps: Array.isArray(account.selectedApps) ? account.selectedApps : [], authorizedApps: microsoftAuthorizedApps(account), credentialConfigured: Boolean(oauthTokens), linkedResources: { email: linkedEmail, calendar: linkedCalendars } };
+}
+
+function linkedMicrosoftAccount(storeData, connection) {
+  if (!connection?.microsoftAccountId) return null;
+  return storeData.microsoftAccounts.find((entry) => entry.id === connection.microsoftAccountId && entry.workspaceId === connection.workspaceId && entry.status === "active" && entry.authorizationStatus === "authorized") || null;
+}
+
+async function microsoftIdentity(tokens) {
+  if (!tokens?.access_token) return { email: "", displayName: "" };
+  try {
+    const response = await fetch("https://graph.microsoft.com/v1.0/me?$select=id,displayName,mail,userPrincipalName", { headers: { authorization: `Bearer ${tokens.access_token}`, accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) return { email: "", displayName: "" };
+    const profile = await response.json();
+    return { email: clean(profile.mail || profile.userPrincipalName).toLowerCase(), displayName: clean(profile.displayName) };
+  } catch {
+    return { email: "", displayName: "" };
+  }
+}
+
+function saveMicrosoftAccountOAuth(storeData, { account, connection, tokens, email, displayName, oauthClient, selectedApps = [] }) {
+  const workspaceId = account?.workspaceId || connection?.workspaceId || "";
+  const normalizedEmail = clean(email || account?.email || connection?.emailAddress || connection?.accountEmail).toLowerCase();
+  const matchingAccount = storeData.microsoftAccounts.find((entry) => entry.workspaceId === workspaceId && entry.email === normalizedEmail && entry.id !== account?.id);
+  let savedAccount = matchingAccount || account;
+  const now = new Date().toISOString();
+  if (!savedAccount) {
+    savedAccount = { id: id("microsoft"), accountUserId: connection?.accountUserId || "", workspaceId, name: "Microsoft 365", createdAt: now };
+    storeData.microsoftAccounts.push(savedAccount);
+  }
+  if (matchingAccount && account && matchingAccount.id !== account.id) {
+    for (const linked of [...(storeData.emailConnections || []), ...(storeData.calendarConnections || []), ...(storeData.messagingConnections || [])]) if (linked.microsoftAccountId === account.id) linked.microsoftAccountId = matchingAccount.id;
+    storeData.microsoftAccounts.splice(storeData.microsoftAccounts.indexOf(account), 1);
+  }
+  let previousTokens = {};
+  try { previousTokens = savedAccount.oauthTokens ? decryptEmailTokens(savedAccount.oauthTokens) : {}; } catch {}
+  const granted = new Set(`${previousTokens.scope || ""} ${tokens.scope || ""}`.split(/\s+/).filter(Boolean));
+  const nextTokens = { ...previousTokens, ...tokens, scope: [...granted].join(" "), refresh_token: tokens.refresh_token || previousTokens.refresh_token, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 };
+  savedAccount.accountUserId ||= connection?.accountUserId || "";
+  savedAccount.name ||= "Microsoft 365";
+  savedAccount.displayName = clean(displayName || savedAccount.displayName || normalizedEmail);
+  savedAccount.email = normalizedEmail;
+  savedAccount.status = "active";
+  savedAccount.authorizationStatus = "authorized";
+  savedAccount.authorizationReady = true;
+  savedAccount.selectedApps = [...new Set([...(savedAccount.selectedApps || []), ...selectedApps])].filter((appId) => MICROSOFT_APP_CATALOG.some((app) => app.id === appId));
+  savedAccount.enabledResources = Object.fromEntries(savedAccount.selectedApps.map((appId) => [appId, true]));
+  savedAccount.oauthClient = ["calendar", "teams"].includes(oauthClient) ? oauthClient : "outlook";
+  savedAccount.oauthTokens = encryptEmailTokens(nextTokens);
+  savedAccount.oauthStateHash = "";
+  savedAccount.oauthStateExpiresAt = "";
+  savedAccount.authorizedAt = now;
+  savedAccount.lastError = "";
+  savedAccount.updatedAt = now;
+  if (connection) {
+    connection.microsoftAccountId = savedAccount.id;
+    connection.oauthTokens = "";
+  }
+  return savedAccount;
+}
+
+async function completeMicrosoftAccountAuthorization(storeData, account, code, redirectUri) {
+  const requestedApps = Array.isArray(account.pendingApps) ? account.pendingApps : ["mail", "calendar"];
+  const requestedScopes = Array.isArray(account.oauthRequestedScopes) && account.oauthRequestedScopes.length ? account.oauthRequestedScopes : microsoftScopesForApps(requestedApps);
+  const config = microsoftAccountProviderConfig(account.oauthClient, requestedScopes);
+  const body = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, code, redirect_uri: redirectUri, grant_type: "authorization_code", scope: config.scope });
+  const response = await fetch(config.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body, signal: AbortSignal.timeout(15_000) });
+  const tokens = await response.json();
+  if (!response.ok) return { error: tokens.error_description || tokens.error || "Microsoft account authorization failed." };
+  const granted = microsoftGrantedScopeSet(account, tokens);
+  const missing = requestedScopes.filter((scope) => !["openid", "email", "offline_access"].includes(scope) && !granted.has(scope.toLowerCase()));
+  if (missing.length) {
+    account.status = "permission_required";
+    account.authorizationStatus = "permission_required";
+    account.lastError = "Approve the selected read-only Microsoft app permissions to finish setup.";
+    account.updatedAt = new Date().toISOString();
+    return { permissionRequired: true };
+  }
+  const identity = await microsoftIdentity(tokens);
+  const savedAccount = saveMicrosoftAccountOAuth(storeData, { account, tokens, email: identity.email || account.email, displayName: identity.displayName, oauthClient: account.oauthClient, selectedApps: requestedApps });
+  account.pendingApps = [];
+  account.oauthRequestedScopes = [];
+  return { account: savedAccount };
+}
+
+async function microsoftAccountTokens(account) {
+  const tokens = decryptEmailTokens(account.oauthTokens);
+  if (!tokens) throw Object.assign(new Error("Connect this Microsoft account before scanning apps."), { status: 409 });
+  if (!tokens.expiresAt || tokens.expiresAt > Date.now() + 60_000) return tokens;
+  const config = microsoftAccountProviderConfig(account.oauthClient, microsoftScopesForApps(account.selectedApps));
+  if (!tokens.refresh_token || !config.clientId || !config.clientSecret) throw Object.assign(new Error("Microsoft authorization expired. Reconnect the account."), { status: 401 });
+  const body = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, refresh_token: tokens.refresh_token, grant_type: "refresh_token", scope: config.scope });
+  const response = await fetch(config.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body, signal: AbortSignal.timeout(15_000) });
+  const fresh = await response.json();
+  if (!response.ok) throw Object.assign(new Error(fresh.error_description || fresh.error || "Could not refresh Microsoft authorization."), { status: 502 });
+  const next = { ...tokens, ...fresh, scope: fresh.scope || tokens.scope, refresh_token: fresh.refresh_token || tokens.refresh_token, expiresAt: Date.now() + Number(fresh.expires_in || 3600) * 1000 };
+  account.oauthTokens = encryptEmailTokens(next);
+  account.updatedAt = new Date().toISOString();
+  return next;
+}
+
+async function microsoftProbe(accessToken, input) {
+  const response = await fetch(input.url, { headers: { authorization: `Bearer ${accessToken}`, accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
+  let data = {};
+  try { data = await response.json(); } catch {}
+  if (!response.ok) {
+    const detail = clean(data?.error?.message || `Microsoft Graph returned ${response.status}.`);
+    return { status: [400, 404].includes(response.status) ? "not_available" : response.status === 401 || response.status === 403 ? "permission_required" : "error", detail };
+  }
+  return input.summarize(data);
+}
+
+async function scanMicrosoftAccountApps(account) {
+  const tokens = await microsoftAccountTokens(account);
+  const granted = microsoftGrantedScopeSet(account, tokens);
+  const probes = {
+    mail: { url: "https://graph.microsoft.com/v1.0/me/mailFolders/inbox?$select=displayName,totalItemCount,unreadItemCount", summarize: (data) => ({ status: "detected", count: Number(data.totalItemCount || 0), detail: `${Number(data.unreadItemCount || 0)} unread message${Number(data.unreadItemCount || 0) === 1 ? "" : "s"}.` }) },
+    calendar: { url: "https://graph.microsoft.com/v1.0/me/calendars?$select=id,name&$top=50", summarize: (data) => ({ status: "detected", count: (data.value || []).length, detail: `${(data.value || []).length} calendar${(data.value || []).length === 1 ? "" : "s"} found.` }) },
+    onedrive: { url: "https://graph.microsoft.com/v1.0/me/drive?$select=id,driveType,quota,owner", summarize: (data) => ({ status: "detected", detail: data.driveType ? `${clean(data.driveType)} drive is available.` : "OneDrive is available." }) },
+    contacts: { url: "https://graph.microsoft.com/v1.0/me/contacts?$select=id&$top=1&$count=true", summarize: (data) => ({ status: "detected", count: Number(data["@odata.count"] || (data.value || []).length), detail: "Microsoft Contacts is available." }) },
+    teams: { url: "https://graph.microsoft.com/v1.0/me/joinedTeams", summarize: (data) => ({ status: "detected", count: (data.value || []).length, detail: `${(data.value || []).length} team${(data.value || []).length === 1 ? "" : "s"} found.` }) },
+    excel: { url: "https://graph.microsoft.com/v1.0/me/drive/root/search(q='.xlsx')?$select=id,name,file&$top=10", summarize: (data) => ({ status: "detected", count: (data.value || []).length, detail: `${(data.value || []).length}${(data.value || []).length === 10 ? "+" : ""} workbook${(data.value || []).length === 1 ? "" : "s"} found.` }) }
+  };
+  const apps = await Promise.all(MICROSOFT_APP_CATALOG.map(async (app) => {
+    if (!account.selectedApps.includes(app.id)) return { id: app.id, status: "not_selected", detail: "Select this app to request access." };
+    if (!app.scopes.every((scope) => granted.has(scope.toLowerCase()))) return { id: app.id, status: "permission_required", detail: "Microsoft permission is still required." };
+    return { id: app.id, ...await microsoftProbe(tokens.access_token, probes[app.id]) };
+  }));
+  const now = new Date().toISOString();
+  account.appScan = { status: "complete", scannedAt: now, apps };
+  account.lastScannedAt = now;
+  account.updatedAt = now;
+  return account.appScan;
+}
+
 function calendarOAuthRedirectUri(req) {
   const forwardedProtocol = clean(req?.headers?.["x-forwarded-proto"]).split(",")[0].toLowerCase();
   const forwardedHost = clean(req?.headers?.["x-forwarded-host"]).split(",")[0];
@@ -1311,7 +1507,7 @@ function calendarOAuthRedirectUri(req) {
 
 function calendarConnectionSafe(connection) {
   const { oauthTokens, oauthStateHash, oauthStateExpiresAt, calendarSyncToken, calendarSyncTokens, ...safe } = connection;
-  return { ...safe, credentialConfigured: Boolean(oauthTokens || connection.googleAccountId) };
+  return { ...safe, credentialConfigured: Boolean(oauthTokens || connection.googleAccountId || connection.microsoftAccountId) };
 }
 
 function calendarOptionSafe(calendar) {
@@ -1666,12 +1862,14 @@ async function fetchImapMessages(connection) {
 }
 
 async function emailProviderTokens(connection, storeData) {
-  const sharedAccount = connection.provider === "gmail" ? linkedGoogleAccount(storeData, connection) : null;
+  const googleAccount = connection.provider === "gmail" ? linkedGoogleAccount(storeData, connection) : null;
+  const microsoftAccount = connection.provider === "outlook" ? linkedMicrosoftAccount(storeData, connection) : null;
+  const sharedAccount = googleAccount || microsoftAccount;
   const tokenOwner = sharedAccount || connection;
   const tokens = decryptEmailTokens(tokenOwner.oauthTokens);
   if (!tokens) throw Object.assign(new Error("Authorize this mailbox before syncing."), { status: 409 });
   if (!tokens.expiresAt || tokens.expiresAt > Date.now() + 60_000) return tokens;
-  const config = sharedAccount ? googleAccountProviderConfig(sharedAccount.oauthClient) : emailProviderConfig(connection.provider);
+  const config = googleAccount ? googleAccountProviderConfig(sharedAccount.oauthClient) : microsoftAccount ? microsoftAccountProviderConfig(sharedAccount.oauthClient) : emailProviderConfig(connection.provider);
   if (!tokens.refresh_token || !config) throw Object.assign(new Error("Mailbox authorization expired. Reconnect the inbox."), { status: 401 });
   const body = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, refresh_token: tokens.refresh_token, grant_type: "refresh_token" });
   if (connection.provider === "outlook") body.set("scope", config.scope);
@@ -1778,12 +1976,14 @@ async function syncEmailConnection(storeData, connection) {
 }
 
 async function calendarProviderTokens(connection, storeData) {
-  const sharedAccount = connection.provider === "google" ? linkedGoogleAccount(storeData, connection) : null;
+  const googleAccount = connection.provider === "google" ? linkedGoogleAccount(storeData, connection) : null;
+  const microsoftAccount = connection.provider === "microsoft" ? linkedMicrosoftAccount(storeData, connection) : null;
+  const sharedAccount = googleAccount || microsoftAccount;
   const tokenOwner = sharedAccount || connection;
   const tokens = decryptEmailTokens(tokenOwner.oauthTokens);
   if (!tokens) throw Object.assign(new Error("Authorize this calendar before reviewing events."), { status: 409 });
   if (!tokens.expiresAt || tokens.expiresAt > Date.now() + 60_000) return tokens;
-  const config = sharedAccount ? googleAccountProviderConfig(sharedAccount.oauthClient) : calendarProviderConfig(connection.provider);
+  const config = googleAccount ? googleAccountProviderConfig(sharedAccount.oauthClient) : microsoftAccount ? microsoftAccountProviderConfig(sharedAccount.oauthClient) : calendarProviderConfig(connection.provider);
   if (!tokens.refresh_token || !config?.clientId || !config?.clientSecret) throw Object.assign(new Error("Calendar authorization expired. Reconnect the calendar."), { status: 401 });
   const body = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, refresh_token: tokens.refresh_token, grant_type: "refresh_token" });
   if (connection.provider === "microsoft") body.set("scope", config.scope);
@@ -2681,6 +2881,15 @@ async function api(req, res, url, route) {
       if (result.permissionRequired) return redirect(res, "/dashboard?google_account_scope_required=1");
       return redirect(res, "/dashboard?google_account_connected=1");
     }
+    const sharedMicrosoftAccount = storeData.microsoftAccounts.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
+    if (sharedMicrosoftAccount) {
+      if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
+      const result = await completeMicrosoftAccountAuthorization(storeData, sharedMicrosoftAccount, clean(url.searchParams.get("code")), `${ORIGIN}/api/email/oauth/callback`);
+      await saveStore(storeData);
+      if (result.error) return send(res, 502, { error: result.error });
+      if (result.permissionRequired) return redirect(res, "/dashboard?microsoft_account_scope_required=1");
+      return redirect(res, "/dashboard?microsoft_account_connected=1");
+    }
     const connection = storeData.emailConnections.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
     if (!connection) return send(res, 400, { error: "This mailbox authorization link is invalid or expired." });
     if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
@@ -2703,11 +2912,15 @@ async function api(req, res, url, route) {
       await saveStore(storeData);
       return redirect(res, "/dashboard?email_scope_required=1");
     }
-    let savedGoogleAccount = null;
+    let savedGoogleAccount = null, savedMicrosoftAccount = null;
     if (connection.provider === "gmail") {
       const identity = await googleIdentity(tokens);
       savedGoogleAccount = saveGoogleAccountOAuth(storeData, { connection, tokens, email: identity.email || connection.emailAddress, displayName: identity.displayName, oauthClient: "gmail", selectedApps: ["gmail", "calendar"] });
       connection.emailAddress = savedGoogleAccount.email;
+    } else if (connection.provider === "outlook") {
+      const identity = await microsoftIdentity(tokens);
+      savedMicrosoftAccount = saveMicrosoftAccountOAuth(storeData, { connection, tokens, email: identity.email || connection.emailAddress, displayName: identity.displayName, oauthClient: "outlook", selectedApps: ["mail", "calendar"] });
+      connection.emailAddress = savedMicrosoftAccount.email;
     } else {
       connection.oauthTokens = encryptEmailTokens({ ...tokens, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });
     }
@@ -2736,6 +2949,16 @@ async function api(req, res, url, route) {
       if (result.permissionRequired) return redirect(res, "/dashboard?google_account_scope_required=1");
       return redirect(res, "/dashboard?google_account_connected=1");
     }
+    const sharedMicrosoftAccount = storeData.microsoftAccounts.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
+    if (sharedMicrosoftAccount) {
+      if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
+      const redirectUri = calendarOAuthRedirectUri(req);
+      const result = await completeMicrosoftAccountAuthorization(storeData, sharedMicrosoftAccount, clean(url.searchParams.get("code")), redirectUri);
+      await saveStore(storeData);
+      if (result.error) return send(res, 502, { error: result.error });
+      if (result.permissionRequired) return redirect(res, "/dashboard?microsoft_account_scope_required=1");
+      return redirect(res, "/dashboard?microsoft_account_connected=1");
+    }
     const connection = storeData.calendarConnections.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
     if (!connection) return send(res, 400, { error: "This calendar authorization link is invalid or expired." });
     if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
@@ -2759,15 +2982,22 @@ async function api(req, res, url, route) {
       await saveStore(storeData);
       return redirect(res, "/dashboard?google_account_scope_required=1");
     }
-    let googleProfile = { email: "", displayName: "" };
+    let googleProfile = { email: "", displayName: "" }, microsoftProfile = { email: "", displayName: "" };
     if (connection.provider === "google" && tokens.access_token) {
       googleProfile = await googleIdentity(tokens);
       if (/^\S+@\S+\.\S+$/.test(googleProfile.email)) connection.accountEmail = googleProfile.email;
     }
-    let savedGoogleAccount = null;
+    if (connection.provider === "microsoft" && tokens.access_token) {
+      microsoftProfile = await microsoftIdentity(tokens);
+      if (/^\S+@\S+\.\S+$/.test(microsoftProfile.email)) connection.accountEmail = microsoftProfile.email;
+    }
+    let savedGoogleAccount = null, savedMicrosoftAccount = null;
     if (connection.provider === "google") {
       savedGoogleAccount = saveGoogleAccountOAuth(storeData, { connection, tokens, email: googleProfile.email || connection.accountEmail, displayName: googleProfile.displayName, oauthClient: "calendar", selectedApps: ["gmail", "calendar"] });
       connection.accountEmail = savedGoogleAccount.email;
+    } else if (connection.provider === "microsoft") {
+      savedMicrosoftAccount = saveMicrosoftAccountOAuth(storeData, { connection, tokens, email: microsoftProfile.email || connection.accountEmail, displayName: microsoftProfile.displayName, oauthClient: "calendar", selectedApps: ["mail", "calendar"] });
+      connection.accountEmail = savedMicrosoftAccount.email;
     } else {
       connection.oauthTokens = encryptEmailTokens({ ...tokens, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });
     }
@@ -2796,7 +3026,7 @@ async function api(req, res, url, route) {
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
     if (source) {
       source.status = "connected";
-      source.metadata = { ...(source.metadata || {}), connectionId: connection.id, provider: connection.provider, calendarName: connection.calendarName, accountEmail: connection.accountEmail, ...(savedGoogleAccount ? { googleAccountId: savedGoogleAccount.id } : {}) };
+      source.metadata = { ...(source.metadata || {}), connectionId: connection.id, provider: connection.provider, calendarName: connection.calendarName, accountEmail: connection.accountEmail, ...(savedGoogleAccount ? { googleAccountId: savedGoogleAccount.id } : {}), ...(savedMicrosoftAccount ? { microsoftAccountId: savedMicrosoftAccount.id } : {}) };
     }
     await saveStore(storeData);
     return redirect(res, "/dashboard?calendar_connected=1");
@@ -2960,6 +3190,7 @@ async function api(req, res, url, route) {
   if (req.method === "GET" && route === "/api/website-connections") return send(res, 200, { connections: storeData.websiteConnections.filter((entry) => entry.workspaceId === ctx.workspaceId) });
   if (req.method === "GET" && route === "/api/ingestion-events") return send(res, 200, { events: storeData.ingestionEvents.filter((entry) => entry.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/google-accounts") return send(res, 200, { accounts: storeData.googleAccounts.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => googleAccountSafe(entry, storeData)), apps: googleAppCatalogSafe() });
+  if (req.method === "GET" && route === "/api/microsoft-accounts") return send(res, 200, { accounts: storeData.microsoftAccounts.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => microsoftAccountSafe(entry, storeData)), apps: microsoftAppCatalogSafe() });
   if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ oauthTokens, oauthStateHash, ...entry }) => ({ ...entry, automationPolicy: emailAutomationPolicy(entry.automationPolicy) })) });
   if (req.method === "GET" && route === "/api/calendar-connections") return send(res, 200, { connections: storeData.calendarConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => calendarConnectionSafe({ ...entry, oauthRedirectUri: ["google", "microsoft"].includes(entry.provider) ? calendarOAuthRedirectUri(req) : "" })) });
   if (req.method === "POST" && route === "/api/calendar-connections/sync") {
@@ -2982,6 +3213,7 @@ async function api(req, res, url, route) {
       }))
       .filter((entry) => entry.resourceId);
     resources.unshift(...storeData.googleAccounts.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.status === "active").map((entry) => ({ id: entry.id, name: entry.name || entry.email || "Google account", type: "google_account", status: "connected", resourceId: "google-account", metadata: { email: entry.email, enabledResources: entry.enabledResources || { gmail: true, calendar: true } } })));
+    resources.unshift(...storeData.microsoftAccounts.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.status === "active").map((entry) => ({ id: entry.id, name: entry.name || entry.email || "Microsoft account", type: "microsoft_account", status: "connected", resourceId: "microsoft-account", metadata: { email: entry.email, enabledResources: entry.enabledResources || {} } })));
     return send(res, 200, { resources });
   }
   if (req.method === "POST" && route === "/api/google-accounts") {
@@ -3068,6 +3300,89 @@ async function api(req, res, url, route) {
     const scan = await scanGoogleAccountApps(account);
     await saveStore(storeData);
     return send(res, 200, { account: googleAccountSafe(account, storeData), scan });
+  }
+  if (req.method === "POST" && route === "/api/microsoft-accounts") {
+    const body = await readBody(req);
+    const email = clean(body.email).toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(email)) return send(res, 400, { error: "Enter the Microsoft account email address." });
+    const existing = storeData.microsoftAccounts.find((entry) => entry.workspaceId === ctx.workspaceId && entry.email === email);
+    if (existing) return send(res, 200, { account: microsoftAccountSafe(existing, storeData) });
+    const config = microsoftAccountProviderConfig("outlook", MICROSOFT_IDENTITY_SCOPES);
+    const authorizationReady = Boolean(emailTokenKey() && config.clientId && config.clientSecret);
+    const now = new Date().toISOString();
+    const account = { id: id("microsoft"), accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, name: clean(body.name || "Microsoft 365"), displayName: "", email, status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, enabledResources: {}, selectedApps: [], appScan: { status: "not_scanned", scannedAt: "", apps: [] }, oauthClient: "outlook", oauthTokens: "", authorizedAt: "", lastError: "", createdAt: now, updatedAt: now };
+    storeData.microsoftAccounts.push(account);
+    await saveStore(storeData);
+    return send(res, 201, { account: microsoftAccountSafe(account, storeData) });
+  }
+  const microsoftAccountAuthorizeMatch = route.match(/^\/api\/microsoft-accounts\/([^/]+)\/authorize$/);
+  if (req.method === "POST" && microsoftAccountAuthorizeMatch) {
+    const account = storeData.microsoftAccounts.find((entry) => entry.id === microsoftAccountAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!account) return send(res, 404, { error: "Microsoft account connection not found." });
+    account.pendingApps = [];
+    account.oauthRequestedScopes = MICROSOFT_IDENTITY_SCOPES;
+    const config = microsoftAccountProviderConfig(account.oauthClient, account.oauthRequestedScopes);
+    if (!config.clientId || !config.clientSecret) return send(res, 503, { error: "Microsoft OAuth credentials are not configured." });
+    if (!emailTokenKey()) return send(res, 503, { error: `${EMAIL_TOKEN_KEY_ENV} is not configured.` });
+    const state = crypto.randomBytes(32).toString("base64url");
+    account.oauthStateHash = hashToken(state);
+    account.oauthStateExpiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+    const redirectUri = account.oauthClient === "calendar" ? calendarOAuthRedirectUri(req) : account.oauthClient === "teams" ? `${ORIGIN}/api/messaging/oauth/callback` : `${ORIGIN}/api/email/oauth/callback`;
+    account.oauthRedirectUri = redirectUri;
+    account.updatedAt = new Date().toISOString();
+    const authorizeUrl = new URL(config.authorizeUrl);
+    authorizeUrl.searchParams.set("client_id", config.clientId);
+    authorizeUrl.searchParams.set("redirect_uri", redirectUri);
+    authorizeUrl.searchParams.set("response_type", "code");
+    authorizeUrl.searchParams.set("response_mode", "query");
+    authorizeUrl.searchParams.set("scope", config.scope);
+    authorizeUrl.searchParams.set("state", state);
+    authorizeUrl.searchParams.set("prompt", "select_account");
+    if (account.email) authorizeUrl.searchParams.set("login_hint", account.email);
+    await saveStore(storeData);
+    return send(res, 200, { authorizeUrl: authorizeUrl.toString() });
+  }
+  const microsoftAppsAuthorizeMatch = route.match(/^\/api\/microsoft-accounts\/([^/]+)\/apps\/authorize$/);
+  if (req.method === "POST" && microsoftAppsAuthorizeMatch) {
+    const account = storeData.microsoftAccounts.find((entry) => entry.id === microsoftAppsAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!account) return send(res, 404, { error: "Microsoft account connection not found." });
+    const body = await readBody(req);
+    const selectedApps = [...new Set((Array.isArray(body.apps) ? body.apps : []).map(clean))].filter((appId) => MICROSOFT_APP_CATALOG.some((app) => app.id === appId));
+    account.selectedApps = selectedApps;
+    account.enabledResources = Object.fromEntries(selectedApps.map((appId) => [appId, true]));
+    account.appScan = { status: "pending", scannedAt: account.appScan?.scannedAt || "", apps: account.appScan?.apps || [] };
+    account.updatedAt = new Date().toISOString();
+    if (!selectedApps.length) {
+      await saveStore(storeData);
+      return send(res, 200, { account: microsoftAccountSafe(account, storeData), authorizeUrl: "" });
+    }
+    account.pendingApps = selectedApps;
+    account.oauthRequestedScopes = microsoftScopesForApps(selectedApps);
+    const config = microsoftAccountProviderConfig(account.oauthClient, account.oauthRequestedScopes);
+    if (!config.clientId || !config.clientSecret) return send(res, 503, { error: "Microsoft OAuth credentials are not configured." });
+    const state = crypto.randomBytes(32).toString("base64url");
+    account.oauthStateHash = hashToken(state);
+    account.oauthStateExpiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
+    const redirectUri = account.oauthClient === "calendar" ? calendarOAuthRedirectUri(req) : account.oauthClient === "teams" ? `${ORIGIN}/api/messaging/oauth/callback` : `${ORIGIN}/api/email/oauth/callback`;
+    account.oauthRedirectUri = redirectUri;
+    const authorizeUrl = new URL(config.authorizeUrl);
+    authorizeUrl.searchParams.set("client_id", config.clientId);
+    authorizeUrl.searchParams.set("redirect_uri", redirectUri);
+    authorizeUrl.searchParams.set("response_type", "code");
+    authorizeUrl.searchParams.set("response_mode", "query");
+    authorizeUrl.searchParams.set("scope", config.scope);
+    authorizeUrl.searchParams.set("state", state);
+    if (account.email) authorizeUrl.searchParams.set("login_hint", account.email);
+    await saveStore(storeData);
+    return send(res, 200, { authorizeUrl: authorizeUrl.toString() });
+  }
+  const microsoftAppsScanMatch = route.match(/^\/api\/microsoft-accounts\/([^/]+)\/apps\/scan$/);
+  if (req.method === "POST" && microsoftAppsScanMatch) {
+    const account = storeData.microsoftAccounts.find((entry) => entry.id === microsoftAppsScanMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!account) return send(res, 404, { error: "Microsoft account connection not found." });
+    const scan = await scanMicrosoftAccountApps(account);
+    await saveStore(storeData);
+    return send(res, 200, { account: microsoftAccountSafe(account, storeData), scan });
   }
   const emailSettingsMatch = route.match(/^\/api\/email-connections\/([^/]+)$/);
   if (req.method === "PATCH" && emailSettingsMatch) {
@@ -3208,6 +3523,37 @@ async function api(req, res, url, route) {
     }
     await saveStore(storeData);
     return send(res, 200, { connection: calendarConnectionSafe(connection), account: googleAccountSafe(account, storeData) });
+  }
+  const calendarMicrosoftLinkMatch = route.match(/^\/api\/calendar-connections\/([^/]+)\/link-microsoft$/);
+  if (req.method === "POST" && calendarMicrosoftLinkMatch) {
+    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarMicrosoftLinkMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Calendar connection not found." });
+    if (connection.provider !== "microsoft") return send(res, 400, { error: "Only Microsoft Calendar connections can use a connected Microsoft account." });
+    const body = await readBody(req);
+    const account = storeData.microsoftAccounts.find((entry) => entry.id === clean(body.microsoftAccountId) && entry.workspaceId === ctx.workspaceId && entry.status === "active" && entry.authorizationStatus === "authorized");
+    if (!account) return send(res, 409, { error: "Connect and authorize the Microsoft account first." });
+    if (!microsoftAuthorizedApps(account).includes("calendar")) return send(res, 409, { error: "Approve Outlook Calendar access for this Microsoft account first." });
+    const now = new Date().toISOString();
+    connection.microsoftAccountId = account.id;
+    connection.oauthTokens = "";
+    connection.accountEmail = account.email;
+    connection.authorizationReady = true;
+    connection.authorizationStatus = "authorized";
+    connection.status = "active";
+    connection.authorizedAt ||= account.authorizedAt || now;
+    connection.activatedAt = now;
+    connection.calendarSyncStartedAt ||= now;
+    connection.calendarSyncTokens ||= {};
+    connection.updatedAt = now;
+    account.enabledResources = { ...(account.enabledResources || {}), calendar: true };
+    account.updatedAt = now;
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
+    if (source) {
+      source.status = "connected";
+      source.metadata = { ...(source.metadata || {}), microsoftAccountId: account.id, accountEmail: account.email };
+    }
+    await saveStore(storeData);
+    return send(res, 200, { connection: calendarConnectionSafe(connection), account: microsoftAccountSafe(account, storeData) });
   }
   const calendarVerifyMatch = route.match(/^\/api\/calendar-connections\/([^/]+)\/verify$/);
   if (req.method === "POST" && calendarVerifyMatch) {
@@ -3363,7 +3709,11 @@ async function api(req, res, url, route) {
     connection.activatedAt ||= new Date().toISOString();
     connection.updatedAt = new Date().toISOString();
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
-    if (source) source.status = "connected";
+    if (source) {
+      source.status = "connected";
+      if (savedGoogleAccount) source.metadata = { ...(source.metadata || {}), googleAccountId: savedGoogleAccount.id, emailAddress: connection.emailAddress };
+      if (savedMicrosoftAccount) source.metadata = { ...(source.metadata || {}), microsoftAccountId: savedMicrosoftAccount.id, emailAddress: connection.emailAddress };
+    }
     await saveStore(storeData);
     return send(res, 200, { connection: businessConnectionSafe(connection) });
   }
@@ -3660,6 +4010,30 @@ async function api(req, res, url, route) {
     await saveStore(storeData);
     const { oauthTokens, oauthStateHash, ...safeConnection } = connection;
     return send(res, 200, { connection: safeConnection, account: googleAccountSafe(account, storeData) });
+  }
+  const emailMicrosoftLinkMatch = route.match(/^\/api\/email-connections\/([^/]+)\/link-microsoft$/);
+  if (req.method === "POST" && emailMicrosoftLinkMatch) {
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailMicrosoftLinkMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Email connection not found." });
+    if (connection.provider !== "outlook") return send(res, 400, { error: "Only Outlook connections can use a connected Microsoft account." });
+    const body = await readBody(req);
+    const account = storeData.microsoftAccounts.find((entry) => entry.id === clean(body.microsoftAccountId) && entry.workspaceId === ctx.workspaceId && entry.status === "active" && entry.authorizationStatus === "authorized");
+    if (!account) return send(res, 409, { error: "Connect and authorize the Microsoft account first." });
+    if (!microsoftAuthorizedApps(account).includes("mail")) return send(res, 409, { error: "Approve Outlook Mail access for this Microsoft account first." });
+    connection.microsoftAccountId = account.id;
+    connection.oauthTokens = "";
+    connection.emailAddress = account.email;
+    connection.authorizationReady = true;
+    connection.authorizationStatus = "authorized";
+    connection.lastSyncError = "";
+    connection.updatedAt = new Date().toISOString();
+    account.enabledResources = { ...(account.enabledResources || {}), mail: true };
+    account.updatedAt = connection.updatedAt;
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
+    if (source) source.metadata = { ...(source.metadata || {}), microsoftAccountId: account.id, emailAddress: connection.emailAddress };
+    await saveStore(storeData);
+    const { oauthTokens, oauthStateHash, ...safeConnection } = connection;
+    return send(res, 200, { connection: safeConnection, account: microsoftAccountSafe(account, storeData) });
   }
   const emailImapMatch = route.match(/^\/api\/email-connections\/([^/]+)\/imap$/);
   if (req.method === "POST" && emailImapMatch) {

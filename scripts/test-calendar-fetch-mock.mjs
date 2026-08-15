@@ -14,6 +14,36 @@ globalThis.fetch = async function calendarTestFetch(input, init) {
   if (url.href === "https://openidconnect.googleapis.com/v1/userinfo") {
     return new Response(JSON.stringify({ email: "owner@example.com", name: "Calendar Owner" }), { status: 200, headers: { "content-type": "application/json" } });
   }
+  if (url.href === "https://login.microsoftonline.com/common/oauth2/v2.0/token") {
+    return new Response(JSON.stringify({
+      access_token: "combined-microsoft-access-token",
+      refresh_token: "combined-microsoft-refresh-token",
+      expires_in: 3600,
+      scope: "openid email offline_access User.Read Mail.Read Calendars.Read Files.Read Contacts.Read Team.ReadBasic.All",
+      token_type: "Bearer"
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (url.origin === "https://graph.microsoft.com" && url.pathname === "/v1.0/me") {
+    return new Response(JSON.stringify({ id: "microsoft-user-test", displayName: "Microsoft Owner", mail: "microsoft@example.com", userPrincipalName: "microsoft@example.com" }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (url.origin === "https://graph.microsoft.com" && url.pathname === "/v1.0/me/mailFolders/inbox") {
+    return new Response(JSON.stringify({ displayName: "Inbox", totalItemCount: 32, unreadItemCount: 4 }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (url.origin === "https://graph.microsoft.com" && url.pathname === "/v1.0/me/calendars") {
+    return new Response(JSON.stringify({ value: [{ id: "calendar_primary", name: "Calendar" }, { id: "calendar_team", name: "Team calendar" }] }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (url.origin === "https://graph.microsoft.com" && url.pathname === "/v1.0/me/drive") {
+    return new Response(JSON.stringify({ id: "drive_test", driveType: "business", owner: { user: { displayName: "Microsoft Owner" } } }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (url.origin === "https://graph.microsoft.com" && url.pathname === "/v1.0/me/contacts") {
+    return new Response(JSON.stringify({ "@odata.count": 12, value: [{ id: "contact_test" }] }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (url.origin === "https://graph.microsoft.com" && url.pathname === "/v1.0/me/joinedTeams") {
+    return new Response(JSON.stringify({ value: [{ id: "team_test", displayName: "Sales" }] }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (url.origin === "https://graph.microsoft.com" && url.pathname === "/v1.0/me/drive/root/search(q='.xlsx')") {
+    return new Response(JSON.stringify({ value: [{ id: "workbook_test", name: "Pipeline.xlsx", file: {} }] }), { status: 200, headers: { "content-type": "application/json" } });
+  }
   if (url.href === "https://gmail.googleapis.com/gmail/v1/users/me/profile") {
     return new Response(JSON.stringify({ emailAddress: "owner@example.com", messagesTotal: 42, threadsTotal: 18 }), { status: 200, headers: { "content-type": "application/json" } });
   }
@@ -52,3 +82,4 @@ globalThis.fetch = async function calendarTestFetch(input, init) {
   }
   return nativeFetch(input, init);
 };
+
