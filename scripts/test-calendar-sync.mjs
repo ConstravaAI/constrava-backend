@@ -221,3 +221,4 @@ try {
   child.kill();
   await rm(temporaryDirectory, { recursive: true, force: true });
 }
+
