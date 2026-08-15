@@ -48,22 +48,6 @@ function checkSyntax(relativePath) {
   }
 }
 
-async function checkResourcesClientSyntax() {
-  const source = await readProjectFile("src/server-connected-resources.js");
-  const marker = "const resourcesClientCode = String.raw`";
-  const start = source.indexOf(marker) + marker.length;
-  const end = source.indexOf("`;", start);
-  if (start < marker.length || end < start) {
-    fail("src/server-connected-resources.js is missing its browser client bundle.");
-    return;
-  }
-  try {
-    new Function(source.slice(start, end));
-  } catch (error) {
-    fail(`Connected Resources browser code failed syntax check: ${error.message}`);
-  }
-}
-
 function localImportTargets(relativePath, source) {
   const dir = path.dirname(path.join(projectRoot, relativePath));
   const targets = [];
@@ -126,6 +110,22 @@ const packageJson = JSON.parse(await readProjectFile("package.json") || "{}");
 if (packageJson.scripts?.start !== requiredStartScript) {
   fail("package.json start script must use the generated-runtime launcher.");
 }
+
+async function checkResourcesClientSyntax() {
+  const source = await readProjectFile("src/server-connected-resources.js");
+  const marker = "const resourcesClientCode = String.raw`";
+  const start = source.indexOf(marker) + marker.length;
+  const end = source.indexOf("`;", start);
+  if (start < marker.length || end < start) {
+    fail("src/server-connected-resources.js is missing its browser client bundle.");
+    return;
+  }
+  try {
+    new Function(source.slice(start, end));
+  } catch (error) {
+    fail(`Connected Resources browser code failed syntax check: ${error.message}`);
+  }
+}
 if (packageJson.scripts?.postinstall !== "npm run build:runtime") {
   fail("package.json postinstall script must generate the production runtime during the build phase.");
 }
@@ -173,6 +173,13 @@ await assertContains("src/server.js", "googleAppsAuthorizeMatch", "incremental G
 await assertContains("src/server.js", "googleAppsScanMatch", "connected Google app scanning");
 await assertContains("src/server-connected-resources.js", "function constravaGoogleAppsSetup", "the Google app selection interface");
 await assertContains("src/server-connected-resources.js", "data-google-scan", "manual Google account scanning");
+await assertContains("src/server.js", 'id: "adsense"', "the Google AdSense app catalog entry");
+await assertContains("src/server.js", '"https://www.googleapis.com/auth/adsense.readonly"', "the read-only AdSense permission");
+await assertContains("src/server.js", "async function syncAdsenseConnection", "AdSense report synchronization");
+await assertContains("src/server.js", 'route === "/api/adsense-connections/discover"', "AdSense account discovery");
+await assertContains("src/server-connected-resources.js", "function constravaAdsenseSetup", "the Google AdSense setup interface");
+await assertContains("src/server-connected-resources.js", "function constravaAdsenseDashboard", "the Google AdSense performance dashboard");
+await assertContains("src/server-connected-resources.js", "data-adsense-sync", "the AdSense report refresh control");
 await assertContains("src/server.js", "/link-google", "Google account resource linking");
 await assertContains("src/server-connected-resources.js", "function constravaGoogleSetup", "the reusable Google account interface");
 await assertContains("src/server-connected-resources.js", "data-use-google-for-email", "Gmail reuse without another login");
