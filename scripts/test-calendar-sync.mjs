@@ -24,8 +24,8 @@ function encryptTokens(tokens) {
 const now = new Date().toISOString();
 await writeFile(dataFile, JSON.stringify({
   sources: [{ id: "source_calendar_test", workspaceId: "workspace_test", name: "Test calendar", type: "calendar", status: "connected", metadata: {} }],
-  records: [{ id: "record_existing", workspaceId: "workspace_test", type: "Note", title: "Existing record", fields: { body: "Control record" }, status: "active", priorityScore: 10, createdAt: now, updatedAt: now }], draftRecords: [], events: [], plans: [], ingestionEvents: [], formConnections: [], emailConnections: [], businessConnections: [], messagingConnections: [], websiteConnections: [], reports: [],
-  googleAccounts: [{ id: "google_test", accountUserId: "user_test", workspaceId: "workspace_test", name: "Test Google account", displayName: "Calendar Owner", email: "owner@example.com", status: "active", authorizationStatus: "authorized", authorizationReady: true, enabledResources: { gmail: true, calendar: true }, oauthTokens: encryptTokens({ access_token: "calendar-access-token", scope: "openid email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly", expiresAt: Date.now() + 60 * 60 * 1000 }), authorizedAt: now, createdAt: now, updatedAt: now }],
+  records: [{ id: "record_existing", workspaceId: "workspace_test", type: "Note", title: "Existing record", fields: { body: "Control record" }, status: "active", priorityScore: 10, createdAt: now, updatedAt: now }], draftRecords: [], events: [], plans: [], ingestionEvents: [], formConnections: [], emailConnections: [], adsenseConnections: [], businessConnections: [], messagingConnections: [], websiteConnections: [], reports: [],
+  googleAccounts: [{ id: "google_test", accountUserId: "user_test", workspaceId: "workspace_test", name: "Test Google account", displayName: "Calendar Owner", email: "owner@example.com", status: "active", authorizationStatus: "authorized", authorizationReady: true, enabledResources: { gmail: true, calendar: true, adsense: true }, oauthTokens: encryptTokens({ access_token: "calendar-access-token", scope: "openid email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/adsense.readonly", expiresAt: Date.now() + 60 * 60 * 1000 }), authorizedAt: now, createdAt: now, updatedAt: now }],
   microsoftAccounts: [{ id: "microsoft_test", accountUserId: "user_test", workspaceId: "workspace_test", name: "Test Microsoft account", displayName: "Microsoft Owner", email: "microsoft@example.com", status: "active", authorizationStatus: "authorized", authorizationReady: true, enabledResources: { mail: true, calendar: true, onedrive: true }, selectedApps: ["mail", "calendar", "onedrive"], appScan: { status: "not_scanned", scannedAt: "", apps: [] }, oauthClient: "outlook", oauthTokens: encryptTokens({ access_token: "microsoft-access-token", refresh_token: "microsoft-refresh-token", scope: "openid email offline_access User.Read Mail.Read Calendars.Read Files.Read", expiresAt: Date.now() + 60 * 60 * 1000 }), authorizedAt: now, createdAt: now, updatedAt: now }],
   calendarConnections: [{
     id: "calendar_test", accountUserId: "user_test", workspaceId: "workspace_test", sourceId: "source_calendar_test",
@@ -83,24 +83,39 @@ try {
   await waitForServer();
   const googleAccounts = await calendarRequest("/api/google-accounts", { method: "GET", body: undefined });
   assert.equal(googleAccounts.accounts.length, 1);
-  assert.equal(googleAccounts.apps.length, 6, "the Google app picker should list every supported Google resource");
+  assert.equal(googleAccounts.apps.length, 7, "the Google app picker should list every supported Google resource");
   assert.equal(googleAccounts.accounts[0].credentialConfigured, true);
   assert.equal(googleAccounts.accounts[0].oauthTokens, undefined, "shared Google tokens must never be returned to the browser");
   const sharedAuthorization = await calendarRequest("/api/google-accounts/google_test/authorize");
   const sharedScope = new URL(sharedAuthorization.authorizeUrl).searchParams.get("scope") || "";
   assert.match(sharedScope, /openid/);
   assert.doesNotMatch(sharedScope, /gmail\.readonly/, "initial Google connection should request identity only");
-  const appAuthorization = await calendarRequest("/api/google-accounts/google_test/apps/authorize", { body: { apps: ["gmail", "calendar"] } });
+  const appAuthorization = await calendarRequest("/api/google-accounts/google_test/apps/authorize", { body: { apps: ["gmail", "calendar", "adsense"] } });
   const appScope = new URL(appAuthorization.authorizeUrl).searchParams.get("scope") || "";
   assert.match(appScope, /gmail\.readonly/);
   assert.match(appScope, /calendar\.events\.readonly/);
+  assert.match(appScope, /adsense\.readonly/);
   assert.equal(new URL(appAuthorization.authorizeUrl).searchParams.get("include_granted_scopes"), "true");
   const appScan = await calendarRequest("/api/google-accounts/google_test/apps/scan");
   assert.equal(appScan.scan.status, "complete");
   assert.equal(appScan.scan.apps.find((app) => app.id === "gmail").status, "detected");
   assert.equal(appScan.scan.apps.find((app) => app.id === "gmail").count, 42);
   assert.equal(appScan.scan.apps.find((app) => app.id === "calendar").status, "detected");
+  assert.equal(appScan.scan.apps.find((app) => app.id === "adsense").status, "detected");
+  assert.equal(appScan.scan.apps.find((app) => app.id === "adsense").count, 1);
   assert.equal(appScan.scan.apps.find((app) => app.id === "drive").status, "not_selected");
+  const adsenseDiscovery = await calendarRequest("/api/adsense-connections/discover", { body: { googleAccountId: "google_test" } });
+  assert.equal(adsenseDiscovery.accounts.length, 1);
+  assert.equal(adsenseDiscovery.accounts[0].name, "accounts/pub-123456789");
+  const adsenseConnection = await calendarRequest("/api/adsense-connections", { body: { googleAccountId: "google_test", adsenseAccountName: "accounts/pub-123456789", reportRange: "MONTH_TO_DATE" }, status: 201 });
+  assert.equal(adsenseConnection.connection.googleAccountId, "google_test");
+  assert.equal(adsenseConnection.connection.latestReport.totals.earnings, 8.25);
+  assert.equal(adsenseConnection.connection.latestReport.daily.length, 2);
+  assert.equal(adsenseConnection.connection.latestReport.domains[0].label, "example.com");
+  const adsenseRefresh = await calendarRequest(`/api/adsense-connections/${adsenseConnection.connection.id}/sync`, { body: { reportRange: "LAST_7_DAYS" } });
+  assert.equal(adsenseRefresh.connection.reportRange, "LAST_7_DAYS");
+  const connectedResources = await calendarRequest("/api/connected-resources", { method: "GET", body: undefined });
+  assert.ok(connectedResources.resources.some((resource) => resource.resourceId === "google-adsense"), "AdSense should appear as a connected resource");
   const emailConnection = await calendarRequest("/api/email-connections", { body: { provider: "gmail", name: "Shared Gmail", emailAddress: "owner@example.com" }, status: 201 });
   const linkedEmail = await calendarRequest(`/api/email-connections/${emailConnection.connection.id}/link-google`, { body: { googleAccountId: "google_test" } });
   assert.equal(linkedEmail.connection.googleAccountId, "google_test");
@@ -206,4 +221,3 @@ try {
   child.kill();
   await rm(temporaryDirectory, { recursive: true, force: true });
 }
-
