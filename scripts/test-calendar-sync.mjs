@@ -93,6 +93,19 @@ try {
   assert.equal(linkedEmail.connection.googleAccountId, "google_test");
   assert.equal(linkedEmail.connection.authorizationStatus, "authorized");
   assert.equal(linkedEmail.connection.oauthTokens, undefined);
+  const oauthEmail = await calendarRequest("/api/email-connections", { body: { provider: "gmail", name: "OAuth Gmail", emailAddress: "owner@example.com" }, status: 201 });
+  const oauthEmailAuthorization = await calendarRequest(`/api/email-connections/${oauthEmail.connection.id}/authorize`);
+  const oauthEmailUrl = new URL(oauthEmailAuthorization.authorizeUrl);
+  assert.match(oauthEmailUrl.searchParams.get("scope") || "", /calendar\.events\.readonly/, "connecting Gmail should request the reusable Calendar permission too");
+  const oauthEmailCallback = await fetch(`${origin}/api/email/oauth/callback?state=${encodeURIComponent(oauthEmailUrl.searchParams.get("state"))}&code=gmail-oauth-test`, { headers: { cookie: "constrava_session=session_test" }, redirect: "manual" });
+  assert.equal(oauthEmailCallback.status, 302);
+  const afterGmailOAuth = JSON.parse(await readFile(dataFile, "utf8"));
+  const savedOAuthEmail = afterGmailOAuth.emailConnections.find((entry) => entry.id === oauthEmail.connection.id);
+  assert.equal(savedOAuthEmail.googleAccountId, "google_test", "a Gmail connection should automatically save and link the reusable Google account");
+  assert.equal(savedOAuthEmail.oauthTokens, "", "resource connections should use the shared encrypted Google token");
+  assert.equal(afterGmailOAuth.googleAccounts.length, 1, "connecting an existing Google email should update instead of duplicating the account");
+  assert.equal(afterGmailOAuth.googleAccounts[0].oauthClient, "gmail");
+  assert.ok(afterGmailOAuth.googleAccounts[0].oauthTokens, "the reusable Google credential should be saved server-side");
   const discovery = await calendarRequest("/api/calendar-connections/calendar_test/calendars/scan");
   assert.equal(discovery.calendars.length, 2, "the connected Google account calendars should be discoverable");
   assert.equal(discovery.connection.credentialConfigured, true, "a linked shared Google credential should be recognized");
@@ -120,6 +133,18 @@ try {
   const afterSecond = JSON.parse(await readFile(dataFile, "utf8"));
   assert.equal(afterSecond.draftRecords.length, draftCount, "refreshing twice must not create duplicate drafts");
   assert.equal(afterSecond.ingestionEvents.length, 1, "refreshing twice must not create duplicate ingestion events");
+  const oauthCalendar = await calendarRequest("/api/calendar-connections", { body: { provider: "google", name: "OAuth Calendar", accountEmail: "owner@example.com" }, status: 201 });
+  const oauthCalendarAuthorization = await calendarRequest(`/api/calendar-connections/${oauthCalendar.connection.id}/authorize`);
+  const oauthCalendarUrl = new URL(oauthCalendarAuthorization.authorizeUrl);
+  assert.match(oauthCalendarUrl.searchParams.get("scope") || "", /gmail\.readonly/, "connecting Calendar should request the reusable Gmail permission too");
+  const oauthCalendarCallback = await fetch(`${origin}/api/calendar/oauth/callback?state=${encodeURIComponent(oauthCalendarUrl.searchParams.get("state"))}&code=calendar-oauth-test`, { headers: { cookie: "constrava_session=session_test" }, redirect: "manual" });
+  assert.equal(oauthCalendarCallback.status, 302);
+  const afterCalendarOAuth = JSON.parse(await readFile(dataFile, "utf8"));
+  const savedOAuthCalendar = afterCalendarOAuth.calendarConnections.find((entry) => entry.id === oauthCalendar.connection.id);
+  assert.equal(savedOAuthCalendar.googleAccountId, "google_test", "a Calendar connection should automatically save and link the reusable Google account");
+  assert.equal(savedOAuthCalendar.oauthTokens, "", "Calendar should use the shared encrypted Google token");
+  assert.equal(afterCalendarOAuth.googleAccounts.length, 1, "connecting the same Google account from Calendar should not create a duplicate");
+  assert.equal(afterCalendarOAuth.googleAccounts[0].oauthClient, "calendar");
   console.log(`Calendar refresh sync passed: ${draftCount} review draft(s), zero published records, duplicate prevented.`);
 } finally {
   child.kill();
