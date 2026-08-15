@@ -188,6 +188,8 @@ await assertContains("src/server-connected-resources.js", "data-use-microsoft-fo
 await assertContains("src/server-connected-resources.js", "data-use-microsoft-for-calendar", "Microsoft Calendar reuse without another login");
 await assertContains("src/server-connected-resources.js", "data-google-banner", "the Google account banner action");
 await assertContains("src/server-connected-resources.js", ".resourcesGoogleCta{", "the Google banner action styling");
+await assertContains("src/server-connected-resources.js", "if(name==='resources'){S.resourceView='';S.resourcesDirectoryView='all'}", "the Connect Resources tab directory reset");
+await assertContains("src/server-connected-resources.js", "constravaReturnParams.delete('google_account_connected')", "the one-time Google OAuth return handling");
 await assertNotContains("src/server-connected-resources.js", "{id:'microsoft-account'", "the visible Microsoft account directory option");
 await assertContains("src/server.js", "connection.calendarSyncTokens[calendar.id]", "per-calendar incremental sync cursors");
 await assertContains("src/server-runtime.js", "api('/api/calendar-connections/sync'", "the website-refresh calendar review trigger");
