@@ -25,11 +25,12 @@ const now = new Date().toISOString();
 await writeFile(dataFile, JSON.stringify({
   sources: [{ id: "source_calendar_test", workspaceId: "workspace_test", name: "Test calendar", type: "calendar", status: "connected", metadata: {} }],
   records: [{ id: "record_existing", workspaceId: "workspace_test", type: "Note", title: "Existing record", fields: { body: "Control record" }, status: "active", priorityScore: 10, createdAt: now, updatedAt: now }], draftRecords: [], events: [], plans: [], ingestionEvents: [], formConnections: [], emailConnections: [], businessConnections: [], messagingConnections: [], websiteConnections: [], reports: [],
+  googleAccounts: [{ id: "google_test", accountUserId: "user_test", workspaceId: "workspace_test", name: "Test Google account", displayName: "Calendar Owner", email: "owner@example.com", status: "active", authorizationStatus: "authorized", authorizationReady: true, enabledResources: { gmail: true, calendar: true }, oauthTokens: encryptTokens({ access_token: "calendar-access-token", scope: "openid email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly", expiresAt: Date.now() + 60 * 60 * 1000 }), authorizedAt: now, createdAt: now, updatedAt: now }],
   calendarConnections: [{
     id: "calendar_test", accountUserId: "user_test", workspaceId: "workspace_test", sourceId: "source_calendar_test",
     name: "Test Google Calendar", provider: "google", accountEmail: "owner@example.com", calendarName: "Primary calendar", timeZone: "UTC",
     sync: { direction: "read_only", window: "upcoming_90", createTasks: true, attachNotes: true, includeDeclined: false, includePrivate: false },
-    status: "active", authorizationStatus: "authorized", authorizedAt: now, activatedAt: now, oauthTokens: encryptTokens({ access_token: "calendar-access-token", expiresAt: Date.now() + 60 * 60 * 1000 })
+    status: "active", authorizationStatus: "authorized", authorizedAt: now, activatedAt: now, googleAccountId: "google_test", oauthTokens: ""
   }],
   workspaces: [{ id: "workspace_test", name: "Calendar Test", createdAt: now, updatedAt: now }],
   workspaceMembers: [{ id: "membership_test", workspaceId: "workspace_test", userId: "user_test", role: "owner", status: "active", createdAt: now }],
@@ -40,7 +41,7 @@ await writeFile(dataFile, JSON.stringify({
 
 const child = spawn(process.execPath, ["--import", pathToFileURL(path.join(root, "scripts", "test-calendar-fetch-mock.mjs")).href, path.join(root, "scripts", "start-runtime.mjs")], {
   cwd: root,
-  env: { ...process.env, PORT: String(port), PUBLIC_ORIGIN: origin, DATA_FILE: dataFile, DATABASE_URL: "", OPENAI_API_KEY: "", EMAIL_TOKEN_ENCRYPTION_KEY: encryptionSecret },
+  env: { ...process.env, PORT: String(port), PUBLIC_ORIGIN: origin, DATA_FILE: dataFile, DATABASE_URL: "", OPENAI_API_KEY: "", EMAIL_TOKEN_ENCRYPTION_KEY: encryptionSecret, GMAIL_CLIENT_ID: "shared-google-client", GMAIL_CLIENT_SECRET: "shared-google-secret" },
   stdio: ["ignore", "pipe", "pipe"]
 });
 let serverOutput = "";
@@ -66,10 +67,11 @@ async function sync() {
 }
 
 async function calendarRequest(pathname, options = {}) {
+  const method = options.method || "POST";
   const response = await fetch(`${origin}${pathname}`, {
-    method: options.method || "POST",
+    method,
     headers: { cookie: "constrava_session=session_test", "content-type": "application/json" },
-    body: options.body === undefined ? "{}" : JSON.stringify(options.body)
+    body: ["GET", "HEAD"].includes(method) ? undefined : options.body === undefined ? "{}" : JSON.stringify(options.body)
   });
   const data = await response.json();
   assert.equal(response.status, options.status || 200, JSON.stringify(data));
@@ -78,8 +80,22 @@ async function calendarRequest(pathname, options = {}) {
 
 try {
   await waitForServer();
+  const googleAccounts = await calendarRequest("/api/google-accounts", { method: "GET", body: undefined });
+  assert.equal(googleAccounts.accounts.length, 1);
+  assert.equal(googleAccounts.accounts[0].credentialConfigured, true);
+  assert.equal(googleAccounts.accounts[0].oauthTokens, undefined, "shared Google tokens must never be returned to the browser");
+  const sharedAuthorization = await calendarRequest("/api/google-accounts/google_test/authorize");
+  const sharedScope = new URL(sharedAuthorization.authorizeUrl).searchParams.get("scope") || "";
+  assert.match(sharedScope, /gmail\.readonly/);
+  assert.match(sharedScope, /calendar\.events\.readonly/);
+  const emailConnection = await calendarRequest("/api/email-connections", { body: { provider: "gmail", name: "Shared Gmail", emailAddress: "owner@example.com" }, status: 201 });
+  const linkedEmail = await calendarRequest(`/api/email-connections/${emailConnection.connection.id}/link-google`, { body: { googleAccountId: "google_test" } });
+  assert.equal(linkedEmail.connection.googleAccountId, "google_test");
+  assert.equal(linkedEmail.connection.authorizationStatus, "authorized");
+  assert.equal(linkedEmail.connection.oauthTokens, undefined);
   const discovery = await calendarRequest("/api/calendar-connections/calendar_test/calendars/scan");
   assert.equal(discovery.calendars.length, 2, "the connected Google account calendars should be discoverable");
+  assert.equal(discovery.connection.credentialConfigured, true, "a linked shared Google credential should be recognized");
   assert.ok(discovery.calendars.some((calendar) => calendar.primary), "the calendar list should identify the primary calendar");
   const selection = await calendarRequest("/api/calendar-connections/calendar_test", { method: "PATCH", body: { selectedCalendarIds: ["calendar_test_secondary"] } });
   assert.deepEqual(selection.connection.selectedCalendarIds, ["calendar_test_secondary"]);
