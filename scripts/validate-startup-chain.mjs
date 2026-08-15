@@ -173,6 +173,13 @@ await assertContains("src/server.js", "googleAppsAuthorizeMatch", "incremental G
 await assertContains("src/server.js", "googleAppsScanMatch", "connected Google app scanning");
 await assertContains("src/server-connected-resources.js", "function constravaGoogleAppsSetup", "the Google app selection interface");
 await assertContains("src/server-connected-resources.js", "data-google-scan", "manual Google account scanning");
+await assertContains("src/server.js", 'id: "adsense"', "the Google AdSense app catalog entry");
+await assertContains("src/server.js", '"https://www.googleapis.com/auth/adsense.readonly"', "the read-only AdSense permission");
+await assertContains("src/server.js", "async function syncAdsenseConnection", "AdSense report synchronization");
+await assertContains("src/server.js", 'route === "/api/adsense-connections/discover"', "AdSense account discovery");
+await assertContains("src/server-connected-resources.js", "function constravaAdsenseSetup", "the Google AdSense setup interface");
+await assertContains("src/server-connected-resources.js", "function constravaAdsenseDashboard", "the Google AdSense performance dashboard");
+await assertContains("src/server-connected-resources.js", "data-adsense-sync", "the AdSense report refresh control");
 await assertContains("src/server.js", "/link-google", "Google account resource linking");
 await assertContains("src/server-connected-resources.js", "function constravaGoogleSetup", "the reusable Google account interface");
 await assertContains("src/server-connected-resources.js", "data-use-google-for-email", "Gmail reuse without another login");

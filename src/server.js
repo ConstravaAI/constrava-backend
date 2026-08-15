@@ -136,6 +136,7 @@ function seed() {
     formConnections: [],
     emailConnections: [],
     googleAccounts: [],
+    adsenseConnections: [],
     microsoftAccounts: [],
     calendarConnections: [],
     businessConnections: [],
@@ -237,6 +238,7 @@ function normalize(storeData) {
   storeData.formConnections ||= [];
   storeData.emailConnections ||= [];
   storeData.googleAccounts ||= [];
+  storeData.adsenseConnections ||= [];
   storeData.microsoftAccounts ||= [];
   storeData.calendarConnections ||= [];
   storeData.businessConnections ||= [];
@@ -272,6 +274,12 @@ function normalize(storeData) {
     account.oauthClient ||= "calendar";
     account.selectedApps = Array.isArray(account.selectedApps) ? [...new Set(account.selectedApps.map(clean).filter((appId) => GOOGLE_APP_CATALOG.some((app) => app.id === appId)))] : googleAuthorizedApps(account);
     account.appScan ||= { status: "not_scanned", scannedAt: "", apps: [] };
+  }
+  for (const connection of storeData.adsenseConnections) {
+    connection.accountUserId ||= storeData.users.find((user) => user.workspaceId === connection.workspaceId)?.id || "";
+    connection.status ||= "active";
+    connection.reportRange ||= "MONTH_TO_DATE";
+    connection.latestReport ||= null;
   }
   for (const account of storeData.microsoftAccounts) {
     account.accountUserId ||= storeData.users.find((user) => user.workspaceId === account.workspaceId)?.id || "";
@@ -1108,7 +1116,8 @@ const GOOGLE_APP_CATALOG = [
   { id: "drive", name: "Google Drive", resource: "File uploads", description: "Find Drive files that can be brought into the project.", scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly"] },
   { id: "contacts", name: "Google Contacts", resource: "CRM", description: "Check whether Google Contacts is available for contact enrichment.", scopes: ["https://www.googleapis.com/auth/contacts.readonly"] },
   { id: "sheets", name: "Google Sheets", resource: "CRM and business tools", description: "Find spreadsheets that can support CRM imports and workflows.", scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly", "https://www.googleapis.com/auth/spreadsheets.readonly"] },
-  { id: "forms", name: "Google Forms", resource: "Forms", description: "Find forms that can become customer-intake sources.", scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly", "https://www.googleapis.com/auth/forms.body.readonly", "https://www.googleapis.com/auth/forms.responses.readonly"] }
+  { id: "forms", name: "Google Forms", resource: "Forms", description: "Find forms that can become customer-intake sources.", scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly", "https://www.googleapis.com/auth/forms.body.readonly", "https://www.googleapis.com/auth/forms.responses.readonly"] },
+  { id: "adsense", name: "Google AdSense", resource: "Ad revenue", description: "Read publisher accounts and performance reports for revenue analytics.", scopes: ["https://www.googleapis.com/auth/adsense.readonly"] }
 ];
 const GOOGLE_SHARED_SCOPES = [...GOOGLE_IDENTITY_SCOPES, ...GOOGLE_APP_CATALOG.filter((app) => ["gmail", "calendar"].includes(app.id)).flatMap((app) => app.scopes)];
 
@@ -1156,7 +1165,8 @@ function googleAccountSafe(account, storeData) {
   const { oauthTokens, oauthStateHash, oauthStateExpiresAt, oauthRequestedScopes, pendingApps, ...safe } = account;
   const linkedEmail = storeData?.emailConnections?.filter((entry) => entry.workspaceId === account.workspaceId && entry.googleAccountId === account.id).length || 0;
   const linkedCalendars = storeData?.calendarConnections?.filter((entry) => entry.workspaceId === account.workspaceId && entry.googleAccountId === account.id).length || 0;
-  return { ...safe, selectedApps: Array.isArray(account.selectedApps) ? account.selectedApps : [], authorizedApps: googleAuthorizedApps(account), credentialConfigured: Boolean(oauthTokens), linkedResources: { email: linkedEmail, calendar: linkedCalendars } };
+  const linkedAdsense = storeData?.adsenseConnections?.filter((entry) => entry.workspaceId === account.workspaceId && entry.googleAccountId === account.id).length || 0;
+  return { ...safe, selectedApps: Array.isArray(account.selectedApps) ? account.selectedApps : [], authorizedApps: googleAuthorizedApps(account), credentialConfigured: Boolean(oauthTokens), linkedResources: { email: linkedEmail, calendar: linkedCalendars, adsense: linkedAdsense } };
 }
 
 function linkedGoogleAccount(storeData, connection) {
@@ -1197,7 +1207,7 @@ function saveGoogleAccountOAuth(storeData, { account, connection, tokens, email,
     storeData.googleAccounts.push(savedAccount);
   }
   if (matchingAccount && account && matchingAccount.id !== account.id) {
-    for (const linked of [...(storeData.emailConnections || []), ...(storeData.calendarConnections || [])]) if (linked.googleAccountId === account.id) linked.googleAccountId = matchingAccount.id;
+    for (const linked of [...(storeData.emailConnections || []), ...(storeData.calendarConnections || []), ...(storeData.adsenseConnections || [])]) if (linked.googleAccountId === account.id) linked.googleAccountId = matchingAccount.id;
     storeData.googleAccounts.splice(storeData.googleAccounts.indexOf(account), 1);
   }
   let previousTokens = {};
@@ -1291,7 +1301,8 @@ async function scanGoogleApp(account, app, tokens, granted) {
     drive: { url: "https://www.googleapis.com/drive/v3/about", params: { fields: "user,storageQuota" }, summarize: (data) => ({ status: "detected", detail: data.user?.displayName ? `Drive found for ${clean(data.user.displayName)}.` : "Google Drive is available." }) },
     contacts: { url: "https://people.googleapis.com/v1/people/me/connections", params: { pageSize: "1", personFields: "names,emailAddresses" }, summarize: (data) => ({ status: "detected", count: Number(data.totalItems || data.totalPeople || (data.connections || []).length), detail: "Google Contacts is available." }) },
     sheets: { url: "https://www.googleapis.com/drive/v3/files", params: { pageSize: "10", fields: "files(id,name)", q: "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false" }, summarize: (data) => ({ status: "detected", count: (data.files || []).length, detail: `${(data.files || []).length}${(data.files || []).length === 10 ? "+" : ""} spreadsheet${(data.files || []).length === 1 ? "" : "s"} found.` }) },
-    forms: { url: "https://www.googleapis.com/drive/v3/files", params: { pageSize: "10", fields: "files(id,name)", q: "mimeType='application/vnd.google-apps.form' and trashed=false" }, summarize: (data) => ({ status: "detected", count: (data.files || []).length, detail: `${(data.files || []).length}${(data.files || []).length === 10 ? "+" : ""} form${(data.files || []).length === 1 ? "" : "s"} found.` }) }
+    forms: { url: "https://www.googleapis.com/drive/v3/files", params: { pageSize: "10", fields: "files(id,name)", q: "mimeType='application/vnd.google-apps.form' and trashed=false" }, summarize: (data) => ({ status: "detected", count: (data.files || []).length, detail: `${(data.files || []).length}${(data.files || []).length === 10 ? "+" : ""} form${(data.files || []).length === 1 ? "" : "s"} found.` }) },
+    adsense: { url: "https://adsense.googleapis.com/v2/accounts", params: { pageSize: "100" }, summarize: (data) => ({ status: (data.accounts || []).length ? "detected" : "not_available", count: (data.accounts || []).length, detail: (data.accounts || []).length ? `${(data.accounts || []).length} AdSense account${(data.accounts || []).length === 1 ? "" : "s"} found.` : "No AdSense publisher account was found for this Google account." }) }
   };
   const result = await googleProbe(tokens.access_token, probes[app.id]);
   return { id: app.id, ...result };
@@ -1306,6 +1317,116 @@ async function scanGoogleAccountApps(account) {
   account.lastScannedAt = now;
   account.updatedAt = now;
   return account.appScan;
+}
+
+function adsenseConnectionSafe(connection, storeData) {
+  const googleAccount = storeData?.googleAccounts?.find((entry) => entry.id === connection.googleAccountId && entry.workspaceId === connection.workspaceId);
+  return { ...connection, googleAccountEmail: googleAccount?.email || "" };
+}
+
+function adsenseAccountSafe(account) {
+  return {
+    name: clean(account?.name),
+    displayName: clean(account?.displayName || account?.name),
+    state: clean(account?.state || "STATE_UNSPECIFIED"),
+    premium: Boolean(account?.premium),
+    timeZone: clean(account?.timeZone?.id),
+    createTime: clean(account?.createTime),
+    pendingTasks: Array.isArray(account?.pendingTasks) ? account.pendingTasks.map(clean).filter(Boolean).slice(0, 20) : []
+  };
+}
+
+function requireAdsenseGoogleAccount(storeData, workspaceId, googleAccountId) {
+  const account = storeData.googleAccounts.find((entry) => entry.id === clean(googleAccountId) && entry.workspaceId === workspaceId && entry.status === "active" && entry.authorizationStatus === "authorized");
+  if (!account) throw Object.assign(new Error("Connect a Google account before setting up AdSense."), { status: 409 });
+  if (!googleAuthorizedApps(account).includes("adsense")) throw Object.assign(new Error("Add Google AdSense in Manage Google account and approve read-only access first."), { status: 409 });
+  return account;
+}
+
+async function listAdsenseAccounts(googleAccount) {
+  const tokens = await googleAccountTokens(googleAccount);
+  const response = await fetch("https://adsense.googleapis.com/v2/accounts?pageSize=100", { headers: { authorization: `Bearer ${tokens.access_token}`, accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
+  let data = {};
+  try { data = await response.json(); } catch {}
+  if (!response.ok) {
+    const message = clean(data?.error?.message || `Google AdSense returned ${response.status}.`);
+    const status = response.status === 401 || response.status === 403 ? 409 : 502;
+    throw Object.assign(new Error(message || "Could not discover Google AdSense accounts."), { status });
+  }
+  return (data.accounts || []).map(adsenseAccountSafe).filter((account) => /^accounts\/[^/]+$/.test(account.name));
+}
+
+const ADSENSE_REPORT_RANGES = new Set(["TODAY", "YESTERDAY", "MONTH_TO_DATE", "YEAR_TO_DATE", "LAST_7_DAYS", "LAST_30_DAYS"]);
+const ADSENSE_REPORT_METRICS = ["ESTIMATED_EARNINGS", "PAGE_VIEWS", "IMPRESSIONS", "CLICKS", "PAGE_VIEWS_RPM", "PAGE_VIEWS_CTR"];
+
+function adsenseReportRange(value) {
+  const range = clean(value).toUpperCase();
+  return ADSENSE_REPORT_RANGES.has(range) ? range : "MONTH_TO_DATE";
+}
+
+async function generateAdsenseReport(googleAccount, adsenseAccountName, { range, dimension, limit = 100, orderBy = "" }) {
+  if (!/^accounts\/[^/]+$/.test(adsenseAccountName)) throw Object.assign(new Error("Choose a valid AdSense publisher account."), { status: 400 });
+  const tokens = await googleAccountTokens(googleAccount);
+  const url = new URL(`https://adsense.googleapis.com/v2/${adsenseAccountName}/reports:generate`);
+  url.searchParams.set("dateRange", adsenseReportRange(range));
+  url.searchParams.append("dimensions", dimension);
+  for (const metric of ADSENSE_REPORT_METRICS) url.searchParams.append("metrics", metric);
+  url.searchParams.set("limit", String(limit));
+  if (orderBy) url.searchParams.append("orderBy", orderBy);
+  const response = await fetch(url, { headers: { authorization: `Bearer ${tokens.access_token}`, accept: "application/json" }, signal: AbortSignal.timeout(20_000) });
+  let data = {};
+  try { data = await response.json(); } catch {}
+  if (!response.ok) throw Object.assign(new Error(clean(data?.error?.message) || "Could not load the AdSense performance report."), { status: response.status === 401 || response.status === 403 ? 409 : 502 });
+  return data;
+}
+
+function adsenseReportObject(report, row) {
+  return Object.fromEntries((report?.headers || []).map((header, index) => [clean(header.name), clean(row?.cells?.[index]?.value)]));
+}
+
+function adsenseMetricNumber(row, key) {
+  const value = Number(row?.[key] || 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function adsenseCompactRow(row, dimension) {
+  return {
+    label: clean(row?.[dimension]),
+    earnings: adsenseMetricNumber(row, "ESTIMATED_EARNINGS"),
+    pageViews: adsenseMetricNumber(row, "PAGE_VIEWS"),
+    impressions: adsenseMetricNumber(row, "IMPRESSIONS"),
+    clicks: adsenseMetricNumber(row, "CLICKS"),
+    rpm: adsenseMetricNumber(row, "PAGE_VIEWS_RPM"),
+    ctr: adsenseMetricNumber(row, "PAGE_VIEWS_CTR")
+  };
+}
+
+async function syncAdsenseConnection(storeData, connection, requestedRange = "") {
+  const googleAccount = requireAdsenseGoogleAccount(storeData, connection.workspaceId, connection.googleAccountId);
+  const range = adsenseReportRange(requestedRange || connection.reportRange);
+  const [dailyResult, domainResult] = await Promise.allSettled([
+    generateAdsenseReport(googleAccount, connection.adsenseAccountName, { range, dimension: "DATE", limit: 400, orderBy: "+DATE" }),
+    generateAdsenseReport(googleAccount, connection.adsenseAccountName, { range, dimension: "DOMAIN_NAME", limit: 10, orderBy: "-ESTIMATED_EARNINGS" })
+  ]);
+  if (dailyResult.status === "rejected") throw dailyResult.reason;
+  const dailyReport = dailyResult.value;
+  const totalRow = adsenseReportObject(dailyReport, dailyReport.totals);
+  const earningsHeader = (dailyReport.headers || []).find((header) => header.name === "ESTIMATED_EARNINGS");
+  const latestReport = {
+    range,
+    currencyCode: clean(earningsHeader?.currencyCode || "USD"),
+    totals: adsenseCompactRow(totalRow, "DATE"),
+    daily: (dailyReport.rows || []).map((row) => adsenseCompactRow(adsenseReportObject(dailyReport, row), "DATE")).filter((row) => row.label),
+    domains: domainResult.status === "fulfilled" ? (domainResult.value.rows || []).map((row) => adsenseCompactRow(adsenseReportObject(domainResult.value, row), "DOMAIN_NAME")).filter((row) => row.label) : [],
+    warnings: [...(dailyReport.warnings || []), ...(domainResult.status === "rejected" ? [domainResult.reason?.message || "Domain details were unavailable."] : domainResult.value.warnings || [])].map(clean).filter(Boolean).slice(0, 10),
+    syncedAt: new Date().toISOString()
+  };
+  connection.reportRange = range;
+  connection.latestReport = latestReport;
+  connection.lastSyncedAt = latestReport.syncedAt;
+  connection.lastError = "";
+  connection.updatedAt = latestReport.syncedAt;
+  return latestReport;
 }
 
 const MICROSOFT_IDENTITY_SCOPES = ["openid", "email", "offline_access", "User.Read"];
@@ -3190,6 +3311,55 @@ async function api(req, res, url, route) {
   if (req.method === "GET" && route === "/api/website-connections") return send(res, 200, { connections: storeData.websiteConnections.filter((entry) => entry.workspaceId === ctx.workspaceId) });
   if (req.method === "GET" && route === "/api/ingestion-events") return send(res, 200, { events: storeData.ingestionEvents.filter((entry) => entry.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/google-accounts") return send(res, 200, { accounts: storeData.googleAccounts.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => googleAccountSafe(entry, storeData)), apps: googleAppCatalogSafe() });
+  if (req.method === "GET" && route === "/api/adsense-connections") return send(res, 200, { connections: storeData.adsenseConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => adsenseConnectionSafe(entry, storeData)) });
+  if (req.method === "POST" && route === "/api/adsense-connections/discover") {
+    const body = await readBody(req);
+    const googleAccount = requireAdsenseGoogleAccount(storeData, ctx.workspaceId, body.googleAccountId);
+    const accounts = await listAdsenseAccounts(googleAccount);
+    await saveStore(storeData);
+    return send(res, 200, { accounts, googleAccount: googleAccountSafe(googleAccount, storeData) });
+  }
+  if (req.method === "POST" && route === "/api/adsense-connections") {
+    const body = await readBody(req);
+    const googleAccount = requireAdsenseGoogleAccount(storeData, ctx.workspaceId, body.googleAccountId);
+    const availableAccounts = await listAdsenseAccounts(googleAccount);
+    const selectedAccount = availableAccounts.find((entry) => entry.name === clean(body.adsenseAccountName));
+    if (!selectedAccount) throw Object.assign(new Error("That AdSense account is not available to the connected Google account."), { status: 400 });
+    let connection = storeData.adsenseConnections.find((entry) => entry.workspaceId === ctx.workspaceId && entry.googleAccountId === googleAccount.id && entry.adsenseAccountName === selectedAccount.name);
+    const now = new Date().toISOString();
+    if (!connection) {
+      const sourceId = id("source");
+      connection = { id: id("adsense"), accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, sourceId, googleAccountId: googleAccount.id, name: clean(body.name || selectedAccount.displayName || "Google AdSense"), adsenseAccountName: selectedAccount.name, adsenseDisplayName: selectedAccount.displayName, adsenseState: selectedAccount.state, timeZone: selectedAccount.timeZone, status: "active", authorizationStatus: "authorized", reportRange: adsenseReportRange(body.reportRange), latestReport: null, lastSyncedAt: "", lastError: "", createdAt: now, updatedAt: now };
+      storeData.adsenseConnections.push(connection);
+      storeData.sources.push({ id: sourceId, workspaceId: ctx.workspaceId, name: connection.name, type: "adsense", status: "connected", metadata: { googleAccountId: googleAccount.id, adsenseAccountName: selectedAccount.name } });
+    } else {
+      connection.name = clean(body.name || connection.name || selectedAccount.displayName || "Google AdSense");
+      connection.adsenseDisplayName = selectedAccount.displayName;
+      connection.adsenseState = selectedAccount.state;
+      connection.timeZone = selectedAccount.timeZone;
+      connection.status = "active";
+      connection.authorizationStatus = "authorized";
+    }
+    await syncAdsenseConnection(storeData, connection, body.reportRange);
+    await saveStore(storeData);
+    return send(res, 201, { connection: adsenseConnectionSafe(connection, storeData) });
+  }
+  const adsenseSyncMatch = route.match(/^\/api\/adsense-connections\/([^/]+)\/sync$/);
+  if (req.method === "POST" && adsenseSyncMatch) {
+    const body = await readBody(req);
+    const connection = storeData.adsenseConnections.find((entry) => entry.id === adsenseSyncMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) throw Object.assign(new Error("AdSense connection not found."), { status: 404 });
+    try {
+      await syncAdsenseConnection(storeData, connection, body.reportRange);
+    } catch (error) {
+      connection.lastError = clean(error.message);
+      connection.updatedAt = new Date().toISOString();
+      await saveStore(storeData);
+      throw error;
+    }
+    await saveStore(storeData);
+    return send(res, 200, { connection: adsenseConnectionSafe(connection, storeData) });
+  }
   if (req.method === "GET" && route === "/api/microsoft-accounts") return send(res, 200, { accounts: storeData.microsoftAccounts.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => microsoftAccountSafe(entry, storeData)), apps: microsoftAppCatalogSafe() });
   if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ oauthTokens, oauthStateHash, ...entry }) => ({ ...entry, automationPolicy: emailAutomationPolicy(entry.automationPolicy) })) });
   if (req.method === "GET" && route === "/api/calendar-connections") return send(res, 200, { connections: storeData.calendarConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => calendarConnectionSafe({ ...entry, oauthRedirectUri: ["google", "microsoft"].includes(entry.provider) ? calendarOAuthRedirectUri(req) : "" })) });
@@ -3208,7 +3378,7 @@ async function api(req, res, url, route) {
         name: entry.name,
         type: entry.type,
         status: entry.status,
-        resourceId: entry.type === "email" ? "email-inbox" : entry.type === "calendar" ? "calendar" : entry.type === "business_tool" ? "crm-tools" : entry.type === "messaging" ? "messaging" : entry.type === "website_form" ? "website-forms" : entry.type === "website" ? "website-tracker" : entry.type === "manual_note" ? "manual-notes" : entry.type === "file_upload" ? "file-uploads" : "",
+        resourceId: entry.type === "email" ? "email-inbox" : entry.type === "calendar" ? "calendar" : entry.type === "adsense" ? "google-adsense" : entry.type === "business_tool" ? "crm-tools" : entry.type === "messaging" ? "messaging" : entry.type === "website_form" ? "website-forms" : entry.type === "website" ? "website-tracker" : entry.type === "manual_note" ? "manual-notes" : entry.type === "file_upload" ? "file-uploads" : "",
         metadata: entry.metadata || {}
       }))
       .filter((entry) => entry.resourceId);
