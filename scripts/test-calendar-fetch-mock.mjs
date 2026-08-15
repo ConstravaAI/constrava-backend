@@ -7,7 +7,7 @@ globalThis.fetch = async function calendarTestFetch(input, init) {
       access_token: "combined-google-access-token",
       refresh_token: "combined-google-refresh-token",
       expires_in: 3600,
-      scope: "openid email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly",
+      scope: "openid email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/adsense.readonly",
       token_type: "Bearer"
     }), { status: 200, headers: { "content-type": "application/json" } });
   }
@@ -47,6 +47,16 @@ globalThis.fetch = async function calendarTestFetch(input, init) {
   if (url.href === "https://gmail.googleapis.com/gmail/v1/users/me/profile") {
     return new Response(JSON.stringify({ emailAddress: "owner@example.com", messagesTotal: 42, threadsTotal: 18 }), { status: 200, headers: { "content-type": "application/json" } });
   }
+  if (url.origin === "https://adsense.googleapis.com" && url.pathname === "/v2/accounts") {
+    return new Response(JSON.stringify({ accounts: [{ name: "accounts/pub-123456789", displayName: "Constrava Publisher", state: "READY", premium: false, timeZone: { id: "America/New_York" }, pendingTasks: [] }] }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (url.origin === "https://adsense.googleapis.com" && url.pathname === "/v2/accounts/pub-123456789/reports:generate") {
+    const dimensions = url.searchParams.getAll("dimensions");
+    const headers = [dimensions[0], "ESTIMATED_EARNINGS", "PAGE_VIEWS", "IMPRESSIONS", "CLICKS", "PAGE_VIEWS_RPM", "PAGE_VIEWS_CTR"].map((name, index) => ({ name, type: index === 0 ? "DIMENSION" : name === "ESTIMATED_EARNINGS" || name === "PAGE_VIEWS_RPM" ? "METRIC_CURRENCY" : name.endsWith("CTR") ? "METRIC_RATIO" : "METRIC_TALLY", ...(name === "ESTIMATED_EARNINGS" || name === "PAGE_VIEWS_RPM" ? { currencyCode: "USD" } : {}) }));
+    const row = (values) => ({ cells: values.map((value) => ({ value: String(value) })) });
+    if (dimensions[0] === "DOMAIN_NAME") return new Response(JSON.stringify({ headers, rows: [row(["example.com", 8.25, 900, 720, 18, 9.17, 0.02])], totals: row(["", 8.25, 900, 720, 18, 9.17, 0.02]), warnings: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify({ headers, rows: [row(["2026-08-14", 5.5, 600, 480, 12, 9.17, 0.02]), row(["2026-08-15", 2.75, 300, 240, 6, 9.17, 0.02])], totals: row(["", 8.25, 900, 720, 18, 9.17, 0.02]), warnings: [], startDate: { year: 2026, month: 8, day: 1 }, endDate: { year: 2026, month: 8, day: 15 } }), { status: 200, headers: { "content-type": "application/json" } });
+  }
   if (url.origin === "https://www.googleapis.com" && url.pathname === "/calendar/v3/users/me/calendarList") {
     return new Response(JSON.stringify({
       items: [
@@ -82,4 +92,3 @@ globalThis.fetch = async function calendarTestFetch(input, init) {
   }
   return nativeFetch(input, init);
 };
-
