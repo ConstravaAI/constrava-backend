@@ -255,7 +255,8 @@ function constravaResourceDetail(resource){if(resource.id==='google-account')ret
 const constravaResourceDetailBase=constravaResourceDetail
 constravaResourceDetail=function(resource){if(resource.id==='crm-tools')return constravaBusinessSetup();if(resource.id==='messaging')return constravaMessagingSetup();return constravaResourceDetailBase(resource)}
 function constravaResourcesContent(){const resource=constravaResourceById(S.resourceView);return resource?constravaResourceDetail(resource):constravaResourcesDirectory()}
-const constravaGoogleReturn=new URLSearchParams(location.search).get('google_account_connected');if(constravaGoogleReturn){S.tab='resources';S.resourceView='google-account';setTimeout(function(){constravaOpenGoogleResource()},0)}
+const constravaBaseTab=tab;tab=function(name){if(name==='resources'){S.resourceView='';S.resourcesDirectoryView='all'}return constravaBaseTab(name)}
+const constravaReturnParams=new URLSearchParams(location.search),constravaGoogleReturn=constravaReturnParams.get('google_account_connected');if(constravaGoogleReturn){constravaReturnParams.delete('google_account_connected');const constravaCleanQuery=constravaReturnParams.toString();history.replaceState(null,'',location.pathname+(constravaCleanQuery?'?'+constravaCleanQuery:'')+location.hash);S.tab='resources';S.resourceView='google-account';setTimeout(function(){constravaOpenGoogleResource()},0)}
 const constravaMicrosoftReturn=new URLSearchParams(location.search).get('microsoft_account_connected');if(constravaMicrosoftReturn){S.tab='resources';S.resourceView='microsoft-account';setTimeout(function(){constravaOpenMicrosoftResource()},0)}
 `;
 
