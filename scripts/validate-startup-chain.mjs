@@ -161,6 +161,15 @@ await assertContains("src/server.js", "/link-google", "Google account resource l
 await assertContains("src/server-connected-resources.js", "function constravaGoogleSetup", "the reusable Google account interface");
 await assertContains("src/server-connected-resources.js", "data-use-google-for-email", "Gmail reuse without another login");
 await assertContains("src/server-connected-resources.js", "data-use-google-for-calendar", "Calendar reuse without another login");
+await assertContains("src/server.js", "MICROSOFT_APP_CATALOG", "the supported Microsoft app catalog");
+await assertContains("src/server.js", "microsoftAppsAuthorizeMatch", "incremental Microsoft app authorization");
+await assertContains("src/server.js", "microsoftAppsScanMatch", "connected Microsoft app scanning");
+await assertContains("src/server.js", "linkedMicrosoftAccount(storeData, connection)", "shared Microsoft token resolution");
+await assertContains("src/server.js", "/link-microsoft", "Microsoft account resource linking");
+await assertContains("src/server-connected-resources.js", "function constravaMicrosoftAppsSetup", "the Microsoft app selection interface");
+await assertContains("src/server-connected-resources.js", "data-microsoft-scan", "manual Microsoft account scanning");
+await assertContains("src/server-connected-resources.js", "data-use-microsoft-for-email", "Outlook reuse without another login");
+await assertContains("src/server-connected-resources.js", "data-use-microsoft-for-calendar", "Microsoft Calendar reuse without another login");
 await assertContains("src/server.js", "connection.calendarSyncTokens[calendar.id]", "per-calendar incremental sync cursors");
 await assertContains("src/server-runtime.js", "api('/api/calendar-connections/sync'", "the website-refresh calendar review trigger");
 await assertContains("src/server-runtime.js", "S.aiRecords=(refreshed&&refreshed.records)", "the refreshed Review and Publish calendar drafts");
@@ -261,3 +270,4 @@ if (failures.length) {
 }
 
 console.log("Startup chain validation passed.");
+
