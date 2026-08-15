@@ -170,6 +170,9 @@ await assertContains("src/server-connected-resources.js", "function constravaMic
 await assertContains("src/server-connected-resources.js", "data-microsoft-scan", "manual Microsoft account scanning");
 await assertContains("src/server-connected-resources.js", "data-use-microsoft-for-email", "Outlook reuse without another login");
 await assertContains("src/server-connected-resources.js", "data-use-microsoft-for-calendar", "Microsoft Calendar reuse without another login");
+await assertContains("src/server-connected-resources.js", "data-google-banner", "the Google account banner action");
+await assertContains("src/server-connected-resources.js", ".resourcesGoogleCta{", "the Google banner action styling");
+await assertNotContains("src/server-connected-resources.js", "{id:'microsoft-account'", "the visible Microsoft account directory option");
 await assertContains("src/server.js", "connection.calendarSyncTokens[calendar.id]", "per-calendar incremental sync cursors");
 await assertContains("src/server-runtime.js", "api('/api/calendar-connections/sync'", "the website-refresh calendar review trigger");
 await assertContains("src/server-runtime.js", "S.aiRecords=(refreshed&&refreshed.records)", "the refreshed Review and Publish calendar drafts");
