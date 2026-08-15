@@ -267,6 +267,7 @@ function normalize(storeData) {
     account.status ||= account.oauthTokens ? "active" : "draft";
     account.authorizationStatus ||= account.oauthTokens ? "authorized" : "ready";
     account.enabledResources ||= { gmail: true, calendar: true };
+    account.oauthClient ||= "calendar";
   }
   for (const connection of storeData.calendarConnections) {
     connection.accountUserId ||= storeData.users.find((user) => user.workspaceId === connection.workspaceId)?.id || "";
@@ -1096,10 +1097,11 @@ const GOOGLE_SHARED_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events.readonly"
 ];
 
-function googleAccountProviderConfig() {
+function googleAccountProviderConfig(oauthClient = "calendar") {
+  const useGmailClient = oauthClient === "gmail";
   return {
-    clientId: process.env.GOOGLE_CALENDAR_CLIENT_ID || process.env.GMAIL_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CALENDAR_CLIENT_SECRET || process.env.GMAIL_CLIENT_SECRET,
+    clientId: useGmailClient ? process.env.GMAIL_CLIENT_ID : process.env.GOOGLE_CALENDAR_CLIENT_ID || process.env.GMAIL_CLIENT_ID,
+    clientSecret: useGmailClient ? process.env.GMAIL_CLIENT_SECRET : process.env.GOOGLE_CALENDAR_CLIENT_SECRET || process.env.GMAIL_CLIENT_SECRET,
     authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
     scope: GOOGLE_SHARED_SCOPES.join(" ")
@@ -1121,6 +1123,82 @@ function googleAccountSafe(account, storeData) {
 function linkedGoogleAccount(storeData, connection) {
   if (!connection?.googleAccountId) return null;
   return storeData.googleAccounts.find((entry) => entry.id === connection.googleAccountId && entry.workspaceId === connection.workspaceId && entry.status === "active" && entry.authorizationStatus === "authorized") || null;
+}
+
+function googleIdentityFromIdToken(tokens) {
+  try {
+    const payload = JSON.parse(Buffer.from(String(tokens?.id_token || "").split(".")[1] || "", "base64url").toString("utf8"));
+    return { email: clean(payload.email).toLowerCase(), displayName: clean(payload.name) };
+  } catch {
+    return { email: "", displayName: "" };
+  }
+}
+
+async function googleIdentity(tokens) {
+  const fallback = googleIdentityFromIdToken(tokens);
+  if (!tokens?.access_token) return fallback;
+  try {
+    const response = await fetch("https://openidconnect.googleapis.com/v1/userinfo", { headers: { authorization: `Bearer ${tokens.access_token}`, accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) return fallback;
+    const profile = await response.json();
+    return { email: clean(profile.email || fallback.email).toLowerCase(), displayName: clean(profile.name || fallback.displayName) };
+  } catch {
+    return fallback;
+  }
+}
+
+function saveGoogleAccountOAuth(storeData, { account, connection, tokens, email, displayName, oauthClient }) {
+  const workspaceId = account?.workspaceId || connection?.workspaceId || "";
+  const normalizedEmail = clean(email || account?.email || connection?.emailAddress || connection?.accountEmail).toLowerCase();
+  let savedAccount = account || storeData.googleAccounts.find((entry) => entry.workspaceId === workspaceId && entry.email === normalizedEmail);
+  const now = new Date().toISOString();
+  if (!savedAccount) {
+    savedAccount = { id: id("google"), accountUserId: connection?.accountUserId || "", workspaceId, name: "Google Workspace", createdAt: now };
+    storeData.googleAccounts.push(savedAccount);
+  }
+  let previousTokens = {};
+  try { previousTokens = savedAccount.oauthTokens ? decryptEmailTokens(savedAccount.oauthTokens) : {}; } catch {}
+  const nextTokens = { ...previousTokens, ...tokens, refresh_token: tokens.refresh_token || previousTokens.refresh_token, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 };
+  savedAccount.accountUserId ||= connection?.accountUserId || "";
+  savedAccount.name ||= "Google Workspace";
+  savedAccount.displayName = clean(displayName || savedAccount.displayName || normalizedEmail);
+  savedAccount.email = normalizedEmail;
+  savedAccount.status = "active";
+  savedAccount.authorizationStatus = "authorized";
+  savedAccount.authorizationReady = true;
+  savedAccount.enabledResources = { gmail: true, calendar: true };
+  savedAccount.oauthClient = oauthClient === "gmail" ? "gmail" : "calendar";
+  savedAccount.oauthTokens = encryptEmailTokens(nextTokens);
+  savedAccount.oauthStateHash = "";
+  savedAccount.oauthStateExpiresAt = "";
+  savedAccount.authorizedAt = now;
+  savedAccount.lastError = "";
+  savedAccount.updatedAt = now;
+  if (connection) {
+    connection.googleAccountId = savedAccount.id;
+    connection.oauthTokens = "";
+  }
+  return savedAccount;
+}
+
+async function completeGoogleAccountAuthorization(account, code, redirectUri) {
+  const config = googleAccountProviderConfig(account.oauthClient);
+  const tokenBody = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, code, redirect_uri: redirectUri, grant_type: "authorization_code" });
+  const tokenResponse = await fetch(config.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: tokenBody });
+  const tokens = await tokenResponse.json();
+  if (!tokenResponse.ok) return { error: tokens.error_description || tokens.error || "Google account authorization failed." };
+  account.oauthStateHash = "";
+  account.oauthStateExpiresAt = "";
+  if (!hasGoogleSharedScopes(tokens)) {
+    account.status = "permission_required";
+    account.authorizationStatus = "permission_required";
+    account.lastError = "Approve both read-only Gmail and Calendar permissions to connect the Google account once.";
+    account.updatedAt = new Date().toISOString();
+    return { permissionRequired: true };
+  }
+  const identity = await googleIdentity(tokens);
+  saveGoogleAccountOAuth({ googleAccounts: [account] }, { account, tokens, email: identity.email || account.email, displayName: identity.displayName, oauthClient: account.oauthClient });
+  return { account };
 }
 
 function calendarOAuthRedirectUri(req) {
@@ -1496,7 +1574,7 @@ async function emailProviderTokens(connection, storeData) {
   const tokens = decryptEmailTokens(tokenOwner.oauthTokens);
   if (!tokens) throw Object.assign(new Error("Authorize this mailbox before syncing."), { status: 409 });
   if (!tokens.expiresAt || tokens.expiresAt > Date.now() + 60_000) return tokens;
-  const config = sharedAccount ? googleAccountProviderConfig() : emailProviderConfig(connection.provider);
+  const config = sharedAccount ? googleAccountProviderConfig(sharedAccount.oauthClient) : emailProviderConfig(connection.provider);
   if (!tokens.refresh_token || !config) throw Object.assign(new Error("Mailbox authorization expired. Reconnect the inbox."), { status: 401 });
   const body = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, refresh_token: tokens.refresh_token, grant_type: "refresh_token" });
   if (connection.provider === "outlook") body.set("scope", config.scope);
@@ -1608,7 +1686,7 @@ async function calendarProviderTokens(connection, storeData) {
   const tokens = decryptEmailTokens(tokenOwner.oauthTokens);
   if (!tokens) throw Object.assign(new Error("Authorize this calendar before reviewing events."), { status: 409 });
   if (!tokens.expiresAt || tokens.expiresAt > Date.now() + 60_000) return tokens;
-  const config = sharedAccount ? googleAccountProviderConfig() : calendarProviderConfig(connection.provider);
+  const config = sharedAccount ? googleAccountProviderConfig(sharedAccount.oauthClient) : calendarProviderConfig(connection.provider);
   if (!tokens.refresh_token || !config?.clientId || !config?.clientSecret) throw Object.assign(new Error("Calendar authorization expired. Reconnect the calendar."), { status: 401 });
   const body = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, refresh_token: tokens.refresh_token, grant_type: "refresh_token" });
   if (connection.provider === "microsoft") body.set("scope", config.scope);
@@ -2497,6 +2575,15 @@ async function api(req, res, url, route) {
   }
   if (req.method === "GET" && route === "/api/email/oauth/callback") {
     const state = clean(url.searchParams.get("state"));
+    const sharedGoogleAccount = storeData.googleAccounts.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
+    if (sharedGoogleAccount) {
+      if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
+      const result = await completeGoogleAccountAuthorization(sharedGoogleAccount, clean(url.searchParams.get("code")), `${ORIGIN}/api/email/oauth/callback`);
+      await saveStore(storeData);
+      if (result.error) return send(res, 502, { error: result.error });
+      if (result.permissionRequired) return redirect(res, "/dashboard?google_account_scope_required=1");
+      return redirect(res, "/dashboard?google_account_connected=1");
+    }
     const connection = storeData.emailConnections.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
     if (!connection) return send(res, 400, { error: "This mailbox authorization link is invalid or expired." });
     if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
@@ -2508,18 +2595,25 @@ async function api(req, res, url, route) {
     const tokenResponse = await fetch(config.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: tokenBody });
     const tokens = await tokenResponse.json();
     if (!tokenResponse.ok) return send(res, 502, { error: tokens.error_description || tokens.error || "Mailbox authorization failed." });
-    if (connection.provider === "gmail" && !hasGmailReadScope(tokens)) {
+    if (connection.provider === "gmail" && !hasGoogleSharedScopes(tokens)) {
       connection.oauthTokens = "";
       connection.oauthStateHash = "";
       connection.oauthStateExpiresAt = "";
       connection.authorizationStatus = "reauthorization_required";
       connection.status = "reauthorization_required";
-      connection.lastSyncError = GMAIL_PERMISSION_MESSAGE;
+      connection.lastSyncError = "Approve both read-only Gmail and Calendar permissions so this Google account can be reused.";
       connection.updatedAt = new Date().toISOString();
       await saveStore(storeData);
       return redirect(res, "/dashboard?email_scope_required=1");
     }
-    connection.oauthTokens = encryptEmailTokens({ ...tokens, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });
+    let savedGoogleAccount = null;
+    if (connection.provider === "gmail") {
+      const identity = await googleIdentity(tokens);
+      savedGoogleAccount = saveGoogleAccountOAuth(storeData, { connection, tokens, email: identity.email || connection.emailAddress, displayName: identity.displayName, oauthClient: "gmail" });
+      connection.emailAddress = savedGoogleAccount.email;
+    } else {
+      connection.oauthTokens = encryptEmailTokens({ ...tokens, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });
+    }
     connection.oauthStateHash = "";
     connection.oauthStateExpiresAt = "";
     connection.authorizationStatus = "authorized";
@@ -2538,39 +2632,11 @@ async function api(req, res, url, route) {
     const sharedGoogleAccount = storeData.googleAccounts.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
     if (sharedGoogleAccount) {
       if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
-      const config = googleAccountProviderConfig();
       const redirectUri = calendarOAuthRedirectUri(req);
-      const tokenBody = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, code: clean(url.searchParams.get("code")), redirect_uri: redirectUri, grant_type: "authorization_code" });
-      const tokenResponse = await fetch(config.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: tokenBody });
-      const tokens = await tokenResponse.json();
-      if (!tokenResponse.ok) return send(res, 502, { error: tokens.error_description || tokens.error || "Google account authorization failed." });
-      sharedGoogleAccount.oauthStateHash = "";
-      sharedGoogleAccount.oauthStateExpiresAt = "";
-      if (!hasGoogleSharedScopes(tokens)) {
-        sharedGoogleAccount.status = "permission_required";
-        sharedGoogleAccount.authorizationStatus = "permission_required";
-        sharedGoogleAccount.lastError = "Approve both read-only Gmail and Calendar permissions to connect the Google account once.";
-        sharedGoogleAccount.updatedAt = new Date().toISOString();
-        await saveStore(storeData);
-        return redirect(res, "/dashboard?google_account_scope_required=1");
-      }
-      try {
-        const profileResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", { headers: { authorization: `Bearer ${tokens.access_token}`, accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
-        if (profileResponse.ok) {
-          const profile = await profileResponse.json();
-          const approvedEmail = clean(profile.email).toLowerCase();
-          if (/^\S+@\S+\.\S+$/.test(approvedEmail)) sharedGoogleAccount.email = approvedEmail;
-          sharedGoogleAccount.displayName = clean(profile.name || sharedGoogleAccount.displayName || approvedEmail);
-        }
-      } catch {}
-      const now = new Date().toISOString();
-      sharedGoogleAccount.oauthTokens = encryptEmailTokens({ ...tokens, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });
-      sharedGoogleAccount.status = "active";
-      sharedGoogleAccount.authorizationStatus = "authorized";
-      sharedGoogleAccount.authorizedAt = now;
-      sharedGoogleAccount.lastError = "";
-      sharedGoogleAccount.updatedAt = now;
+      const result = await completeGoogleAccountAuthorization(sharedGoogleAccount, clean(url.searchParams.get("code")), redirectUri);
       await saveStore(storeData);
+      if (result.error) return send(res, 502, { error: result.error });
+      if (result.permissionRequired) return redirect(res, "/dashboard?google_account_scope_required=1");
       return redirect(res, "/dashboard?google_account_connected=1");
     }
     const connection = storeData.calendarConnections.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
@@ -2585,17 +2651,29 @@ async function api(req, res, url, route) {
     const tokenResponse = await fetch(config.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: tokenBody });
     const tokens = await tokenResponse.json();
     if (!tokenResponse.ok) return send(res, 502, { error: tokens.error_description || tokens.error || "Calendar authorization failed." });
-    if (connection.provider === "google" && tokens.access_token) {
-      try {
-        const profileResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", { headers: { authorization: `Bearer ${tokens.access_token}`, accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
-        if (profileResponse.ok) {
-          const profile = await profileResponse.json();
-          const selectedEmail = clean(profile.email).toLowerCase();
-          if (/^\S+@\S+\.\S+$/.test(selectedEmail)) connection.accountEmail = selectedEmail;
-        }
-      } catch {}
+    if (connection.provider === "google" && !hasGoogleSharedScopes(tokens)) {
+      connection.oauthTokens = "";
+      connection.oauthStateHash = "";
+      connection.oauthStateExpiresAt = "";
+      connection.authorizationStatus = "reauthorization_required";
+      connection.status = "reauthorization_required";
+      connection.lastSyncError = "Approve both read-only Gmail and Calendar permissions so this Google account can be reused.";
+      connection.updatedAt = new Date().toISOString();
+      await saveStore(storeData);
+      return redirect(res, "/dashboard?google_account_scope_required=1");
     }
-    connection.oauthTokens = encryptEmailTokens({ ...tokens, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });
+    let googleProfile = { email: "", displayName: "" };
+    if (connection.provider === "google" && tokens.access_token) {
+      googleProfile = await googleIdentity(tokens);
+      if (/^\S+@\S+\.\S+$/.test(googleProfile.email)) connection.accountEmail = googleProfile.email;
+    }
+    let savedGoogleAccount = null;
+    if (connection.provider === "google") {
+      savedGoogleAccount = saveGoogleAccountOAuth(storeData, { connection, tokens, email: googleProfile.email || connection.accountEmail, displayName: googleProfile.displayName, oauthClient: "calendar" });
+      connection.accountEmail = savedGoogleAccount.email;
+    } else {
+      connection.oauthTokens = encryptEmailTokens({ ...tokens, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 });
+    }
     connection.oauthStateHash = "";
     connection.oauthStateExpiresAt = "";
     connection.authorizationStatus = "authorized";
@@ -2621,7 +2699,7 @@ async function api(req, res, url, route) {
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId);
     if (source) {
       source.status = "connected";
-      source.metadata = { ...(source.metadata || {}), connectionId: connection.id, provider: connection.provider, calendarName: connection.calendarName, accountEmail: connection.accountEmail };
+      source.metadata = { ...(source.metadata || {}), connectionId: connection.id, provider: connection.provider, calendarName: connection.calendarName, accountEmail: connection.accountEmail, ...(savedGoogleAccount ? { googleAccountId: savedGoogleAccount.id } : {}) };
     }
     await saveStore(storeData);
     return redirect(res, "/dashboard?calendar_connected=1");
@@ -2818,7 +2896,7 @@ async function api(req, res, url, route) {
     const config = googleAccountProviderConfig();
     const authorizationReady = Boolean(emailTokenKey() && config.clientId && config.clientSecret);
     const now = new Date().toISOString();
-    const account = { id: id("google"), accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, name: clean(body.name || "Google Workspace"), displayName: "", email, status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, enabledResources: { gmail: true, calendar: true }, oauthTokens: "", oauthRedirectUri: calendarOAuthRedirectUri(req), authorizedAt: "", lastError: "", createdAt: now, updatedAt: now };
+    const account = { id: id("google"), accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, name: clean(body.name || "Google Workspace"), displayName: "", email, status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, enabledResources: { gmail: true, calendar: true }, oauthClient: "calendar", oauthTokens: "", oauthRedirectUri: calendarOAuthRedirectUri(req), authorizedAt: "", lastError: "", createdAt: now, updatedAt: now };
     storeData.googleAccounts.push(account);
     await saveStore(storeData);
     return send(res, 201, { account: googleAccountSafe(account, storeData) });
@@ -2827,13 +2905,13 @@ async function api(req, res, url, route) {
   if (req.method === "POST" && googleAccountAuthorizeMatch) {
     const account = storeData.googleAccounts.find((entry) => entry.id === googleAccountAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId);
     if (!account) return send(res, 404, { error: "Google account connection not found." });
-    const config = googleAccountProviderConfig();
+    const config = googleAccountProviderConfig(account.oauthClient);
     if (!config.clientId || !config.clientSecret) return send(res, 503, { error: "Google OAuth credentials are not configured." });
     if (!emailTokenKey()) return send(res, 503, { error: `${EMAIL_TOKEN_KEY_ENV} is not configured.` });
     const state = crypto.randomBytes(32).toString("base64url");
     account.oauthStateHash = hashToken(state);
     account.oauthStateExpiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
-    account.oauthRedirectUri = calendarOAuthRedirectUri(req);
+    account.oauthRedirectUri = account.oauthClient === "gmail" ? `${ORIGIN}/api/email/oauth/callback` : calendarOAuthRedirectUri(req);
     account.updatedAt = new Date().toISOString();
     const authorizeUrl = new URL(config.authorizeUrl);
     authorizeUrl.searchParams.set("client_id", config.clientId);
@@ -3012,7 +3090,7 @@ async function api(req, res, url, route) {
     connection.oauthRedirectUri = calendarOAuthRedirectUri(req);
     authorizeUrl.searchParams.set("redirect_uri", connection.oauthRedirectUri);
     authorizeUrl.searchParams.set("response_type", "code");
-    authorizeUrl.searchParams.set("scope", config.scope);
+    authorizeUrl.searchParams.set("scope", connection.provider === "google" ? GOOGLE_SHARED_SCOPES.join(" ") : config.scope);
     authorizeUrl.searchParams.set("state", state);
     if (connection.provider === "google") {
       authorizeUrl.searchParams.set("access_type", "offline");
@@ -3032,7 +3110,10 @@ async function api(req, res, url, route) {
     connection.activatedAt = new Date().toISOString();
     connection.updatedAt = connection.activatedAt;
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
-    if (source) source.status = "connected";
+    if (source) {
+      source.status = "connected";
+      if (savedGoogleAccount) source.metadata = { ...(source.metadata || {}), googleAccountId: savedGoogleAccount.id, emailAddress: connection.emailAddress };
+    }
     await saveStore(storeData);
     return send(res, 200, { connection: calendarConnectionSafe(connection) });
   }
@@ -3483,7 +3564,7 @@ async function api(req, res, url, route) {
     authorizeUrl.searchParams.set("client_id", config.clientId);
     authorizeUrl.searchParams.set("redirect_uri", `${ORIGIN}/api/email/oauth/callback`);
     authorizeUrl.searchParams.set("response_type", "code");
-    authorizeUrl.searchParams.set("scope", config.scope);
+    authorizeUrl.searchParams.set("scope", connection.provider === "gmail" ? GOOGLE_SHARED_SCOPES.join(" ") : config.scope);
     authorizeUrl.searchParams.set("state", state);
     if (connection.provider === "gmail") {
       authorizeUrl.searchParams.set("access_type", "offline");
