@@ -150,6 +150,8 @@ await assertContains("src/server-connected-resources.js", "function constravaCal
 await assertContains("src/server.js", 'route === "/api/google-accounts"', "the reusable Google account API");
 await assertContains("src/server.js", "GOOGLE_SHARED_SCOPES", "combined read-only Google permissions");
 await assertContains("src/server.js", "linkedGoogleAccount(storeData, connection)", "shared Google token resolution");
+await assertContains("src/server.js", "saveGoogleAccountOAuth(storeData", "automatic Google account saving from resource OAuth");
+await assertContains("src/server.js", 'connection.provider === "gmail" ? GOOGLE_SHARED_SCOPES.join(" ")', "combined Google permissions from the Gmail connection flow");
 await assertContains("src/server.js", "/link-google", "Google account resource linking");
 await assertContains("src/server-connected-resources.js", "function constravaGoogleSetup", "the reusable Google account interface");
 await assertContains("src/server-connected-resources.js", "data-use-google-for-email", "Gmail reuse without another login");
