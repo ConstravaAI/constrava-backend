@@ -2,6 +2,18 @@ const nativeFetch = globalThis.fetch;
 
 globalThis.fetch = async function calendarTestFetch(input, init) {
   const url = input instanceof URL ? input : new URL(String(input));
+  if (url.href === "https://oauth2.googleapis.com/token") {
+    return new Response(JSON.stringify({
+      access_token: "combined-google-access-token",
+      refresh_token: "combined-google-refresh-token",
+      expires_in: 3600,
+      scope: "openid email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly",
+      token_type: "Bearer"
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (url.href === "https://openidconnect.googleapis.com/v1/userinfo") {
+    return new Response(JSON.stringify({ email: "owner@example.com", name: "Calendar Owner" }), { status: 200, headers: { "content-type": "application/json" } });
+  }
   if (url.origin === "https://www.googleapis.com" && url.pathname === "/calendar/v3/users/me/calendarList") {
     return new Response(JSON.stringify({
       items: [
