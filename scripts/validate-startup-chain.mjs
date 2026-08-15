@@ -147,6 +147,13 @@ await assertContains("src/server.js", "calendarSelectionConfigured", "saved Goog
 await assertContains("src/server-connected-resources.js", "calendarPickerForm", "the Google Calendar selection interface");
 await assertContains("src/server-connected-resources.js", "['Provider','Account details','Authorize','Choose calendars','CRM rules','Ready']", "the ordered calendar connection steps");
 await assertContains("src/server-connected-resources.js", "function constravaCalendarCalendars", "the dedicated calendar-selection step");
+await assertContains("src/server.js", 'route === "/api/google-accounts"', "the reusable Google account API");
+await assertContains("src/server.js", "GOOGLE_SHARED_SCOPES", "combined read-only Google permissions");
+await assertContains("src/server.js", "linkedGoogleAccount(storeData, connection)", "shared Google token resolution");
+await assertContains("src/server.js", "/link-google", "Google account resource linking");
+await assertContains("src/server-connected-resources.js", "function constravaGoogleSetup", "the reusable Google account interface");
+await assertContains("src/server-connected-resources.js", "data-use-google-for-email", "Gmail reuse without another login");
+await assertContains("src/server-connected-resources.js", "data-use-google-for-calendar", "Calendar reuse without another login");
 await assertContains("src/server.js", "connection.calendarSyncTokens[calendar.id]", "per-calendar incremental sync cursors");
 await assertContains("src/server-runtime.js", "api('/api/calendar-connections/sync'", "the website-refresh calendar review trigger");
 await assertContains("src/server-runtime.js", "S.aiRecords=(refreshed&&refreshed.records)", "the refreshed Review and Publish calendar drafts");
