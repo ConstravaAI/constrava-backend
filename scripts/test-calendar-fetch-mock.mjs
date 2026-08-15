@@ -92,3 +92,4 @@ globalThis.fetch = async function calendarTestFetch(input, init) {
   }
   return nativeFetch(input, init);
 };
+
