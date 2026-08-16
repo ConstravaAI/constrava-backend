@@ -153,6 +153,9 @@ await assertContains("src/server-analytics-selector-copies.js", "await fs.writeF
 await assertContains("src/server-runtime.js", "await fs.writeFile(runtimePath, source);", "the generated runtime write target");
 await assertContains("src/server-responsive.js", "await import(`${pathToFileURL(responsiveRuntimePath).href}?v=${Date.now()}`);", "the responsive runtime handoff");
 await assertContains("src/server-responsive.js", "function aiDraftText\\\\(", "the AI record renderer preservation boundary");
+await assertContains("src/server-responsive.js", "const dashboardStyleInjection =", "the dashboard-specific style insertion");
+await assertContains("src/server-responsive.js", "dashboardStyleEnd = source.indexOf", "the dashboard-scoped style lookup");
+await assertNotContains("src/server-responsive.js", 'const styleNeedle = "</style>\\n</head>"', "the ambiguous first-page style marker");
 await assertContains("src/server-runtime.js", "function aiRecordsContent()", "the AI record queue renderer");
 await assertContains("src/server-runtime.js", "api('/api/records/drafts')", "the Review and Publish draft loader");
 await assertContains("src/server.js", 'route === "/api/calendar-connections/sync"', "the calendar refresh review endpoint");

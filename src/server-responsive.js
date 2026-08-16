@@ -53,8 +53,6 @@ runtime = runtime
   .replaceAll('<h2>Edit Records</h2><p class="muted">Create a manual record', '<h2>Add Records</h2><p class="muted">Create a manual record')
   .replaceAll('if(!r.ok)throw new Error(data.error||"Authentication failed");location.href="/dashboard/"', 'if(!r.ok)throw new Error(data.error||"Authentication failed");if(data.sessionId){var cookieSecure=location.protocol==="https:"?"; SameSite=None; Secure":"; SameSite=Lax";document.cookie="constrava_session="+encodeURIComponent(data.sessionId)+"; Path=/; Max-Age="+(data.sessionMaxAgeSeconds||2592000)+cookieSecure;}location.href="/dashboard/"');
 
-const styleNeedle = "</style>\n</head>";
-const styleReplacement = responsiveCss + "\n</style>\n</head>";
 const sourcePatches = [
   [
     'function sessionCookie(req, sessionId, clear = false) {\n  const secure = isSecure(req) ? "; Secure" : "";\n  if (clear) return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=0`;\n  return `${COOKIE_NAME}=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax${secure}; Max-Age=${SESSION_MAX_AGE_SECONDS}`;\n}',
@@ -64,12 +62,16 @@ const sourcePatches = [
     'return send(res, 200, { ok: true, user: publicUser(user) }, { "set-cookie": sessionCookie(req, session.id) });',
     'return send(res, 200, { ok: true, user: publicUser(user), sessionId: session.id, sessionMaxAgeSeconds: SESSION_MAX_AGE_SECONDS }, { "set-cookie": sessionCookie(req, session.id) });'
   ],
-  [bindInsertionNeedle, bindInsertionReplacement],
-  [styleNeedle, styleReplacement]
+  [bindInsertionNeedle, bindInsertionReplacement]
 ];
 const wizardInjection = "source = source.replace(/function editRecordsContent\\(\\)\\{[\\s\\S]*?\\nfunction aiDraftText\\(/, " + JSON.stringify(editRecordsWizardReplacement + "\nfunction aiDraftText(") + ");\n";
 const crmInjection = "source = source.replace(/function crmContent\\(\\)\\{[\\s\\S]*?\\nfunction notificationContent\\(\\)/, " + JSON.stringify(crmContentReplacement + "\nfunction notificationContent()") + ");\n";
-const injection = wizardInjection + crmInjection + "for (const [needle, replacement] of " + JSON.stringify(sourcePatches) + ") source = source.replace(needle, replacement);\n";
+const dashboardStyleInjection =
+  "const dashboardPageStart = source.indexOf(" + JSON.stringify("function appPage({ demo = false, user = null, project = null } = {}) {") + ");\n" +
+  "const dashboardStyleEnd = source.indexOf(" + JSON.stringify("</style>\n</head>") + ", dashboardPageStart);\n" +
+  "if (dashboardPageStart < 0 || dashboardStyleEnd < 0) throw new Error(\"Could not find the dashboard style boundary.\");\n" +
+  "source = source.slice(0, dashboardStyleEnd) + " + JSON.stringify(responsiveCss + "\n") + " + source.slice(dashboardStyleEnd);\n";
+const injection = wizardInjection + crmInjection + dashboardStyleInjection + "for (const [needle, replacement] of " + JSON.stringify(sourcePatches) + ") source = source.replace(needle, replacement);\n";
 runtime = runtime.replace("await fs.writeFile(runtimePath, source);", injection + "await fs.writeFile(runtimePath, source);");
 await fs.writeFile(responsiveRuntimePath, runtime);
 await import(`${pathToFileURL(responsiveRuntimePath).href}?v=${Date.now()}`);
