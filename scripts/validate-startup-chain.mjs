@@ -255,6 +255,9 @@ await assertContains("src/server.js", "normalizeDatabaseConnectionString", "comm
 await assertContains("src/server.js", "async function postgresQuery", "runtime Neon disconnect recovery");
 await assertContains("src/server.js", "Account storage is temporarily unavailable.", "graceful database outage handling");
 await assertContains("src/server.js", "const database = await databaseHealth();", "database-independent health reporting");
+await assertContains("src/server.js", "function freePublicPage()", "free public homepage renderer");
+await assertContains("src/server.js", "Free online CRM + analytics", "free-service homepage positioning");
+await assertContains("src/server.js", "Create your free account", "free account homepage call to action");
 await assertContains("src/server.js", 'route === "/api/website-connections"', "persistent Website Tracker connections");
 await assertContains("src/server-connected-resources.js", "function constravaSaveWebsiteState(", "Website Tracker server persistence");
 await assertContains("src/server.js", "/developer-handoff", "server-side Website Tracker developer handoff endpoint");
