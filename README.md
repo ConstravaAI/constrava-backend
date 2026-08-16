@@ -16,6 +16,12 @@ The existing file store remains available as a fallback. On a paid Render servic
 
 `/api/health` reports `dataStore: "postgres"`, `postgresStoreConfigured: true`, and `databaseStatus: "ready"` when Neon is active. If Neon is unavailable, the public site and sign-in page stay online, health reports a safe error code, and account APIs return `503` instead of silently writing to Render's temporary filesystem.
 
+## Developer handoff email
+
+Website Tracker developer handoffs are sent through Resend. In Render, set `RESEND_API_KEY` and `DEVELOPER_HANDOFF_FROM`; the sender must use a domain verified in Resend. `DEVELOPER_HANDOFF_REPLY_TO` is optional. When it is omitted, replies go to the signed-in user's email address.
+
+The handoff email includes the user's message, requester and CRM project context, website and platform details, selected tracking items, deadline, installation steps, and that project's exact tracking snippet. Constrava stores a delivery audit record, but not a second copy of the full email body.
+
 Constrava is an AI-assisted business command center for turning messy activity into structured records, priorities, analytics, and next actions.
 
 ## Run locally

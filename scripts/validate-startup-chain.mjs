@@ -257,6 +257,10 @@ await assertContains("src/server.js", "Account storage is temporarily unavailabl
 await assertContains("src/server.js", "const database = await databaseHealth();", "database-independent health reporting");
 await assertContains("src/server.js", 'route === "/api/website-connections"', "persistent Website Tracker connections");
 await assertContains("src/server-connected-resources.js", "function constravaSaveWebsiteState(", "Website Tracker server persistence");
+await assertContains("src/server.js", "/developer-handoff", "server-side Website Tracker developer handoff endpoint");
+await assertContains("src/server.js", "https://api.resend.com/emails", "transactional developer handoff email delivery");
+await assertContains("src/server.js", "developerHandoffs", "developer handoff delivery audit persistence");
+await assertContains("src/server-connected-resources.js", "data-send-developer-handoff", "Website Tracker developer email send action");
 await assertContains("src/server-connected-resources.js", ".join('\\\\n')", "escaped Website Tracker domain separators in the browser runtime");
 await assertContains("src/server-account-persistence.js", "replacement.satisfiedBy", "forward-compatible account persistence patches");
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsModernDonut(", "the analytics distribution chart system");

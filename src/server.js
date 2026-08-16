@@ -49,6 +49,10 @@ const OPENAI_API_KEY_ENV = "OPENAI_API_KEY";
 const RELEVANCE_MODEL = process.env.CONSTRAVA_RELEVANCE_MODEL || "gpt-5.6-luna";
 const RECORD_MODEL = process.env.CONSTRAVA_RECORD_MODEL || "gpt-5.6-terra";
 const EMAIL_TOKEN_KEY_ENV = "EMAIL_TOKEN_ENCRYPTION_KEY";
+const RESEND_API_KEY_ENV = "RESEND_API_KEY";
+const DEVELOPER_HANDOFF_FROM_ENV = "DEVELOPER_HANDOFF_FROM";
+const DEVELOPER_HANDOFF_REPLY_TO_ENV = "DEVELOPER_HANDOFF_REPLY_TO";
+const DEVELOPER_HANDOFF_RATE_LIMIT = 10;
 const EMAIL_SYNC_INTERVAL_MS = Math.max(30_000, Number(process.env.EMAIL_SYNC_INTERVAL_MS || 60_000));
 const AUTO_COMMIT_MIN_CONFIDENCE = 0.9;
 const HIGH_CONFIDENCE_MIN_CONFIDENCE = 0.97;
@@ -142,6 +146,7 @@ function seed() {
     businessConnections: [],
     messagingConnections: [],
     websiteConnections: [],
+    developerHandoffs: [],
     identityEntities: [],
     identityIdentifiers: [],
     identityMentions: [],
@@ -244,6 +249,7 @@ function normalize(storeData) {
   storeData.businessConnections ||= [];
   storeData.messagingConnections ||= [];
   storeData.websiteConnections ||= [];
+  storeData.developerHandoffs ||= [];
   storeData.identityEntities ||= [];
   storeData.identityIdentifiers ||= [];
   storeData.identityMentions ||= [];
@@ -1717,6 +1723,85 @@ async function verifyCalendarCredential(connection, body) {
   return connection;
 }
 
+const DEVELOPER_HANDOFF_TRACKING_LABELS = {
+  pageViews: "Page views",
+  trafficSources: "Traffic sources and campaigns",
+  formSubmissions: "Form submissions",
+  buttonClicks: "Important button clicks",
+  fileDownloads: "File downloads",
+  outboundLinks: "Outbound links",
+  customEvents: "Custom events",
+  revenue: "Purchases and revenue"
+};
+
+function developerHandoffInput(body) {
+  const developerEmail = clean(body?.developerEmail).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(developerEmail) || developerEmail.length > 254) {
+    throw Object.assign(new Error("Enter a valid developer email address."), { status: 400 });
+  }
+  const deadline = clean(body?.deadline);
+  if (deadline && !/^\d{4}-\d{2}-\d{2}$/.test(deadline)) {
+    throw Object.assign(new Error("Enter a valid installation deadline."), { status: 400 });
+  }
+  return {
+    developerName: clean(body?.developerName).slice(0, 120),
+    developerEmail,
+    message: String(body?.message || "").replace(/\r\n?/g, "\n").trim().slice(0, 4_000),
+    deadline
+  };
+}
+
+function developerHandoffContent({ connection, handoff, requester, project, trackingSnippet }) {
+  const tracking = Object.entries(connection.tracking || {})
+    .filter(([, enabled]) => enabled)
+    .map(([key]) => DEVELOPER_HANDOFF_TRACKING_LABELS[key] || key);
+  const requesterName = clean(requester?.name || requester?.email || "A Constrava user");
+  const requesterEmail = clean(requester?.email);
+  const websiteName = clean(connection.name || new URL(connection.productionUrl).hostname || "website");
+  const greeting = handoff.developerName ? `Hi ${handoff.developerName},` : "Hello,";
+  const details = [
+    ["CRM project", clean(project?.name || "Constrava workspace")],
+    ["Website", websiteName],
+    ["Production URL", connection.productionUrl],
+    ["Platform", clean(connection.platform || "custom")],
+    ["Tracking requested", tracking.join(", ") || "Page views"],
+    ...(handoff.deadline ? [["Requested deadline", handoff.deadline]] : [])
+  ];
+  const requesterLine = requesterEmail && requesterEmail !== requesterName ? `${requesterName} (${requesterEmail})` : requesterName;
+  const personalText = handoff.message ? `\nMessage from ${requesterName}:\n${handoff.message}\n` : "";
+  const text = `${greeting}\n\n${requesterLine} asked you to install the Constrava Website Tracker on ${websiteName}.${personalText}\nInstallation details\n${details.map(([label, value]) => `${label}: ${value}`).join("\n")}\n\nWhat to do\n1. Add the complete snippet below once in the site-wide head so it loads on every production page.\n2. Deploy the change to the production website.\n3. Reply to ${requesterEmail || requesterName} when it is live so they can run Constrava's connection test.\n\nConstrava tracking snippet\n${trackingSnippet}\n\nPlease do not alter the snippet or install it through more than one method, because duplicate installations can double-count activity.`;
+  const detailsHtml = details.map(([label, value]) => `<tr><td style="padding:6px 14px 6px 0;color:#64748b;vertical-align:top">${esc(label)}</td><td style="padding:6px 0;font-weight:700;color:#0f2340">${esc(value)}</td></tr>`).join("");
+  const personalHtml = handoff.message ? `<div style="margin:20px 0;padding:16px 18px;border-left:4px solid #7357ff;background:#f4f1ff;border-radius:8px;white-space:pre-wrap"><strong>Message from ${esc(requesterName)}</strong><br>${esc(handoff.message)}</div>` : "";
+  const html = `<!doctype html><html><body style="margin:0;background:#f3f6fb;font-family:Arial,sans-serif;color:#21304a"><div style="max-width:680px;margin:0 auto;padding:28px 16px"><div style="height:6px;background:linear-gradient(90deg,#7357ff,#00c2ff,#20c997);border-radius:16px 16px 0 0"></div><main style="background:#fff;padding:30px;border-radius:0 0 16px 16px"><div style="font-size:22px;font-weight:900;color:#061a33">Constrava</div><h1 style="margin:24px 0 12px;color:#061a33;font-size:28px">Website tracker installation</h1><p>${esc(greeting)}</p><p>${esc(requesterLine)} asked you to install the Constrava Website Tracker on <strong>${esc(websiteName)}</strong>.</p>${personalHtml}<h2 style="margin-top:28px;color:#061a33;font-size:19px">Installation details</h2><table style="border-collapse:collapse;width:100%">${detailsHtml}</table><h2 style="margin-top:28px;color:#061a33;font-size:19px">What to do</h2><ol style="padding-left:22px;line-height:1.65"><li>Add the complete snippet below once in the site-wide head so it loads on every production page.</li><li>Deploy the change to the production website.</li><li>Reply to ${esc(requesterEmail || requesterName)} when it is live so the connection test can be run in Constrava.</li></ol><h2 style="margin-top:28px;color:#061a33;font-size:19px">Constrava tracking snippet</h2><pre style="box-sizing:border-box;overflow:auto;padding:16px;background:#081c36;color:#eef6ff;border-radius:12px;white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.55">${esc(trackingSnippet)}</pre><p style="margin-top:20px;color:#64748b;font-size:13px">Please do not alter the snippet or install it through more than one method, because duplicate installations can double-count activity.</p></main></div></body></html>`;
+  return { subject: `Website tracker installation for ${websiteName}`.slice(0, 180), text, html };
+}
+
+async function sendDeveloperHandoffEmail({ to, subject, text, html, replyTo, idempotencyKey }) {
+  const apiKey = clean(process.env[RESEND_API_KEY_ENV]);
+  const from = clean(process.env[DEVELOPER_HANDOFF_FROM_ENV]);
+  if (!apiKey || !from) {
+    throw Object.assign(new Error(`Developer email delivery is not configured. Add ${RESEND_API_KEY_ENV} and ${DEVELOPER_HANDOFF_FROM_ENV} in Render.`), { status: 503, code: "developer_email_not_configured" });
+  }
+  let response;
+  try {
+    response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", "idempotency-key": idempotencyKey },
+      body: JSON.stringify({ from, to: [to], subject, text, html, ...(replyTo ? { reply_to: replyTo } : {}) }),
+      signal: AbortSignal.timeout(15_000)
+    });
+  } catch (error) {
+    throw Object.assign(new Error("The developer email service could not be reached. Try again."), { status: 502, code: "developer_email_unavailable", cause: error });
+  }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !clean(result.id)) {
+    const providerMessage = clean(result.message || result.error?.message);
+    throw Object.assign(new Error(providerMessage || "The developer email could not be sent. Check the sender configuration and try again."), { status: 502, code: "developer_email_rejected" });
+  }
+  return { providerMessageId: clean(result.id) };
+}
+
+
 function businessProviderConfig(provider) {
   if (provider === "hubspot") return {
     clientId: process.env.HUBSPOT_CLIENT_ID,
@@ -2678,8 +2763,12 @@ function dashboardSummary(storeData, workspaceId) {
   };
 }
 
-function snippet() {
-  return '<script>(function(){var endpoint=' + JSON.stringify(ORIGIN + '/api/analytics/events?demo=1') + ';var sid=localStorage.getItem("constrava_session_id")||Math.random().toString(36).slice(2);localStorage.setItem("constrava_session_id",sid);function send(type,metadata){fetch(endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({workspaceId:"demo",siteId:"site_demo",type:type,sessionId:sid,sourceUrl:location.href,referrer:document.referrer,metadata:metadata||{}})}).catch(function(){})}send("page_view",{title:document.title});document.addEventListener("submit",function(e){var data={};Array.prototype.forEach.call(e.target.elements||[],function(i){if(i.name)data[i.name]=i.value});send("form_submission",{fields:data})},true)})();</script>';
+function snippet(workspaceId = "demo", demo = false) {
+  const targetWorkspaceId = clean(workspaceId) || "demo";
+  const query = demo ? "?demo=1" : `?workspaceId=${encodeURIComponent(targetWorkspaceId)}`;
+  const endpoint = `${ORIGIN}/api/analytics/events${query}`;
+  const siteId = `site_${targetWorkspaceId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+  return '<script>(function(){var endpoint=' + JSON.stringify(endpoint) + ';var workspaceId=' + JSON.stringify(targetWorkspaceId) + ';var siteId=' + JSON.stringify(siteId) + ';var sid=localStorage.getItem("constrava_session_id")||Math.random().toString(36).slice(2);localStorage.setItem("constrava_session_id",sid);function send(type,metadata){fetch(endpoint,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({workspaceId:workspaceId,siteId:siteId,type:type,sessionId:sid,sourceUrl:location.href,referrer:document.referrer,metadata:metadata||{}})}).catch(function(){})}send("page_view",{title:document.title});document.addEventListener("submit",function(e){var data={};Array.prototype.forEach.call(e.target.elements||[],function(i){if(i.name)data[i.name]=i.value});send("form_submission",{fields:data})},true)})();</script>';
 }
 
 function withPublicPaletteLayout(page) {
@@ -3303,7 +3392,7 @@ async function api(req, res, url, route) {
       });
     return send(res, 200, { records });
   }
-  if (req.method === "GET" && route === "/api/sources") return send(res, 200, { sources: storeData.sources.filter((entry) => entry.workspaceId === ctx.workspaceId), snippet: snippet() });
+  if (req.method === "GET" && route === "/api/sources") return send(res, 200, { sources: storeData.sources.filter((entry) => entry.workspaceId === ctx.workspaceId), snippet: snippet(ctx.workspaceId, ctx.demo) });
   if (req.method === "GET" && route === "/api/plans") return send(res, 200, { plans: storeData.plans.filter((plan) => plan.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/reports") return send(res, 200, { reports: storeData.reports.filter((report) => report.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/analytics/events") return send(res, 200, { events: storeData.events.filter((event) => event.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
@@ -4098,6 +4187,65 @@ async function api(req, res, url, route) {
     await saveStore(storeData);
     return send(res, 200, { connection });
   }
+  const websiteDeveloperHandoffMatch = route.match(/^\/api\/website-connections\/([^/]+)\/developer-handoff$/);
+  if (req.method === "POST" && websiteDeveloperHandoffMatch) {
+    const connection = storeData.websiteConnections.find((entry) => entry.id === websiteDeveloperHandoffMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Website connection not found." });
+    const recentCutoff = Date.now() - 60 * 60 * 1000;
+    const recentCount = storeData.developerHandoffs.filter((entry) => entry.workspaceId === ctx.workspaceId && new Date(entry.createdAt).getTime() >= recentCutoff).length;
+    if (recentCount >= DEVELOPER_HANDOFF_RATE_LIMIT) return send(res, 429, { error: "Too many developer emails were sent recently. Try again later." });
+    const handoff = developerHandoffInput(await readBody(req));
+    const now = new Date().toISOString();
+    connection.installation ||= { method: "developer", values: {} };
+    connection.installation.method = "developer";
+    connection.installation.values ||= {};
+    connection.installation.values.developer = { ...handoff };
+    connection.updatedAt = now;
+    const requester = ctx.user || storeData.users.find((entry) => entry.id === connection.accountUserId) || null;
+    const project = storeData.workspaces.find((entry) => entry.id === ctx.workspaceId) || null;
+    const deliveryId = id("handoff");
+    const content = developerHandoffContent({ connection, handoff, requester, project, trackingSnippet: snippet(ctx.workspaceId) });
+    const configuredReplyTo = clean(process.env[DEVELOPER_HANDOFF_REPLY_TO_ENV]);
+    const replyTo = configuredReplyTo || clean(requester?.email);
+    const audit = {
+      id: deliveryId,
+      workspaceId: ctx.workspaceId,
+      websiteConnectionId: connection.id,
+      requestedByUserId: requester?.id || "",
+      to: handoff.developerEmail,
+      developerName: handoff.developerName,
+      subject: content.subject,
+      deadline: handoff.deadline,
+      status: "sending",
+      provider: "resend",
+      providerMessageId: "",
+      errorCode: "",
+      createdAt: now,
+      sentAt: ""
+    };
+    storeData.developerHandoffs.push(audit);
+    try {
+      const delivery = await sendDeveloperHandoffEmail({
+        to: handoff.developerEmail,
+        subject: content.subject,
+        text: content.text,
+        html: content.html,
+        replyTo,
+        idempotencyKey: `website-handoff:${deliveryId}`
+      });
+      audit.status = "sent";
+      audit.providerMessageId = delivery.providerMessageId;
+      audit.sentAt = new Date().toISOString();
+      await saveStore(storeData);
+      return send(res, 200, { sent: true, connection, handoff: { id: audit.id, to: audit.to, status: audit.status, sentAt: audit.sentAt, providerMessageId: audit.providerMessageId } });
+    } catch (error) {
+      audit.status = "failed";
+      audit.errorCode = clean(error.code || "developer_email_failed");
+      await saveStore(storeData);
+      throw error;
+    }
+  }
+
   const websiteActivateMatch = route.match(/^\/api\/website-connections\/([^/]+)\/activate$/);
   if (req.method === "POST" && websiteActivateMatch) {
     const connection = storeData.websiteConnections.find((entry) => entry.id === websiteActivateMatch[1] && entry.workspaceId === ctx.workspaceId);
