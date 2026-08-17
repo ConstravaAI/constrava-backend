@@ -1837,8 +1837,8 @@ function businessProviderConfig(provider) {
     tokenStyle: "basic_json"
   };
   if (provider === "google_sheets") return {
-    clientId: process.env.GOOGLE_SHEETS_CLIENT_ID || process.env.GMAIL_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_SHEETS_CLIENT_SECRET || process.env.GMAIL_CLIENT_SECRET,
+    clientId: process.env.GOOGLE_SHEETS_CLIENT_ID || process.env.GOOGLE_CALENDAR_CLIENT_ID || process.env.GMAIL_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_SHEETS_CLIENT_SECRET || process.env.GOOGLE_CALENDAR_CLIENT_SECRET || process.env.GMAIL_CLIENT_SECRET,
     authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
     scope: "openid email https://www.googleapis.com/auth/spreadsheets.readonly",
@@ -1851,9 +1851,46 @@ function businessProviderName(provider) {
   return provider === "hubspot" ? "HubSpot" : provider === "salesforce" ? "Salesforce" : provider === "airtable" ? "Airtable" : provider === "notion" ? "Notion" : provider === "google_sheets" ? "Google Sheets" : "Business tool";
 }
 
-function businessConnectionSafe(connection) {
+const BUSINESS_PROVIDER_IDS = ["hubspot", "salesforce", "airtable", "notion", "google_sheets"];
+
+function businessProviderEnvironmentKeys(provider) {
+  if (provider === "hubspot") return ["HUBSPOT_CLIENT_ID", "HUBSPOT_CLIENT_SECRET", EMAIL_TOKEN_KEY_ENV];
+  if (provider === "salesforce") return ["SALESFORCE_CLIENT_ID", "SALESFORCE_CLIENT_SECRET", EMAIL_TOKEN_KEY_ENV];
+  if (provider === "airtable") return ["AIRTABLE_CLIENT_ID", "AIRTABLE_CLIENT_SECRET", EMAIL_TOKEN_KEY_ENV];
+  if (provider === "notion") return ["NOTION_CLIENT_ID", "NOTION_CLIENT_SECRET", EMAIL_TOKEN_KEY_ENV];
+  if (provider === "google_sheets") return ["GOOGLE_SHEETS_CLIENT_ID + GOOGLE_SHEETS_CLIENT_SECRET", "or GOOGLE_CALENDAR_CLIENT_ID + GOOGLE_CALENDAR_CLIENT_SECRET", "or GMAIL_CLIENT_ID + GMAIL_CLIENT_SECRET", EMAIL_TOKEN_KEY_ENV];
+  return [];
+}
+
+function businessProviderReadiness(provider, storeData, workspaceId) {
+  const config = businessProviderConfig(provider);
+  const reusableGoogleAccount = provider === "google_sheets" && storeData?.googleAccounts?.some((account) => account.workspaceId === workspaceId && account.status === "active" && account.authorizationStatus === "authorized" && googleAuthorizedApps(account).includes("sheets"));
+  const oauthReady = Boolean(config?.clientId && config?.clientSecret);
+  const encryptionReady = Boolean(emailTokenKey());
+  const ready = Boolean(reusableGoogleAccount || (oauthReady && encryptionReady));
+  const missing = [];
+  if (!reusableGoogleAccount && !oauthReady) {
+    if (provider === "google_sheets") missing.push("Google OAuth client ID and secret");
+    else missing.push(...businessProviderEnvironmentKeys(provider).slice(0, 2));
+  }
+  if (!reusableGoogleAccount && !encryptionReady) missing.push(EMAIL_TOKEN_KEY_ENV);
+  return {
+    id: provider,
+    name: businessProviderName(provider),
+    ready,
+    reusableGoogleAccount: Boolean(reusableGoogleAccount),
+    missing,
+    requiredVariables: businessProviderEnvironmentKeys(provider),
+    callbackUrl: `${ORIGIN}/api/business-tools/oauth/callback`,
+    setupNote: provider === "google_sheets" ? "Google Sheets can reuse a connected Google account with Sheets permission." : `A ${businessProviderName(provider)} OAuth app must be registered once for Constrava.`
+  };
+}
+
+function businessConnectionSafe(connection, storeData) {
   const { oauthTokens, oauthStateHash, oauthStateExpiresAt, oauthPkceVerifier, ...safe } = connection;
-  return { ...safe, credentialConfigured: Boolean(oauthTokens), providerReady: Boolean(emailTokenKey() && businessProviderConfig(connection.provider)?.clientId && businessProviderConfig(connection.provider)?.clientSecret) };
+  const provider = businessProviderReadiness(connection.provider, storeData, connection.workspaceId);
+  const googleAccount = storeData ? linkedGoogleAccount(storeData, connection) : null;
+  return { ...safe, credentialConfigured: Boolean(oauthTokens || googleAccount), providerReady: provider.ready, missingConfiguration: provider.missing, requiredVariables: provider.requiredVariables, oauthRedirectUri: provider.callbackUrl, setupNote: provider.setupNote, reusableGoogleAccount: provider.reusableGoogleAccount };
 }
 
 function businessDefaultScope() {
@@ -3482,7 +3519,10 @@ async function api(req, res, url, route) {
     await saveStore(storeData);
     return send(res, 200, result);
   }
-  if (req.method === "GET" && route === "/api/business-connections") return send(res, 200, { connections: storeData.businessConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(businessConnectionSafe) });
+  if (req.method === "GET" && route === "/api/business-connections") return send(res, 200, {
+    connections: storeData.businessConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => businessConnectionSafe(entry, storeData)),
+    providers: BUSINESS_PROVIDER_IDS.map((provider) => businessProviderReadiness(provider, storeData, ctx.workspaceId))
+  });
   if (req.method === "GET" && route === "/api/messaging-connections") return send(res, 200, { connections: storeData.messagingConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(messagingConnectionSafe) });
   if (req.method === "GET" && route === "/api/connected-resources") {
     const resources = storeData.sources
@@ -3893,9 +3933,9 @@ async function api(req, res, url, route) {
   if (req.method === "POST" && route === "/api/business-connections") {
     const body = await readBody(req);
     const provider = clean(body.provider).toLowerCase();
-    if (!["hubspot", "salesforce", "airtable", "notion", "google_sheets"].includes(provider)) return send(res, 400, { error: "Choose HubSpot, Salesforce, Airtable, Notion, or Google Sheets." });
-    const config = businessProviderConfig(provider);
-    const authorizationReady = Boolean(emailTokenKey() && config?.clientId && config?.clientSecret);
+    if (!BUSINESS_PROVIDER_IDS.includes(provider)) return send(res, 400, { error: "Choose HubSpot, Salesforce, Airtable, Notion, or Google Sheets." });
+    const providerReadiness = businessProviderReadiness(provider, storeData, ctx.workspaceId);
+    const authorizationReady = providerReadiness.ready;
     const now = new Date().toISOString();
     const connection = {
       id: id("business"), accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, sourceId: id("source_business"),
@@ -3908,7 +3948,33 @@ async function api(req, res, url, route) {
     storeData.businessConnections.push(connection);
     storeData.sources.push({ id: connection.sourceId, accountUserId: connection.accountUserId, workspaceId: ctx.workspaceId, name: connection.name, type: "business_tool", status: "draft", metadata: { connectionId: connection.id, provider: connection.provider, accountLabel: connection.accountLabel, containerName: connection.containerName } });
     await saveStore(storeData);
-    return send(res, 201, { connection: businessConnectionSafe(connection) });
+    return send(res, 201, { connection: businessConnectionSafe(connection, storeData) });
+  }
+  const businessGoogleLinkMatch = route.match(/^\/api\/business-connections\/([^/]+)\/link-google$/);
+  if (req.method === "POST" && businessGoogleLinkMatch) {
+    const connection = storeData.businessConnections.find((entry) => entry.id === businessGoogleLinkMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Business-tool connection not found." });
+    if (connection.provider !== "google_sheets") return send(res, 400, { error: "A Google account can only be reused for Google Sheets." });
+    const body = await readBody(req);
+    const account = storeData.googleAccounts.find((entry) => entry.id === clean(body.googleAccountId) && entry.workspaceId === ctx.workspaceId && entry.status === "active" && entry.authorizationStatus === "authorized");
+    if (!account) return send(res, 404, { error: "Connected Google account not found." });
+    if (!googleAuthorizedApps(account).includes("sheets")) return send(res, 409, { error: "Add Google Sheets permission from Manage Google account first." });
+    connection.googleAccountId = account.id;
+    connection.accountLabel = account.email || account.displayName || connection.accountLabel;
+    connection.authorizationStatus = "authorized";
+    connection.authorizationReady = true;
+    connection.status = "active";
+    connection.authorizedAt ||= new Date().toISOString();
+    connection.activatedAt ||= connection.authorizedAt;
+    connection.lastVerifiedAt = new Date().toISOString();
+    connection.updatedAt = connection.lastVerifiedAt;
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
+    if (source) {
+      source.status = "connected";
+      source.metadata = { ...(source.metadata || {}), connectionId: connection.id, provider: connection.provider, googleAccountId: account.id, accountLabel: connection.accountLabel };
+    }
+    await saveStore(storeData);
+    return send(res, 200, { connection: businessConnectionSafe(connection, storeData) });
   }
   const businessSettingsMatch = route.match(/^\/api\/business-connections\/([^/]+)$/);
   if (req.method === "PATCH" && businessSettingsMatch) {
@@ -3949,15 +4015,15 @@ async function api(req, res, url, route) {
       source.metadata = { ...(source.metadata || {}), connectionId: connection.id, provider: connection.provider, accountLabel: connection.accountLabel, containerName: connection.containerName, instanceUrl: connection.instanceUrl };
     }
     await saveStore(storeData);
-    return send(res, 200, { connection: businessConnectionSafe(connection) });
+    return send(res, 200, { connection: businessConnectionSafe(connection, storeData) });
   }
   const businessAuthorizeMatch = route.match(/^\/api\/business-connections\/([^/]+)\/authorize$/);
   if (req.method === "POST" && businessAuthorizeMatch) {
     const connection = storeData.businessConnections.find((entry) => entry.id === businessAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId);
     if (!connection) return send(res, 404, { error: "Business-tool connection not found." });
     const config = businessProviderConfig(connection.provider);
-    if (!config?.clientId || !config?.clientSecret) return send(res, 503, { error: `OAuth credentials are not configured for ${businessProviderName(connection.provider)}.` });
-    if (!emailTokenKey()) return send(res, 503, { error: `${EMAIL_TOKEN_KEY_ENV} is not configured.` });
+    const providerReadiness = businessProviderReadiness(connection.provider, storeData, ctx.workspaceId);
+    if (!config?.clientId || !config?.clientSecret || !emailTokenKey()) return send(res, 503, { error: `${businessProviderName(connection.provider)} setup is incomplete. Missing: ${providerReadiness.missing.join(", ") || "provider OAuth credentials"}.` });
     const state = crypto.randomBytes(32).toString("base64url");
     connection.oauthStateHash = hashToken(state);
     connection.oauthStateExpiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
@@ -3995,11 +4061,10 @@ async function api(req, res, url, route) {
     const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
     if (source) {
       source.status = "connected";
-      if (savedGoogleAccount) source.metadata = { ...(source.metadata || {}), googleAccountId: savedGoogleAccount.id, emailAddress: connection.emailAddress };
-      if (savedMicrosoftAccount) source.metadata = { ...(source.metadata || {}), microsoftAccountId: savedMicrosoftAccount.id, emailAddress: connection.emailAddress };
+      source.metadata = { ...(source.metadata || {}), connectionId: connection.id, provider: connection.provider, accountLabel: connection.accountLabel, instanceUrl: connection.instanceUrl || "", ...(connection.googleAccountId ? { googleAccountId: connection.googleAccountId } : {}) };
     }
     await saveStore(storeData);
-    return send(res, 200, { connection: businessConnectionSafe(connection) });
+    return send(res, 200, { connection: businessConnectionSafe(connection, storeData) });
   }
   if (req.method === "POST" && route === "/api/messaging-connections") {
     const body = await readBody(req);
@@ -4608,3 +4673,4 @@ async function syncActiveEmailConnections() {
 }
 const emailSyncTimer = setInterval(syncActiveEmailConnections, EMAIL_SYNC_INTERVAL_MS);
 emailSyncTimer.unref();
+

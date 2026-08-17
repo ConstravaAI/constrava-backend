@@ -237,6 +237,11 @@ await assertContains("src/server-colorful-workspaces.js", 'await import("./serve
 await assertContains("src/server-colorful-workspaces.js", 'source.indexOf("<title>Constrava Dashboard</title>")', "dashboard-specific colorful stylesheet target");
 await assertContains("src/server-account-persistence.js", 'await import("./server-connected-resources.js");', "the connected resources wrapper handoff");
 await assertContains("src/server-connected-resources.js", "function constravaEmailConnect(state)", "the provider-aware email connection step");
+await assertContains("src/server.js", "function businessProviderReadiness(provider, storeData, workspaceId)", "business-tool provider readiness reporting");
+await assertContains("src/server.js", "process.env.GOOGLE_CALENDAR_CLIENT_ID || process.env.GMAIL_CLIENT_ID", "Google Sheets OAuth credential reuse");
+await assertContains("src/server.js", "/link-google$/", "connected Google account reuse for Google Sheets");
+await assertContains("src/server-connected-resources.js", "function constravaBusinessSetupNotice(status)", "clear business-provider administrator setup guidance");
+await assertContains("src/server-connected-resources.js", "data-use-google-for-business", "Google Sheets connection without a second Google login");
 await assertContains("src/server.js", "async function fetchImapMessages(connection)", "the universal IMAP inbox adapter");
 await assertContains("src/server.js", "/imap$/", "the IMAP verification route");
 await assertContains("src/server.js", 'connection.status = "reauthorization_required";', "the Gmail permission recovery state");
@@ -312,3 +317,4 @@ if (failures.length) {
 }
 
 console.log("Startup chain validation passed.");
+
