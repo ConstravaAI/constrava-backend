@@ -1841,7 +1841,7 @@ function businessProviderConfig(provider) {
     clientSecret: process.env.GOOGLE_SHEETS_CLIENT_SECRET || process.env.GOOGLE_CALENDAR_CLIENT_SECRET || process.env.GMAIL_CLIENT_SECRET,
     authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
-    scope: "openid email https://www.googleapis.com/auth/spreadsheets.readonly",
+    scope: "openid email https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/spreadsheets.readonly",
     tokenStyle: "form"
   };
   return null;
@@ -1903,6 +1903,78 @@ function businessDefaultMapping() {
 
 function businessDefaultSync() {
   return { direction: "read_only", frequency: "manual", conflictStrategy: "review" };
+}
+
+async function businessGoogleSheetsTokens(storeData, connection) {
+  if (connection.provider !== "google_sheets") throw Object.assign(new Error("This connection is not a Google Sheets connection."), { status: 400 });
+  const googleAccount = linkedGoogleAccount(storeData, connection);
+  if (googleAccount) return googleAccountTokens(googleAccount);
+  const tokens = decryptEmailTokens(connection.oauthTokens);
+  if (!tokens?.access_token) throw Object.assign(new Error("Connect a Google account before choosing spreadsheets."), { status: 409 });
+  if (!tokens.expiresAt || tokens.expiresAt > Date.now() + 60_000) return tokens;
+  const config = businessProviderConfig("google_sheets");
+  if (!tokens.refresh_token || !config?.clientId || !config?.clientSecret) throw Object.assign(new Error("Google authorization expired. Reconnect Google Sheets."), { status: 401 });
+  const body = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, refresh_token: tokens.refresh_token, grant_type: "refresh_token" });
+  const response = await fetch(config.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body, signal: AbortSignal.timeout(15_000) });
+  const fresh = await response.json().catch(() => ({}));
+  if (!response.ok) throw Object.assign(new Error(clean(fresh.error_description || fresh.error) || "Could not refresh Google Sheets authorization."), { status: 502 });
+  const next = { ...tokens, ...fresh, refresh_token: fresh.refresh_token || tokens.refresh_token, scope: fresh.scope || tokens.scope, expiresAt: Date.now() + Number(fresh.expires_in || 3600) * 1000 };
+  connection.oauthTokens = encryptEmailTokens(next);
+  connection.updatedAt = new Date().toISOString();
+  return next;
+}
+
+function googleSheetsApiError(data, fallback) {
+  return clean(data?.error?.message || data?.error_description || fallback);
+}
+
+async function listGoogleSpreadsheets(storeData, connection) {
+  const tokens = await businessGoogleSheetsTokens(storeData, connection);
+  const url = new URL("https://www.googleapis.com/drive/v3/files");
+  url.searchParams.set("pageSize", "100");
+  url.searchParams.set("orderBy", "modifiedTime desc");
+  url.searchParams.set("q", "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false");
+  url.searchParams.set("fields", "files(id,name,createdTime,modifiedTime,owners(displayName,emailAddress),webViewLink)");
+  const response = await fetch(url, { headers: { authorization: `Bearer ${tokens.access_token}`, accept: "application/json" }, signal: AbortSignal.timeout(20_000) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw Object.assign(new Error(googleSheetsApiError(data, "Could not scan this Google account for spreadsheets.")), { status: response.status === 401 || response.status === 403 ? 409 : 502 });
+  const imported = new Set((connection.migrationHistory || []).map((entry) => clean(entry.documentId)).filter(Boolean));
+  return (data.files || []).slice(0, 100).map((file) => ({
+    id: clean(file.id), name: clean(file.name || "Untitled spreadsheet"), createdTime: clean(file.createdTime), modifiedTime: clean(file.modifiedTime),
+    owner: clean(file.owners?.[0]?.displayName || file.owners?.[0]?.emailAddress),
+    webViewLink: /^https:\/\/docs\.google\.com\//.test(clean(file.webViewLink)) ? clean(file.webViewLink) : "", imported: imported.has(clean(file.id))
+  })).filter((file) => /^[A-Za-z0-9_-]{10,200}$/.test(file.id));
+}
+
+async function readGoogleSpreadsheet(storeData, connection, document) {
+  const tokens = await businessGoogleSheetsTokens(storeData, connection);
+  const headers = { authorization: `Bearer ${tokens.access_token}`, accept: "application/json" };
+  const metadataUrl = new URL(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(document.id)}`);
+  metadataUrl.searchParams.set("fields", "spreadsheetId,properties(title),sheets(properties(sheetId,title,index,gridProperties(rowCount,columnCount)))");
+  const metadataResponse = await fetch(metadataUrl, { headers, signal: AbortSignal.timeout(20_000) });
+  const metadata = await metadataResponse.json().catch(() => ({}));
+  if (!metadataResponse.ok) throw new Error(googleSheetsApiError(metadata, `Could not read ${document.name}.`));
+  const worksheets = (metadata.sheets || []).sort((left, right) => Number(left?.properties?.index || 0) - Number(right?.properties?.index || 0)).slice(0, 20);
+  const sections = [];
+  let rowCount = 0;
+  for (const worksheet of worksheets) {
+    const title = clean(worksheet?.properties?.title || "Sheet1");
+    const range = `'${title.replaceAll("'", "''")}'!A1:Z200`;
+    const valuesUrl = new URL(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(document.id)}/values/${encodeURIComponent(range)}`);
+    valuesUrl.searchParams.set("majorDimension", "ROWS");
+    const valuesResponse = await fetch(valuesUrl, { headers, signal: AbortSignal.timeout(20_000) });
+    const valuesData = await valuesResponse.json().catch(() => ({}));
+    if (!valuesResponse.ok) throw new Error(googleSheetsApiError(valuesData, `Could not read the ${title} worksheet.`));
+    const rows = Array.isArray(valuesData.values) ? valuesData.values : [];
+    if (!rows.length) continue;
+    rowCount += Math.max(0, rows.length - 1);
+    sections.push(`Spreadsheet: ${clean(metadata?.properties?.title || document.name)}\nWorksheet: ${title}\n\n${tableText(rows)}`);
+    if (sections.join("\n\n").length >= MAX_EXTRACTED_FILE_CHARS) break;
+  }
+  const combined = sections.join("\n\n");
+  const text = combined.slice(0, MAX_EXTRACTED_FILE_CHARS);
+  if (!text) throw new Error(`${document.name} does not contain readable rows in its first 26 columns.`);
+  return { text, title: clean(metadata?.properties?.title || document.name), worksheetCount: sections.length, rowCount, truncated: combined.length > MAX_EXTRACTED_FILE_CHARS };
 }
 
 function messagingProviderConfig(provider) {
@@ -3943,7 +4015,8 @@ async function api(req, res, url, route) {
       accountLabel: clean(body.accountLabel || ""), instanceUrl: clean(body.instanceUrl || ""), containerName: clean(body.containerName || ""),
       scope: businessDefaultScope(), mapping: businessDefaultMapping(), sync: businessDefaultSync(),
       status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady,
-      createdAt: now, updatedAt: now, authorizedAt: "", activatedAt: "", lastVerifiedAt: "", lastSyncAt: "", lastSyncError: "", oauthTokens: "", oauthPkceVerifier: ""
+      createdAt: now, updatedAt: now, authorizedAt: "", activatedAt: "", lastVerifiedAt: "", lastSyncAt: "", lastSyncError: "", oauthTokens: "", oauthPkceVerifier: "",
+      selectedDocumentIds: [], migrationHistory: [], lastMigrationAt: ""
     };
     storeData.businessConnections.push(connection);
     storeData.sources.push({ id: connection.sourceId, accountUserId: connection.accountUserId, workspaceId: ctx.workspaceId, name: connection.name, type: "business_tool", status: "draft", metadata: { connectionId: connection.id, provider: connection.provider, accountLabel: connection.accountLabel, containerName: connection.containerName } });
@@ -3975,6 +4048,50 @@ async function api(req, res, url, route) {
     }
     await saveStore(storeData);
     return send(res, 200, { connection: businessConnectionSafe(connection, storeData) });
+  }
+  const businessGoogleSheetsScanMatch = route.match(/^\/api\/business-connections\/([^/]+)\/google-sheets\/scan$/);
+  if (req.method === "POST" && businessGoogleSheetsScanMatch) {
+    const connection = storeData.businessConnections.find((entry) => entry.id === businessGoogleSheetsScanMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Business-tool connection not found." });
+    if (connection.provider !== "google_sheets" || connection.authorizationStatus !== "authorized") return send(res, 409, { error: "Connect Google Sheets before scanning for spreadsheets." });
+    const documents = await listGoogleSpreadsheets(storeData, connection);
+    connection.lastVerifiedAt = new Date().toISOString(); connection.lastSyncError = ""; connection.updatedAt = connection.lastVerifiedAt;
+    await saveStore(storeData);
+    return send(res, 200, { documents, connection: businessConnectionSafe(connection, storeData) });
+  }
+  const businessGoogleSheetsMigrateMatch = route.match(/^\/api\/business-connections\/([^/]+)\/google-sheets\/migrate$/);
+  if (req.method === "POST" && businessGoogleSheetsMigrateMatch) {
+    const connection = storeData.businessConnections.find((entry) => entry.id === businessGoogleSheetsMigrateMatch[1] && entry.workspaceId === ctx.workspaceId);
+    if (!connection) return send(res, 404, { error: "Business-tool connection not found." });
+    if (connection.provider !== "google_sheets" || connection.authorizationStatus !== "authorized") return send(res, 409, { error: "Connect Google Sheets before migrating spreadsheets." });
+    const body = await readBody(req);
+    const requestedIds = [...new Set((Array.isArray(body.documentIds) ? body.documentIds : []).map(clean).filter((value) => /^[A-Za-z0-9_-]{10,200}$/.test(value)))];
+    if (!requestedIds.length) return send(res, 400, { error: "Choose at least one spreadsheet to migrate." });
+    if (requestedIds.length > 10) return send(res, 400, { error: "Choose up to 10 spreadsheets at a time." });
+    const availableDocuments = await listGoogleSpreadsheets(storeData, connection);
+    const availableById = new Map(availableDocuments.map((document) => [document.id, document]));
+    const documents = requestedIds.map((documentId) => availableById.get(documentId)).filter(Boolean);
+    if (documents.length !== requestedIds.length) return send(res, 400, { error: "One or more selected spreadsheets are no longer available to this Google account." });
+    const results = [], createdDrafts = [], now = new Date().toISOString();
+    for (const document of documents) {
+      try {
+        const upload = await readGoogleSpreadsheet(storeData, connection, document);
+        const plan = await makePlan({ kind: "file_upload", sourceId: connection.sourceId, rawText: upload.text, payload: { fileName: upload.title, fileType: "google_sheets", googleSpreadsheetId: document.id, worksheetCount: upload.worksheetCount, rowCount: upload.rowCount } }, ctx.workspaceId, storeData);
+        storeData.plans.push(plan); reconcilePlanIdentities(storeData, plan, ctx.workspaceId);
+        const drafts = stagePlanDrafts(storeData, plan, ctx.workspaceId); createdDrafts.push(...drafts);
+        const result = { documentId: document.id, name: upload.title, planId: plan.id, draftCount: drafts.length, worksheetCount: upload.worksheetCount, rowCount: upload.rowCount, migratedAt: now };
+        results.push(result);
+        connection.migrationHistory = [result, ...(connection.migrationHistory || []).filter((entry) => entry.documentId !== document.id)].slice(0, 50);
+      } catch (error) { results.push({ documentId: document.id, name: document.name, error: clean(error?.message || "Could not migrate this spreadsheet.") }); }
+    }
+    const migrated = results.filter((result) => !result.error);
+    if (!migrated.length) return send(res, 422, { error: results[0]?.error || "The selected spreadsheets could not be migrated.", results });
+    connection.selectedDocumentIds = migrated.map((result) => result.documentId); connection.lastMigrationAt = now; connection.lastSyncAt = now;
+    connection.lastSyncError = results.some((result) => result.error) ? "Some selected spreadsheets could not be migrated." : ""; connection.updatedAt = now;
+    const source = storeData.sources.find((entry) => entry.id === connection.sourceId && entry.workspaceId === ctx.workspaceId);
+    if (source) source.metadata = { ...(source.metadata || {}), documentsMigrated: Number(source.metadata?.documentsMigrated || 0) + migrated.length, lastMigrationAt: now, lastDocumentNames: migrated.map((result) => result.name) };
+    await saveStore(storeData);
+    return send(res, 200, { connection: businessConnectionSafe(connection, storeData), results, drafts: createdDrafts, reviewUrl: "/dashboard#crm-review" });
   }
   const businessSettingsMatch = route.match(/^\/api\/business-connections\/([^/]+)$/);
   if (req.method === "PATCH" && businessSettingsMatch) {
