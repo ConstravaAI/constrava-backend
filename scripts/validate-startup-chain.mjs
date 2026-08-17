@@ -242,6 +242,13 @@ await assertContains("src/server.js", "process.env.GOOGLE_CALENDAR_CLIENT_ID || 
 await assertContains("src/server.js", "/link-google$/", "connected Google account reuse for Google Sheets");
 await assertContains("src/server-connected-resources.js", "function constravaBusinessSetupNotice(status)", "clear business-provider administrator setup guidance");
 await assertContains("src/server-connected-resources.js", "data-use-google-for-business", "Google Sheets connection without a second Google login");
+await assertContains("src/server.js", "async function listGoogleSpreadsheets(storeData, connection)", "Google Sheets document discovery");
+await assertContains("src/server.js", "/google-sheets\\/migrate$/", "selected Google Sheets migration route");
+await assertContains("src/server.js", "https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/spreadsheets.readonly", "Google Sheets file-list and read-only data scopes");
+await assertContains("src/server-connected-resources.js", "function constravaBusinessDocuments(state)", "Google Sheets document picker");
+await assertContains("src/server-connected-resources.js", "data-business-open-review", "Google Sheets Review and Publish handoff");
+await assertContains("src/server-runtime.js", "function constravaBusinessDocuments(state)", "generated Google Sheets document picker");
+await assertContains("src/server-runtime.js", "/google-sheets/migrate", "generated Google Sheets migration request");
 await assertContains("src/server.js", "async function fetchImapMessages(connection)", "the universal IMAP inbox adapter");
 await assertContains("src/server.js", "/imap$/", "the IMAP verification route");
 await assertContains("src/server.js", 'connection.status = "reauthorization_required";', "the Gmail permission recovery state");
