@@ -157,8 +157,18 @@ for (const fileName of sourceFileNames) {
 
 await assertContains("src/server-tracker-analytics.js", 'import "./server-remove-analytics-title.js";', "the analytics title wrapper handoff");
 await assertContains("scripts/generate-runtime.mjs", 'process.env.CONSTRAVA_GENERATE_ONLY = "1";', "the build-only runtime flag");
+await assertContains("scripts/generate-runtime.mjs", 'await import("../src/server-migration-safety-runtime.js");', "the migration safety runtime wrapper");
 await assertContains("scripts/start-runtime.mjs", 'path.join(root, "src", ".server.generated.js")', "the generated production server target");
+await assertContains("scripts/start-runtime.mjs", 'generatedSource.includes("migration-safety-runtime-v1")', "the migration-safe generated runtime check");
 await assertContains("src/server.js", 'process.env.CONSTRAVA_GENERATE_ONLY !== "1"', "the build-only listener guard");
+await assertContains("src/server-migration-safety-runtime.js", 'createMigrationSafety({ pool: postgresPool', "the migration safety integration");
+await assertContains("src/server-migration-safety-runtime.js", 'await migrationSafety.ensure();', "the Postgres migration safety bootstrap");
+await assertContains("src/.server.generated.js", "migration-safety-runtime-v1", "the generated migration safety marker");
+await assertContains("src/.server.generated.js", '...migrationSafety.health()', "the generated migration health response");
+await assertContains("src/postgres-migration-safety.js", 'const activeMode = "legacy";', "the Deployment 1 legacy-only storage mode");
+await assertContains("src/postgres-migration-safety.js", "pg_advisory_lock", "the migration advisory lock");
+await assertContains("src/postgres-migration-safety.js", "constrava_store_snapshots", "the pre-migration snapshot table");
+await assertContains("src/postgres-migration-safety.js", "MIGRATION_CHECKSUM_MISMATCH", "migration checksum protection");
 await assertContains("src/server-remove-analytics-title.js", 'await import("./server-notification-icon.js");', "the notification wrapper handoff");
 await assertContains("src/server-notification-icon.js", 'await import("./server-tab-loading-state.js");', "the tab loading wrapper handoff");
 await assertContains("src/server.js", 'aria-label="Notifications"', "the encoding-safe notification control");
