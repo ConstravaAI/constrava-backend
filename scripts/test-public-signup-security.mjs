@@ -82,6 +82,18 @@ try {
   assert.equal(homepageResponse.headers.get("x-robots-tag"), "index, follow");
   assert.match(homepageResponse.headers.get("cache-control") || "", /public/);
 
+  const demoResponse = await request("/demo");
+  const demoPage = await demoResponse.text();
+  assert.equal(demoResponse.status, 200);
+  assert.ok(demoPage.length > 250_000, `Generated dashboard was unexpectedly short (${demoPage.length} characters).`);
+  assert.match(demoPage, /<section id="app"><\/section>/);
+  assert.match(demoPage, /function render\(\)\{/);
+  assert.match(demoPage, /refresh\('analytics'\);/);
+  assert.match(demoPage, /<\/body>\s*<\/html>\s*$/);
+  assert.match(demoPage, /fluid-aspect-layout-v1/);
+  assert.match(demoPage, />12-hour<\/button>/);
+  assert.doesNotMatch(demoPage, /<section class="workspace">/);
+
   const robotsResponse = await request("/robots.txt");
   assert.match(await robotsResponse.text(), /Sitemap: .*\/sitemap\.xml/);
   const sitemapResponse = await request("/sitemap.xml");
