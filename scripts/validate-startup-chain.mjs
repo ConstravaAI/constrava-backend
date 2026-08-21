@@ -258,7 +258,7 @@ await assertContains("src/server-account-persistence.js", 'await import("./serve
 await assertContains("src/server-connected-resources.js", "function constravaEmailConnect(state)", "the provider-aware email connection step");
 await assertNotContains("src/server-connected-resources.js", "api('/api/email-connections'),api('/api/google-accounts'),api('/api/microsoft-accounts')", "the retired Microsoft request in the Gmail flow");
 await assertNotContains("src/server-connected-resources.js", "api('/api/calendar-connections'),api('/api/google-accounts'),api('/api/microsoft-accounts')", "the retired Microsoft request in the Google Calendar flow");
-await assertContains("src/server.js", "function businessProviderReadiness(provider, storeData, workspaceId)", "business-tool provider readiness reporting");
+await assertContains("src/server.js", "function businessProviderReadiness(provider, storeData, workspaceId, accountUserId", "member-owned business-tool provider readiness reporting");
 await assertContains("src/server.js", "process.env.GOOGLE_CALENDAR_CLIENT_ID || process.env.GMAIL_CLIENT_ID", "Google Sheets OAuth credential reuse");
 await assertContains("src/server.js", "/link-google$/", "connected Google account reuse for Google Sheets");
 await assertContains("src/server-connected-resources.js", "function constravaBusinessSetupNotice(status)", "clear business-provider administrator setup guidance");
