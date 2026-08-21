@@ -27,7 +27,10 @@ const child = spawn(process.execPath, ["--import", pathToFileURL(path.join(root,
     DEV_LOGIN_KEY: developerKey,
     RESEND_API_KEY: "re_account_test",
     ACCOUNT_EMAIL_FROM: "Constrava <accounts@updates.example.com>",
-    ACCOUNT_TEST_EMAIL_FILE: emailFile
+    ACCOUNT_TEST_EMAIL_FILE: emailFile,
+    GOOGLE_CALENDAR_CLIENT_ID: "public-security.apps.googleusercontent.com",
+    GOOGLE_CALENDAR_CLIENT_SECRET: "public-security-secret",
+    EMAIL_TOKEN_ENCRYPTION_KEY: "public-security-token-encryption-key"
   },
   stdio: ["ignore", "pipe", "pipe"]
 });
@@ -92,6 +95,8 @@ try {
   assert.match(demoPage, /<\/body>\s*<\/html>\s*$/);
   assert.match(demoPage, /fluid-aspect-layout-v1/);
   assert.match(demoPage, />12-hour<\/button>/);
+  assert.match(demoPage, /Add a Website Tracker/);
+  assert.match(demoPage, /highestPriorityItems/);
   assert.doesNotMatch(demoPage, /<section class="workspace">/);
 
   const robotsResponse = await request("/robots.txt");
@@ -108,7 +113,19 @@ try {
   assert.match(signupPage, /at least 7 characters and include 1 special character/i);
   assert.match(signupPage, /id="passwordMismatchDialog"/);
   assert.match(signupPage, /passwordMismatchDialog\.showModal\(\)/);
+  assert.match(signupPage, /Sign up with Google/);
+  assert.match(signupPage, /\/api\/auth\/google\/start\?mode=signup/);
   assert.doesNotMatch(signupPage, /DEV_LOGIN_KEY|constrava@constravaai\.com/);
+
+  const signInPageResponse = await request("/signin");
+  const signInPageMarkup = await signInPageResponse.text();
+  assert.match(signInPageMarkup, /Log in with Google/);
+  const googleStart = await request("/api/auth/google/start?mode=login");
+  assert.equal(googleStart.status, 302);
+  const googleAuthorizeUrl = new URL(googleStart.headers.get("location"));
+  assert.equal(googleAuthorizeUrl.hostname, "accounts.google.com");
+  assert.equal(googleAuthorizeUrl.searchParams.get("prompt"), "select_account consent");
+  assert.equal(googleAuthorizeUrl.searchParams.get("redirect_uri"), `${origin}/api/calendar/oauth/callback`);
 
   const weakSignup = await jsonRequest("/api/auth/signup", {
     method: "POST",
@@ -188,6 +205,12 @@ try {
   });
   assert.equal(newUserProjects.response.status, 200, JSON.stringify(newUserProjects.data));
   assert.deepEqual(newUserProjects.data.projects, []);
+
+  const projectPageResponse = await request("/projects", { headers: { cookie: sessionCookie.split(";")[0] } });
+  const projectPage = await projectPageResponse.text();
+  assert.equal(projectPageResponse.status, 200);
+  assert.match(projectPage, /Connect a Google account/);
+  assert.match(projectPage, /\/api\/auth\/google\/start\?mode=connect/);
 
   const reusedVerification = await jsonRequest("/api/auth/verify-email", {
     method: "POST",

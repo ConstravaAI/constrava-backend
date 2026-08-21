@@ -148,6 +148,7 @@ function seed() {
     formConnections: [],
     emailConnections: [],
     googleAccounts: [],
+    googleAuthRequests: [],
     adsenseConnections: [],
     microsoftAccounts: [],
     calendarConnections: [],
@@ -261,6 +262,7 @@ function normalize(storeData) {
   storeData.formConnections ||= [];
   storeData.emailConnections ||= [];
   storeData.googleAccounts ||= [];
+  storeData.googleAuthRequests ||= [];
   storeData.adsenseConnections ||= [];
   storeData.microsoftAccounts ||= [];
   storeData.calendarConnections ||= [];
@@ -292,6 +294,13 @@ function normalize(storeData) {
   }
   for (const account of storeData.googleAccounts) {
     account.accountUserId ||= storeData.users.find((user) => user.workspaceId === account.workspaceId)?.id || "";
+    account.linkedWorkspaceIds = [...new Set([
+      ...(Array.isArray(account.linkedWorkspaceIds) ? account.linkedWorkspaceIds : []),
+      account.workspaceId,
+      ...[...(storeData.emailConnections || []), ...(storeData.calendarConnections || []), ...(storeData.businessConnections || []), ...(storeData.adsenseConnections || [])]
+        .filter((entry) => entry.googleAccountId === account.id && entry.accountUserId === account.accountUserId)
+        .map((entry) => entry.workspaceId)
+    ].map(clean).filter(Boolean))];
     account.status ||= account.oauthTokens ? "active" : "draft";
     account.authorizationStatus ||= account.oauthTokens ? "authorized" : "ready";
     account.enabledResources ||= { gmail: true, calendar: true };
@@ -351,6 +360,7 @@ function normalize(storeData) {
     user.role = clean(user.email).toLowerCase() === DEV_EMAIL ? "developer" : "user";
     if (user.role !== "developer") { user.accountType = "standard"; user.isDeveloper = false; }
     if (user.emailVerifiedAt === undefined) user.emailVerifiedAt = user.createdAt || new Date().toISOString();
+    user.googleSubjects = [...new Set([...(Array.isArray(user.googleSubjects) ? user.googleSubjects : []), user.googleSubject].map(clean).filter(Boolean))];
     user.emailVerificationTokenHash ||= "";
     user.emailVerificationExpiresAt ||= "";
     if (user.role === "developer") {
@@ -894,8 +904,8 @@ function textResponse(res, body, { contentType = "text/plain; charset=utf-8", ca
   res.end(body);
 }
 
-function redirect(res, location) {
-  res.writeHead(302, { ...securityHeaders(), location, "cache-control": "no-store" });
+function redirect(res, location, headers = {}) {
+  res.writeHead(302, { ...securityHeaders(), location, "cache-control": "no-store", ...headers });
   res.end();
 }
 
@@ -1218,7 +1228,7 @@ function calendarProviderConfig(provider) {
   return null;
 }
 
-const GOOGLE_IDENTITY_SCOPES = ["openid", "email"];
+const GOOGLE_IDENTITY_SCOPES = ["openid", "email", "profile"];
 const GOOGLE_APP_CATALOG = [
   { id: "gmail", name: "Gmail", resource: "Email inbox", description: "Review incoming email for CRM activity.", scopes: ["https://www.googleapis.com/auth/gmail.readonly"] },
   { id: "calendar", name: "Google Calendar", resource: "Calendar", description: "Review selected calendars for meetings, tasks, and follow-ups.", scopes: ["https://www.googleapis.com/auth/calendar.calendarlist.readonly", "https://www.googleapis.com/auth/calendar.events.readonly"] },
@@ -1267,17 +1277,57 @@ function googleAuthorizedApps(account) {
   return GOOGLE_APP_CATALOG.filter((app) => app.scopes.every((scope) => granted.has(scope))).map((app) => app.id);
 }
 
-function googleAccountSafe(account, storeData) {
-  const { oauthTokens, oauthStateHash, oauthStateExpiresAt, oauthRequestedScopes, pendingApps, ...safe } = account;
-  const linkedEmail = storeData?.emailConnections?.filter((entry) => entry.workspaceId === account.workspaceId && entry.googleAccountId === account.id).length || 0;
-  const linkedCalendars = storeData?.calendarConnections?.filter((entry) => entry.workspaceId === account.workspaceId && entry.googleAccountId === account.id).length || 0;
-  const linkedAdsense = storeData?.adsenseConnections?.filter((entry) => entry.workspaceId === account.workspaceId && entry.googleAccountId === account.id).length || 0;
-  return { ...safe, selectedApps: Array.isArray(account.selectedApps) ? account.selectedApps : [], authorizedApps: googleAuthorizedApps(account), credentialConfigured: Boolean(oauthTokens), linkedResources: { email: linkedEmail, calendar: linkedCalendars, adsense: linkedAdsense } };
+function googleAccountWorkspaceIds(account) {
+  return [...new Set([...(Array.isArray(account?.linkedWorkspaceIds) ? account.linkedWorkspaceIds : []), account?.workspaceId].map(clean).filter(Boolean))];
+}
+
+function linkGoogleAccountToWorkspace(account, workspaceId) {
+  const normalizedWorkspaceId = clean(workspaceId);
+  account.linkedWorkspaceIds = [...new Set([...googleAccountWorkspaceIds(account), normalizedWorkspaceId].filter(Boolean))];
+  return account;
+}
+
+function googleAccountsForUser(storeData, userId) {
+  return storeData.googleAccounts.filter((entry) => entry.accountUserId === userId);
+}
+
+function ownedGoogleAccount(storeData, userId, accountId, { workspaceId = "", authorized = false, app = "" } = {}) {
+  const account = storeData.googleAccounts.find((entry) => entry.id === clean(accountId) && entry.accountUserId === userId);
+  if (!account) return null;
+  if (workspaceId && !googleAccountWorkspaceIds(account).includes(workspaceId)) return null;
+  if (authorized && (account.status !== "active" || account.authorizationStatus !== "authorized")) return null;
+  if (app && !googleAuthorizedApps(account).includes(app)) return null;
+  return account;
+}
+
+function sourceGoogleOwnerId(storeData, source) {
+  if (!source || !["email", "calendar", "business_tool", "adsense"].includes(source.type)) return "";
+  if (source.accountUserId) return source.accountUserId;
+  const account = storeData.googleAccounts.find((entry) => entry.id === source.metadata?.googleAccountId);
+  return account?.accountUserId || "";
+}
+
+function sourceSafeForUser(storeData, source, userId) {
+  const ownerId = sourceGoogleOwnerId(storeData, source);
+  if (!ownerId || ownerId === userId) return source;
+  const metadata = { ...(source.metadata || {}) };
+  for (const key of ["googleAccountId", "accountEmail", "emailAddress", "accountLabel", "calendarName", "adsenseAccountName"]) delete metadata[key];
+  return { ...source, name: "Member-owned Google resource", accountUserId: undefined, metadata };
+}
+
+function googleAccountSafe(account, storeData, workspaceId = "") {
+  const { oauthTokens, oauthStateHash, oauthStateExpiresAt, oauthRequestedScopes, pendingApps, accountUserId, workspaceId: legacyWorkspaceId, linkedWorkspaceIds, ...safe } = account;
+  const inWorkspace = (entry) => (!workspaceId || entry.workspaceId === workspaceId) && entry.googleAccountId === account.id && entry.accountUserId === account.accountUserId;
+  const linkedEmail = storeData?.emailConnections?.filter(inWorkspace).length || 0;
+  const linkedCalendars = storeData?.calendarConnections?.filter(inWorkspace).length || 0;
+  const linkedSheets = storeData?.businessConnections?.filter(inWorkspace).length || 0;
+  const linkedAdsense = storeData?.adsenseConnections?.filter(inWorkspace).length || 0;
+  return { ...safe, selectedApps: Array.isArray(account.selectedApps) ? account.selectedApps : [], authorizedApps: googleAuthorizedApps(account), credentialConfigured: Boolean(oauthTokens), linkedToProject: workspaceId ? googleAccountWorkspaceIds(account).includes(workspaceId) : undefined, linkedResources: { email: linkedEmail, calendar: linkedCalendars, sheets: linkedSheets, adsense: linkedAdsense } };
 }
 
 function linkedGoogleAccount(storeData, connection) {
   if (!connection?.googleAccountId) return null;
-  return storeData.googleAccounts.find((entry) => entry.id === connection.googleAccountId && entry.workspaceId === connection.workspaceId && entry.status === "active" && entry.authorizationStatus === "authorized") || null;
+  return storeData.googleAccounts.find((entry) => entry.id === connection.googleAccountId && entry.accountUserId === connection.accountUserId && googleAccountWorkspaceIds(entry).includes(connection.workspaceId) && entry.status === "active" && entry.authorizationStatus === "authorized") || null;
 }
 
 function googleIdentityFromIdToken(tokens) {
@@ -1302,14 +1352,28 @@ async function googleIdentity(tokens) {
   }
 }
 
-function saveGoogleAccountOAuth(storeData, { account, connection, tokens, email, displayName, oauthClient, selectedApps = [] }) {
-  const workspaceId = account?.workspaceId || connection?.workspaceId || "";
+async function verifiedGoogleIdentity(tokens, clientId) {
+  if (!tokens?.id_token) throw Object.assign(new Error("Google did not return a verified identity."), { status: 401 });
+  const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(tokens.id_token)}`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10_000) });
+  const profile = await response.json().catch(() => ({}));
+  const validIssuer = ["accounts.google.com", "https://accounts.google.com"].includes(clean(profile.iss));
+  const verified = profile.email_verified === true || String(profile.email_verified).toLowerCase() === "true";
+  const email = clean(profile.email).toLowerCase();
+  if (!response.ok || profile.aud !== clientId || !validIssuer || !verified || !profile.sub || !/^\S+@\S+\.\S+$/.test(email)) {
+    throw Object.assign(new Error("Google could not verify this account."), { status: 401 });
+  }
+  return { subject: clean(profile.sub), email, displayName: clean(profile.name || email) };
+}
+
+function saveGoogleAccountOAuth(storeData, { account, connection, tokens, email, displayName, oauthClient, selectedApps = [], accountUserId = "", workspaceId = "" }) {
+  const ownerUserId = clean(accountUserId || account?.accountUserId || connection?.accountUserId);
+  const projectId = clean(workspaceId || connection?.workspaceId || account?.workspaceId);
   const normalizedEmail = clean(email || account?.email || connection?.emailAddress || connection?.accountEmail).toLowerCase();
-  const matchingAccount = storeData.googleAccounts.find((entry) => entry.workspaceId === workspaceId && entry.email === normalizedEmail && entry.id !== account?.id);
+  const matchingAccount = storeData.googleAccounts.find((entry) => entry.accountUserId === ownerUserId && entry.email === normalizedEmail && entry.id !== account?.id);
   let savedAccount = matchingAccount || account;
   const now = new Date().toISOString();
   if (!savedAccount) {
-    savedAccount = { id: id("google"), accountUserId: connection?.accountUserId || "", workspaceId, name: "Google Workspace", createdAt: now };
+    savedAccount = { id: id("google"), accountUserId: ownerUserId, workspaceId: "", linkedWorkspaceIds: [], name: "Google Workspace", createdAt: now };
     storeData.googleAccounts.push(savedAccount);
   }
   if (matchingAccount && account && matchingAccount.id !== account.id) {
@@ -1319,7 +1383,8 @@ function saveGoogleAccountOAuth(storeData, { account, connection, tokens, email,
   let previousTokens = {};
   try { previousTokens = savedAccount.oauthTokens ? decryptEmailTokens(savedAccount.oauthTokens) : {}; } catch {}
   const nextTokens = { ...previousTokens, ...tokens, refresh_token: tokens.refresh_token || previousTokens.refresh_token, expiresAt: Date.now() + Number(tokens.expires_in || 3600) * 1000 };
-  savedAccount.accountUserId ||= connection?.accountUserId || "";
+  savedAccount.accountUserId = ownerUserId || savedAccount.accountUserId;
+  linkGoogleAccountToWorkspace(savedAccount, projectId);
   savedAccount.name ||= "Google Workspace";
   savedAccount.displayName = clean(displayName || savedAccount.displayName || normalizedEmail);
   savedAccount.email = normalizedEmail;
@@ -1336,6 +1401,7 @@ function saveGoogleAccountOAuth(storeData, { account, connection, tokens, email,
   savedAccount.lastError = "";
   savedAccount.updatedAt = now;
   if (connection) {
+    connection.accountUserId = savedAccount.accountUserId;
     connection.googleAccountId = savedAccount.id;
     connection.oauthTokens = "";
   }
@@ -1426,7 +1492,7 @@ async function scanGoogleAccountApps(account) {
 }
 
 function adsenseConnectionSafe(connection, storeData) {
-  const googleAccount = storeData?.googleAccounts?.find((entry) => entry.id === connection.googleAccountId && entry.workspaceId === connection.workspaceId);
+  const googleAccount = storeData?.googleAccounts?.find((entry) => entry.id === connection.googleAccountId && entry.accountUserId === connection.accountUserId);
   return { ...connection, googleAccountEmail: googleAccount?.email || "" };
 }
 
@@ -1442,10 +1508,9 @@ function adsenseAccountSafe(account) {
   };
 }
 
-function requireAdsenseGoogleAccount(storeData, workspaceId, googleAccountId) {
-  const account = storeData.googleAccounts.find((entry) => entry.id === clean(googleAccountId) && entry.workspaceId === workspaceId && entry.status === "active" && entry.authorizationStatus === "authorized");
+function requireAdsenseGoogleAccount(storeData, workspaceId, googleAccountId, userId) {
+  const account = ownedGoogleAccount(storeData, userId, googleAccountId, { workspaceId, authorized: true, app: "adsense" });
   if (!account) throw Object.assign(new Error("Connect a Google account before setting up AdSense."), { status: 409 });
-  if (!googleAuthorizedApps(account).includes("adsense")) throw Object.assign(new Error("Add Google AdSense in Manage Google account and approve read-only access first."), { status: 409 });
   return account;
 }
 
@@ -1508,7 +1573,7 @@ function adsenseCompactRow(row, dimension) {
 }
 
 async function syncAdsenseConnection(storeData, connection, requestedRange = "") {
-  const googleAccount = requireAdsenseGoogleAccount(storeData, connection.workspaceId, connection.googleAccountId);
+  const googleAccount = requireAdsenseGoogleAccount(storeData, connection.workspaceId, connection.googleAccountId, connection.accountUserId);
   const range = adsenseReportRange(requestedRange || connection.reportRange);
   const [dailyResult, domainResult] = await Promise.allSettled([
     generateAdsenseReport(googleAccount, connection.adsenseAccountName, { range, dimension: "DATE", limit: 400, orderBy: "+DATE" }),
@@ -2008,9 +2073,9 @@ function businessProviderEnvironmentKeys(provider) {
   return [];
 }
 
-function businessProviderReadiness(provider, storeData, workspaceId) {
+function businessProviderReadiness(provider, storeData, workspaceId, accountUserId = "") {
   const config = businessProviderConfig(provider);
-  const reusableGoogleAccount = provider === "google_sheets" && storeData?.googleAccounts?.some((account) => account.workspaceId === workspaceId && account.status === "active" && account.authorizationStatus === "authorized" && googleAuthorizedApps(account).includes("sheets"));
+  const reusableGoogleAccount = provider === "google_sheets" && storeData?.googleAccounts?.some((account) => (!accountUserId || account.accountUserId === accountUserId) && googleAccountWorkspaceIds(account).includes(workspaceId) && account.status === "active" && account.authorizationStatus === "authorized" && googleAuthorizedApps(account).includes("sheets"));
   const oauthReady = Boolean(config?.clientId && config?.clientSecret);
   const encryptionReady = Boolean(emailTokenKey());
   const ready = Boolean(reusableGoogleAccount || (oauthReady && encryptionReady));
@@ -2034,7 +2099,7 @@ function businessProviderReadiness(provider, storeData, workspaceId) {
 
 function businessConnectionSafe(connection, storeData) {
   const { oauthTokens, oauthStateHash, oauthStateExpiresAt, oauthPkceVerifier, ...safe } = connection;
-  const provider = businessProviderReadiness(connection.provider, storeData, connection.workspaceId);
+  const provider = businessProviderReadiness(connection.provider, storeData, connection.workspaceId, connection.accountUserId);
   const googleAccount = storeData ? linkedGoogleAccount(storeData, connection) : null;
   return { ...safe, credentialConfigured: Boolean(oauthTokens || googleAccount), providerReady: provider.ready, missingConfiguration: provider.missing, requiredVariables: provider.requiredVariables, oauthRedirectUri: provider.callbackUrl, setupNote: provider.setupNote, reusableGoogleAccount: provider.reusableGoogleAccount };
 }
@@ -2602,9 +2667,9 @@ async function syncCalendarConnection(storeData, connection) {
   return { processed, drafted, ignored, skipped: false };
 }
 
-async function syncWorkspaceCalendars(storeData, workspaceId) {
+async function syncWorkspaceCalendars(storeData, workspaceId, accountUserId = "") {
   const results = [];
-  for (const connection of storeData.calendarConnections.filter((entry) => entry.workspaceId === workspaceId && entry.status === "active" && entry.authorizationStatus === "authorized" && (entry.oauthTokens || linkedGoogleAccount(storeData, entry)))) {
+  for (const connection of storeData.calendarConnections.filter((entry) => entry.workspaceId === workspaceId && (!accountUserId || entry.accountUserId === accountUserId) && entry.status === "active" && entry.authorizationStatus === "authorized" && (entry.oauthTokens || linkedGoogleAccount(storeData, entry)))) {
     try {
       results.push({ connectionId: connection.id, provider: connection.provider, ...(await syncCalendarConnection(storeData, connection)) });
     } catch (error) {
@@ -3107,8 +3172,11 @@ function accountAccessPage(options = {}) {
     page = page.replaceAll(before, after);
   }
   page = page.replace("</style></head>", `.mismatchDialog{width:min(420px,calc(100% - 32px));padding:0;border:0;border-radius:22px;background:#fff;box-shadow:0 30px 90px rgba(22,15,62,.34)}.mismatchDialog::backdrop{background:rgba(15,12,40,.62);backdrop-filter:blur(8px)}.mismatchCard{padding:26px}.mismatchIcon{width:48px;height:48px;display:grid;place-items:center;border-radius:15px;background:#fff0f5;color:#bd3562;font-size:24px;font-weight:950}.mismatchCard h2{margin:16px 0 7px;color:var(--navy);font-size:27px;letter-spacing:-.04em}.mismatchCard p{margin:0 0 20px;color:var(--muted);line-height:1.5}.mismatchCard button{width:100%;border:0;border-radius:999px;padding:12px;background:linear-gradient(135deg,var(--violet),#4f46e5);color:#fff;font:inherit;font-weight:900;cursor:pointer}</style></head>`);
+  page = page.replace("</style></head>", `.googleAuth{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin:2px 0 13px;padding:12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:#302852;font-weight:900;text-decoration:none;box-shadow:0 7px 20px rgba(68,52,135,.07)}.googleAuth:hover{border-color:#bcb2eb;background:#faf9ff}.googleMark{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:conic-gradient(from -45deg,#4285f4 0 25%,#34a853 0 50%,#fbbc05 0 75%,#ea4335 0);color:#fff;font-size:11px;font-weight:950}.authDivider{display:flex;align-items:center;gap:10px;margin:2px 0 13px;color:var(--muted);font-size:11px;font-weight:850;text-transform:uppercase;letter-spacing:.06em}.authDivider:before,.authDivider:after{content:"";height:1px;flex:1;background:var(--line)}</style></head>`);
+  page = page.replace('<form id="authForm">', `<a class="googleAuth" id="googleAuthButton" href="/api/auth/google/start?mode=${options.signup ? "signup" : "login"}"><span class="googleMark" aria-hidden="true">G</span><span id="googleAuthLabel">${options.signup ? "Sign up with Google" : "Log in with Google"}</span></a><div class="authDivider">or use email</div><form id="authForm">`);
   page = page.replace("</main><script>", `</main><dialog class="mismatchDialog" id="passwordMismatchDialog" aria-labelledby="passwordMismatchTitle"><div class="mismatchCard"><div class="mismatchIcon" aria-hidden="true">!</div><h2 id="passwordMismatchTitle">Passwords do not match</h2><p>Re-enter the confirmation password so both password fields are exactly the same.</p><button type="button" id="passwordMismatchClose">Fix the passwords</button></div></dialog><script>`);
-  page = page.replace("setMode(mode);authForm.onsubmit", `setMode(mode);const passwordMismatchDialog=document.getElementById("passwordMismatchDialog"),passwordMismatchClose=document.getElementById("passwordMismatchClose");function signupPasswordIssue(value){if(value.length<7)return "Use at least 7 characters and include 1 special character.";if(!/[^a-z0-9\\s]/i.test(value))return "Include at least 1 special character, such as !, @, #, or $.";return ""}passwordMismatchClose.onclick=function(){passwordMismatchDialog.close();confirmPassword.focus()};[passwordInput,confirmPassword].forEach(function(input){input.addEventListener("input",function(){status.textContent=""})});authForm.onsubmit`);
+  page = page.replace('submitBtn.textContent=creating?"Create free account":"Sign in";history.replaceState', 'submitBtn.textContent=creating?"Create free account":"Sign in";googleAuthLabel.textContent=creating?"Sign up with Google":"Log in with Google";googleAuthButton.href="/api/auth/google/start?mode="+(creating?"signup":"login");history.replaceState');
+  page = page.replace("setMode(mode);authForm.onsubmit", `setMode(mode);const googleError=new URLSearchParams(location.search).get("google_error");if(googleError)status.textContent=googleError;const passwordMismatchDialog=document.getElementById("passwordMismatchDialog"),passwordMismatchClose=document.getElementById("passwordMismatchClose");function signupPasswordIssue(value){if(value.length<7)return "Use at least 7 characters and include 1 special character.";if(!/[^a-z0-9\\s]/i.test(value))return "Include at least 1 special character, such as !, @, #, or $.";return ""}passwordMismatchClose.onclick=function(){passwordMismatchDialog.close();confirmPassword.focus()};[passwordInput,confirmPassword].forEach(function(input){input.addEventListener("input",function(){status.textContent=""})});authForm.onsubmit`);
   return page;
 }
 
@@ -3130,8 +3198,9 @@ function verifyEmailPage(token) {
 
 function projectSelectionPage({ user, projects, storeData }) {
   const cards = projects.map(({ project, membership }) => publicProject(storeData, project, membership));
+  const googleAccountCount = googleAccountsForUser(storeData, user.id).filter((account) => account.status === "active" && account.authorizationStatus === "authorized").length;
   const projectMarkup = cards.length ? cards.map((project) => `<article class="project"><span class="role">${esc(project.role === "member" ? "editor" : project.role)}</span><div class="projectIcon">C</div><h3>${esc(project.name)}</h3><div class="meta"><span class="stat">${project.memberCount} ${project.memberCount === 1 ? "person" : "people"}</span><span class="stat">${project.recordCount} ${project.recordCount === 1 ? "record" : "records"}</span></div><div class="projectActions"><button class="shareProject" data-share-project="${esc(project.id)}" data-share-name="${esc(project.name)}">Share</button><button class="openButton" data-project="${esc(project.id)}">Open project</button></div></article>`).join("") : `<div class="empty"><h2>No CRM projects yet</h2><p>Create your first project to get started.</p></div>`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Choose a CRM project | Constrava</title><style>
+  let page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Choose a CRM project | Constrava</title><style>
 :root{--navy:#061a33;--ink:#21194f;--muted:#716b89;--line:#e4e0f0;--violet:#7357ff;--cyan:#00c2ff;--pink:#ff5d8f;--amber:#ffb020;--green:#20c997}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 12% 5%,rgba(0,194,255,.16),transparent 28%),radial-gradient(circle at 88% 14%,rgba(115,87,255,.17),transparent 30%),radial-gradient(circle at 75% 92%,rgba(255,93,143,.1),transparent 27%),#faf9ff;color:var(--ink);font-family:Inter,system-ui,sans-serif}.top{height:76px;display:flex;align-items:center;justify-content:space-between;width:min(1180px,calc(100% - 36px));margin:auto}.brand{font-size:23px;font-weight:950;letter-spacing:-.04em;color:var(--navy)}.account{display:flex;align-items:center;gap:12px}.avatar{width:38px;height:38px;border-radius:13px;display:grid;place-items:center;background:linear-gradient(135deg,var(--violet),var(--cyan));color:white;font-weight:950;box-shadow:0 8px 20px rgba(93,72,202,.22)}.accountCopy{font-size:13px;color:var(--muted)}.accountCopy b{display:block;color:var(--ink)}button{font:inherit;cursor:pointer}.logout{border:1px solid var(--line);background:white;border-radius:999px;padding:9px 14px;font-weight:850;color:var(--navy)}main{width:min(1180px,calc(100% - 36px));margin:40px auto 70px}.eyebrow{display:inline-flex;gap:8px;align-items:center;color:#5943c2;background:#ece8ff;border-radius:999px;padding:7px 11px;font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.06em}.eyebrow:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--green)}h1{font-size:clamp(42px,7vw,72px);line-height:.96;letter-spacing:-.075em;margin:20px 0 16px;color:var(--navy);max-width:820px}.lead{font-size:18px;line-height:1.6;color:var(--muted);max-width:660px}.sectionHead{display:flex;align-items:end;justify-content:space-between;gap:18px;margin:46px 0 16px}.sectionHead h2{margin:0;color:var(--navy);font-size:24px}.sectionHead p{margin:5px 0 0;color:var(--muted)}.newButton,.openButton{border:0;border-radius:14px;padding:12px 16px;font-weight:900}.newButton{color:white;background:linear-gradient(135deg,var(--violet),#4f46e5);box-shadow:0 12px 28px rgba(93,72,202,.24)}.projectGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.project{position:relative;overflow:hidden;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:24px;padding:22px;box-shadow:0 18px 55px rgba(68,52,135,.1);min-height:245px;display:flex;flex-direction:column}.project:before{content:"";position:absolute;inset:0 0 auto;height:6px;background:linear-gradient(90deg,var(--violet),var(--cyan),var(--green))}.project:nth-child(3n+2):before{background:linear-gradient(90deg,var(--cyan),var(--green),var(--amber))}.project:nth-child(3n+3):before{background:linear-gradient(90deg,var(--pink),var(--amber),var(--violet))}.projectIcon{width:48px;height:48px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(135deg,#ede9ff,#dff9fb);color:#5944da;font-size:21px;font-weight:950}.role{position:absolute;right:20px;top:22px;border-radius:999px;padding:6px 10px;background:#f0edff;color:#5943c2;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.project h3{margin:20px 0 6px;font-size:23px;color:var(--navy);letter-spacing:-.035em}.meta{display:flex;gap:8px;flex-wrap:wrap;color:var(--muted);font-size:13px}.stat{background:#f6f4ff;border-radius:10px;padding:7px 9px}.openButton{margin-top:auto;width:100%;background:linear-gradient(135deg,var(--navy),#302852);color:white}.openButton:disabled,.newButton:disabled{opacity:.6;cursor:wait}.status{min-height:24px;color:#bd3562;font-weight:700}.empty{grid-column:1/-1;padding:36px;border:1px dashed #d8d1ed;border-radius:24px;text-align:center;color:var(--muted);background:rgba(255,255,255,.7)}dialog{width:min(480px,calc(100vw - 32px));border:1px solid var(--line);border-radius:24px;padding:0;box-shadow:0 30px 100px rgba(31,24,78,.28)}dialog::backdrop{background:rgba(23,17,50,.55)}.modal{padding:24px}.modal h2{margin:0 0 8px;color:var(--navy)}label{display:block;font-weight:900;margin-top:20px}input{width:100%;border:1px solid var(--line);border-radius:14px;padding:13px;margin-top:7px;font:inherit;outline:none}input:focus{border-color:var(--violet);box-shadow:0 0 0 4px rgba(115,87,255,.12)}.actions{display:flex;justify-content:flex-end;gap:10px;margin-top:22px}.cancel{border:1px solid var(--line);background:white;border-radius:14px;padding:11px 15px;font-weight:900}@media(max-width:900px){.projectGrid{grid-template-columns:1fr 1fr}}@media(max-width:620px){.projectGrid{grid-template-columns:1fr}.accountCopy{display:none}.sectionHead{align-items:start;flex-direction:column}h1{font-size:46px}}
 </style></head><body><header class="top"><div class="brand">Constrava</div><div class="account"><div class="avatar">${esc((user.name || user.email || "U").slice(0, 1).toUpperCase())}</div><div class="accountCopy"><b>${esc(user.name || "Signed in")}</b>${esc(user.email)}</div><button class="logout" id="logoutButton">Log out</button></div></header><main><span class="eyebrow">CRM projects</span><h1>Choose where you’re working.</h1><p class="lead">Open a project you belong to, or create a new one. Everyone added to a shared project works from the same CRM records, resources, and analytics.</p><div class="sectionHead"><div><h2>Your projects</h2><p>${cards.length === 1 ? "1 project available" : `${cards.length} projects available`}</p></div><button class="newButton" id="newProjectButton">+ New CRM project</button></div><div class="projectGrid">${projectMarkup}</div><p class="status" id="status" aria-live="polite"></p></main><dialog id="projectDialog"><form class="modal" id="projectForm"><h2>Create a CRM project</h2><p style="color:var(--muted)">You’ll be the owner. Team access can be added to this project.</p><label>Project name<input name="name" required minlength="2" maxlength="80" placeholder="Example: Northwind Sales CRM" autofocus></label><div class="actions"><button type="button" class="cancel" id="cancelProject">Cancel</button><button class="newButton" id="createProject">Create and open</button></div></form></dialog><script>
 async function request(path,options){const response=await fetch(path,{...(options||{}),credentials:"include",headers:{"content-type":"application/json",...((options||{}).headers||{})}});const data=await response.json();if(response.status===401){location.href="/signin";return null}if(!response.ok)throw new Error(data.error||"Something went wrong");return data}
@@ -3150,6 +3219,9 @@ async function openProject(projectId,button){status.textContent="";button.disabl
 document.querySelectorAll("[data-project]").forEach(function(button){button.onclick=function(){openProject(button.dataset.project,button)}});newProjectButton.onclick=function(){projectDialog.showModal()};cancelProject.onclick=function(){projectDialog.close()};projectForm.onsubmit=async function(event){event.preventDefault();status.textContent="";createProject.disabled=true;createProject.textContent="Creating…";try{const values=Object.fromEntries(new FormData(projectForm));const data=await request("/api/projects",{method:"POST",body:JSON.stringify(values)});if(data)await openProject(data.project.id,createProject)}catch(error){status.textContent=error.message;createProject.disabled=false;createProject.textContent="Create and open"}};logoutButton.onclick=async function(){await fetch("/api/auth/logout",{method:"POST",credentials:"include"});location.href="/"};
 document.querySelectorAll("[data-share-project]").forEach(function(button){button.onclick=function(){loadShare(button.dataset.shareProject,button.dataset.shareName)}});const requestedShare=new URLSearchParams(location.search).get("share");if(requestedShare){const requestedButton=document.querySelector('[data-share-project="'+CSS.escape(requestedShare)+'"]');if(requestedButton)loadShare(requestedShare,requestedButton.dataset.shareName)}
 </script></body></html>`;
+  page = page.replace("</style></head>", `.googleAccountBar{display:flex;align-items:center;justify-content:space-between;gap:20px;margin:28px 0 8px;padding:18px 20px;border:1px solid #d9d3f2;border-radius:20px;background:linear-gradient(120deg,rgba(255,255,255,.96),rgba(239,251,255,.96));box-shadow:0 14px 38px rgba(68,52,135,.08)}.googleAccountInfo{display:flex;align-items:center;gap:13px;min-width:0}.googleAccountIcon{width:42px;height:42px;flex:0 0 auto;display:grid;place-items:center;border-radius:14px;background:conic-gradient(from -45deg,#4285f4 0 25%,#34a853 0 50%,#fbbc05 0 75%,#ea4335 0);color:#fff;font-weight:950}.googleAccountInfo b,.googleAccountInfo span{display:block}.googleAccountInfo b{color:var(--navy)}.googleAccountInfo span{margin-top:3px;color:var(--muted);font-size:13px}.googleConnect{flex:0 0 auto;padding:11px 16px;border-radius:999px;background:linear-gradient(135deg,var(--violet),#4f46e5);color:#fff;font-size:13px;font-weight:950;text-decoration:none;box-shadow:0 10px 24px rgba(93,72,202,.22)}@media(max-width:620px){.googleAccountBar{align-items:stretch;flex-direction:column}.googleConnect{text-align:center}}</style></head>`);
+  page = page.replace('<div class="sectionHead">', `<section class="googleAccountBar"><div class="googleAccountInfo"><div class="googleAccountIcon" aria-hidden="true">G</div><div><b>Google account</b><span>${googleAccountCount ? `${googleAccountCount} connected to your Constrava account. Add another without exposing either account to project members.` : "Connect once, then choose which Google products you add to each CRM project."}</span></div></div><a class="googleConnect" href="/api/auth/google/start?mode=connect">Connect a Google account</a></section><div class="sectionHead">`);
+  return page;
 }
 
 function appPage({ demo = false, user = null, project = null } = {}) {
@@ -3197,17 +3269,19 @@ function recordFields(r){let f=r.fields||{};let out=[];if(f.email)out.push(f.ema
 function recordRow(r){return '<div class="item recordCard"><div><span class="pill">'+esc(r.type)+'</span> <b>'+esc(r.title)+'</b><div class="fieldLine">'+esc(recordFields(r)||((r.tags||[]).join(' · ')))+'</div><div class="fieldLine">'+esc((r.priorityReasons||[])[0]||'')+'</div></div><span class="pill">'+Math.round(r.priorityScore||0)+'</span></div>'}
 function list(title,rows,empty){if(!rows.length)return '<section class="card empty"><div><span class="pill">'+esc(title)+'</span><h2>'+esc(empty||'No records here yet')+'</h2><p>Add records through AI Add or connected resources when you want this section filled.</p></div></section>';return '<section class="card"><div class="in"><h2>'+esc(title)+'</h2>'+rows.map(recordRow).join('')+'</div></section>'}
 function highestPriorityRecords(){return S.records.filter(function(r){return Number(r.priorityScore||0)>=95}).slice(0,6)}
+function hasConnectedWebsiteTracker(){return (S.sources||[]).some(function(source){return source.type==='website'&&source.status==='connected'})}
+function highestPriorityItems(){let rows=highestPriorityRecords();if(!hasConnectedWebsiteTracker())rows.unshift({title:'Add a Website Tracker',body:'Connect this CRM project to its website so Constrava can capture traffic, page activity, and lead signals.',action:'website-tracker',cta:'Add Website Tracker',priorityScore:100});return rows.slice(0,6)}
 function messageItems(){let rows=[];let pending=(S.plans||[]).filter(function(p){return p.status!=="committed"}).length;if(pending)rows.push({title:pending+' AI plan'+(pending===1?'':'s')+' waiting for review',body:'Review and publish the draft CRM records that are ready for approval.',action:'review',cta:'Review drafts'});let readySources=(S.sources||[]).filter(function(s){return s.status==='ready_to_connect'}).length;if(readySources)rows.push({title:readySources+' resource'+(readySources===1?'':'s')+' ready to connect',body:'Finish connecting the email, website, or form source so it can begin capturing activity.',action:'resources',cta:'Open resources'});if(!rows.length)rows.push({title:'No new messages',body:'Messages and system notifications will appear here as activity comes in.'});return rows}
 function noticeMarkup(rows,emptyTitle,emptyBody){if(!rows.length)return '<div class="noticeItem"><b>'+esc(emptyTitle)+'</b><p>'+esc(emptyBody)+'</p></div>';return rows.map(function(r){const action=r.action||(r.id?'record':''),body=r.body||recordFields(r)||((r.priorityReasons||[])[0]||''),cta=r.cta||(action==='record'?'Open record':action==='review'?'Review drafts':action==='resources'?'Open resources':'Open');if(!action)return '<div class="noticeItem"><b>'+esc(r.title)+'</b><p>'+esc(body)+'</p></div>';return '<button type="button" class="noticeItem noticeLink" data-notice-action="'+esc(action)+'" data-notice-id="'+esc(r.id||'')+'" aria-label="'+esc(cta+': '+r.title)+'"><span class="noticeCopy"><b>'+esc(r.title)+'</b><p>'+esc(body)+'</p><span class="noticeCta">'+esc(cta)+'</span></span><span class="noticeArrow" aria-hidden="true">&rsaquo;</span></button>'}).join('')}
-function openNotificationDestination(action,id){if(action==='record'){S.crmView='all';tab('crm');if(id&&typeof openRecordEditor==='function')openRecordEditor(id);return}if(action==='review'){S.crmView='ai-records';tab('crm');return}if(action==='resources'){S.resourceView='';S.resourcesDirectoryView='all';tab('resources')}}
+function openNotificationDestination(action,id){if(action==='record'){S.crmView='all';tab('crm');if(id&&typeof openRecordEditor==='function')openRecordEditor(id);return}if(action==='review'){S.crmView='ai-records';tab('crm');return}if(action==='website-tracker'){S.resourceView='website-tracker';S.resourcesDirectoryView='all';tab('resources');return}if(action==='resources'){S.resourceView='';S.resourcesDirectoryView='all';tab('resources')}}
 function bindNotificationLinks(){document.querySelectorAll('[data-notice-action]').forEach(function(button){button.onclick=function(event){event.stopPropagation();openNotificationDestination(button.dataset.noticeAction,button.dataset.noticeId||'')}})}
-function syncNotifications(){if(DEMO)return;const highest=highestPriorityRecords();const messages=messageItems();const dot=document.getElementById('notificationDot');if(dot)dot.textContent=highest.length+Math.max(0,messages.filter(function(m){return m.title!=='No new messages'}).length);const p=document.getElementById('priorityNotifications');if(p)p.innerHTML=noticeMarkup(highest,'No highest priority records','Records scored 95 or higher will appear here.');const m=document.getElementById('messageNotifications');if(m)m.innerHTML=noticeMarkup(messages,'No new messages','Messages and notifications will appear here.');bindNotificationLinks()}
+function syncNotifications(){if(DEMO)return;const highest=highestPriorityItems();const messages=messageItems();const dot=document.getElementById('notificationDot');if(dot)dot.textContent=highest.length+Math.max(0,messages.filter(function(m){return m.title!=='No new messages'}).length);const p=document.getElementById('priorityNotifications');if(p)p.innerHTML=noticeMarkup(highest,'No highest priority records','Records scored 95 or higher will appear here.');const m=document.getElementById('messageNotifications');if(m)m.innerHTML=noticeMarkup(messages,'No new messages','Messages and notifications will appear here.');bindNotificationLinks()}
 async function load(){if(!DEMO)api('/api/calendar-connections/sync',{method:'POST'}).catch(function(){});let out=await Promise.all([api('/api/dashboard/summary'),api('/api/records'),api('/api/sources'),api('/api/email-connections'),api('/api/plans'),api('/api/reports'),api('/api/analytics/events')]);S.summary=out[0];S.records=out[1].records;S.sources=out[2].sources;S.snippet=out[2].snippet;S.emailConnections=out[3].connections;S.plans=out[4].plans;S.reports=out[5].reports;S.events=out[6].events;syncNotifications()}
 function tab(name){S.tab=name;document.querySelectorAll('.tab').forEach(function(b){b.classList.toggle('active',b.dataset.tab===name)});document.getElementById('settingsButton').classList.toggle('active',name==='settings');const dd=document.getElementById('notificationDropdown');if(dd)dd.classList.remove('open');const nb=document.getElementById('notificationButton');if(nb)nb.setAttribute('aria-expanded','false');render()}
 function crmCount(type){if(type==='all')return S.records.length;if(type==='overview'||type==='ai')return '';return S.records.filter(function(r){return r.type===type}).length}
 function crmShell(content){const items=[['overview','Overview'],['all','All Records'],['Person','Contacts'],['Company','Companies'],['Deal','Deals'],['Task','Tasks'],['Note','Notes'],['ai','AI Add']];return '<div class="crmShell"><aside class="crmSide"><div class="crmSideTitle">CRM sections</div>'+items.map(function(item){const id=item[0],label=item[1];return '<button class="crmTab '+(S.crmView===id?'active':'')+'" data-crm="'+id+'"><span>'+label+'</span><span>'+crmCount(id)+'</span></button>'}).join('')+'</aside><div>'+content+'</div></div>'}
 function crmContent(){if(S.crmView==='overview'){return crmShell('<div class="grid metrics">'+metric('All records',S.records.length,'CRM objects')+metric('Contacts',crmCount('Person'),'People')+metric('Deals',crmCount('Deal'),money(S.summary.metrics.revenueOpportunity))+metric('Tasks',crmCount('Task'),'Follow-ups')+'</div><div style="margin-top:16px">'+list('High-priority CRM records',S.summary.highPriority,'No high priority records')+'</div>')}if(S.crmView==='all')return crmShell(list('All CRM Records',S.records,'No CRM records yet'));if(S.crmView==='ai'){return crmShell('<section class="card"><div class="in"><h2>AI Add</h2><p class="muted">Paste a lead, note, email, or form submission. Constrava will infer the best CRM record types and draft them for review.</p><form id="aiForm"><textarea name="rawText" required placeholder="Example: Sarah from Bluebird Dental wants a website quote, budget $6,000, follow up tomorrow."></textarea><br><br><button class="primary">Create AI plan</button></form></div></section>')}return crmShell(list(({Person:'Contacts',Company:'Companies',Deal:'Deals',Task:'Tasks',Note:'Notes'})[S.crmView]||S.crmView,S.records.filter(function(r){return r.type===S.crmView}),'This section is empty'))}
-function notificationContent(){return '<div class="notificationPanel"><section class="card"><div class="in"><h2>Highest priority records</h2><p class="muted">Only records scored 95 or higher appear here so this stays reserved for true priority work.</p>'+noticeMarkup(highestPriorityRecords(),'No highest priority records','There are no highest priority records right now.')+'</div></section><section class="card"><div class="in"><h2>Messages & notifications</h2><p class="muted">System messages, pending AI plans, and connection notices.</p>'+noticeMarkup(messageItems(),'No new messages','Messages and notifications will appear here.')+'</div></section></div>'}
+function notificationContent(){return '<div class="notificationPanel"><section class="card"><div class="in"><h2>Highest priorities</h2><p class="muted">Urgent CRM work and essential project setup appear here.</p>'+noticeMarkup(highestPriorityItems(),'No highest priority items','There are no highest priority items right now.')+'</div></section><section class="card"><div class="in"><h2>Messages & notifications</h2><p class="muted">System messages, pending AI plans, and connection notices.</p>'+noticeMarkup(messageItems(),'No new messages','Messages and notifications will appear here.')+'</div></section></div>'}
 function emailPolicyOptions(value){return [['off','Do not create drafts automatically'],['draft_90','Create drafts at 90% confidence'],['draft_97','Create drafts at 97% confidence']].map(function(option){return '<option value="'+option[0]+'" '+(value===option[0]?'selected':'')+'>'+option[1]+'</option>'}).join('')}
 function inboxSettings(){if(DEMO)return '<div class="item"><div><b>Email connections are account-specific</b><p class="muted">Sign in to view and edit saved inboxes.</p></div></div>';if(!S.emailConnections.length)return '<div class="item"><div><b>No saved inbox connection</b><p class="muted">Once an inbox is authorized, it will stay attached to this account across sign-outs, refreshes, and browser restarts.</p></div></div>';return S.emailConnections.map(function(c){return '<form class="item emailSettingsForm" data-email-id="'+esc(c.id)+'" style="display:grid;gap:10px"><div><b>'+esc(c.emailAddress||c.name)+'</b><p class="muted">'+esc(c.provider)+' · '+esc(c.status)+' · saved to this account</p></div><label>Connection name<input name="name" value="'+esc(c.name)+'" required></label><label>Automatic draft creation<select name="automationPolicy">'+emailPolicyOptions(c.automationPolicy||'off')+'</select></label><label>Excluded senders or domains<input name="excludedSenders" value="'+esc((c.scope||{}).excludedSenders||'')+'" placeholder="newsletter@example.com, example.org"></label><div><button class="primary" type="submit">Save inbox settings</button> <span class="muted emailSaveStatus" aria-live="polite"></span></div></form>'}).join('')}
 function render(){let h='',m=S.summary.metrics;if(S.tab==='analytics'){h='<div class="grid metrics">'+metric('New leads',m.newLeads,'Contacts')+metric('Active deals',m.activeDeals,money(m.revenueOpportunity))+metric('Traffic events',m.trafficEvents,'Captured activity')+metric('AI-created',m.aiCreatedRecords,'Committed records')+'</div><div class="grid two" style="margin-top:16px"><section class="card"><div class="in"><h2>Recommended actions</h2>'+S.summary.recommendedActions.map(function(a){return '<div class="item"><b>'+esc(a.title)+'</b><p class="muted">'+esc(a.reason)+'</p></div>'}).join('')+'</div></section><section class="card"><div class="in"><h2>Recent analytics events</h2>'+S.events.slice(0,8).map(function(e){return '<div class="item"><b>'+esc(e.type)+'</b><p class="muted">'+esc(e.sourceUrl||e.siteId||'')+'</p></div></div>'}).join('')+'</div></section></div>'}if(S.tab==='crm')h=crmContent();if(S.tab==='resources'){h='<div class="grid two"><section class="card"><div class="in"><h2>Saved inbox connections</h2><p class="muted">Inbox authorization and settings are stored with your account, not in this browser.</p>'+inboxSettings()+'</div></section><section class="card"><div class="in"><h2>Other resources</h2>'+S.sources.filter(function(s){return s.type!=="email"}).map(function(s){return '<div class="item resource"><div class="resourceIcon">'+(s.type.includes("website")?"⌁":"●")+'</div><div><b>'+esc(s.name)+'</b><p class="muted">'+esc(s.type)+' · '+esc(s.status)+'</p></div></div>'}).join('')+'</div></section></div><section class="card" style="margin-top:16px"><div class="in"><h2>Recent plans</h2>'+S.plans.slice(0,8).map(function(p){return '<div class="item"><b>'+esc(p.summary)+'</b><p class="muted">'+esc(p.aiProvider)+' · '+p.actions.length+' actions</p><button class="secondary" data-plan="'+esc(p.planId)+'">Review</button></div>'}).join('')+'</div></section>'}if(S.tab==='settings'){h='<div class="grid two"><section class="card"><div class="in"><h2>Workspace settings</h2><label>Workspace</label><input value="'+esc(WORKSPACE_LABEL)+'"><label>Theme</label><select><option>White and dark blue</option></select><button class="primary">Save settings</button></div></section><section class="card"><div class="in"><h2>Account</h2><p class="muted">Your login is kept by a persistent browser cookie. Reloading the page should keep this dashboard open until you log out.</p><div class="item"><b>Session</b><p class="muted">Saved in this browser for up to 30 days.</p></div></div></section></div>'}if(S.tab==='notifications')h=notificationContent();app.innerHTML=h;bind();syncNotifications()}
@@ -3229,7 +3303,31 @@ refresh('analytics');
 </html>`;
 }
 
-async function auth(req, res, route, storeData) {
+async function auth(req, res, route, storeData, url) {
+  if (req.method === "GET" && route === "/api/auth/google/start") {
+    const requestedMode = clean(url.searchParams.get("mode")).toLowerCase();
+    const mode = ["login", "signup", "connect"].includes(requestedMode) ? requestedMode : "login";
+    const signedInUser = currentUser(req, storeData);
+    if (mode === "connect" && !signedInUser) return redirect(res, "/signin?google_error=" + encodeURIComponent("Sign in before connecting a Google account."));
+    const config = googleAccountProviderConfig("calendar", GOOGLE_IDENTITY_SCOPES);
+    const returnPage = mode === "connect" ? "/projects" : mode === "signup" ? "/signup" : "/signin";
+    if (!config.clientId || !config.clientSecret || !emailTokenKey()) return redirect(res, returnPage + "?google_error=" + encodeURIComponent("Google sign-in is not configured yet."));
+    const state = crypto.randomBytes(32).toString("base64url");
+    const now = new Date().toISOString();
+    storeData.googleAuthRequests = (storeData.googleAuthRequests || []).filter((entry) => entry.expiresAt > now);
+    storeData.googleAuthRequests.push({ id: id("google_auth"), stateHash: hashToken(state), mode, userId: mode === "connect" ? signedInUser.id : "", expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(), createdAt: now });
+    const authorizeUrl = new URL(config.authorizeUrl);
+    authorizeUrl.searchParams.set("client_id", config.clientId);
+    authorizeUrl.searchParams.set("redirect_uri", calendarOAuthRedirectUri(req));
+    authorizeUrl.searchParams.set("response_type", "code");
+    authorizeUrl.searchParams.set("scope", GOOGLE_IDENTITY_SCOPES.join(" "));
+    authorizeUrl.searchParams.set("state", state);
+    authorizeUrl.searchParams.set("access_type", "offline");
+    authorizeUrl.searchParams.set("prompt", "select_account consent");
+    authorizeUrl.searchParams.set("include_granted_scopes", "true");
+    await saveStore(storeData);
+    return redirect(res, authorizeUrl.toString());
+  }
   if (req.method === "GET" && route === "/api/auth/me") {
     const user = currentUser(req, storeData);
     const active = user ? activeWorkspaceContext(req, storeData) : null;
@@ -3347,7 +3445,7 @@ async function api(req, res, url, route) {
   }
   if (isRetiredResourceRoute(route)) return send(res, 404, { error: "This resource connection is not available." });
   const storeData = await loadStore();
-  if (route.startsWith("/api/auth/")) return await auth(req, res, route, storeData);
+  if (route.startsWith("/api/auth/")) return await auth(req, res, route, storeData, url);
   if (route === "/api/projects" || route.startsWith("/api/projects/")) {
     const user = currentUser(req, storeData);
     const session = currentSession(req, storeData);
@@ -3545,6 +3643,54 @@ async function api(req, res, url, route) {
   }
   if (req.method === "GET" && route === "/api/calendar/oauth/callback") {
     const state = clean(url.searchParams.get("state"));
+    const authRequest = (storeData.googleAuthRequests || []).find((entry) => entry.stateHash && safeEqualText(entry.stateHash, hashToken(state)) && entry.expiresAt > new Date().toISOString());
+    if (authRequest) {
+      storeData.googleAuthRequests = storeData.googleAuthRequests.filter((entry) => entry.id !== authRequest.id);
+      const returnPage = authRequest.mode === "connect" ? "/projects" : authRequest.mode === "signup" ? "/signup" : "/signin";
+      const fail = async (message) => { await saveStore(storeData); return redirect(res, returnPage + "?google_error=" + encodeURIComponent(message)); };
+      if (url.searchParams.get("error")) return await fail(clean(url.searchParams.get("error_description") || "Google authorization was canceled."));
+      const config = googleAccountProviderConfig("calendar", GOOGLE_IDENTITY_SCOPES);
+      try {
+        const tokenBody = new URLSearchParams({ client_id: config.clientId, client_secret: config.clientSecret, code: clean(url.searchParams.get("code")), redirect_uri: calendarOAuthRedirectUri(req), grant_type: "authorization_code" });
+        const tokenResponse = await fetch(config.tokenUrl, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: tokenBody, signal: AbortSignal.timeout(15_000) });
+        const tokens = await tokenResponse.json();
+        if (!tokenResponse.ok) return await fail(clean(tokens.error_description || tokens.error || "Google sign-in failed."));
+        const identity = await verifiedGoogleIdentity(tokens, config.clientId);
+        if (identity.email === DEV_EMAIL) return await fail("This Google account cannot be used for public access.");
+        let user = null;
+        if (authRequest.mode === "connect") {
+          user = currentUser(req, storeData);
+          if (!user || user.id !== authRequest.userId || user.role === "developer") return await fail("Your sign-in session changed. Sign in and try connecting Google again.");
+          const conflict = storeData.users.find((entry) => entry.id !== user.id && (entry.googleSubject === identity.subject || entry.googleSubjects?.includes(identity.subject) || entry.email === identity.email));
+          if (conflict) return await fail("That Google account is already attached to another Constrava account.");
+        } else {
+          user = storeData.users.find((entry) => entry.googleSubject === identity.subject || entry.googleSubjects?.includes(identity.subject) || entry.email === identity.email);
+          if (!user && authRequest.mode === "login") return await fail("No Constrava account uses that Google address. Choose Sign up with Google first.");
+          if (!user) {
+            const now = new Date().toISOString();
+            user = { id: id("user"), email: identity.email, name: identity.displayName, role: "user", accountType: "standard", isDeveloper: false, authProvider: "google", authProviders: ["google"], googleSubject: identity.subject, workspaceId: "", passwordSalt: "", passwordHash: "", createdAt: now, emailVerifiedAt: now, emailVerificationTokenHash: "", emailVerificationExpiresAt: "" };
+            storeData.users.push(user);
+          }
+        }
+        user.googleSubject ||= identity.subject;
+        user.googleSubjects = [...new Set([...(Array.isArray(user.googleSubjects) ? user.googleSubjects : []), identity.subject])];
+        user.authProviders = [...new Set([...(Array.isArray(user.authProviders) ? user.authProviders : [user.authProvider].filter(Boolean)), "google"])];
+        user.emailVerifiedAt ||= new Date().toISOString();
+        user.accountType = "standard";
+        user.isDeveloper = false;
+        saveGoogleAccountOAuth(storeData, { tokens, email: identity.email, displayName: identity.displayName, oauthClient: "calendar", selectedApps: [], accountUserId: user.id });
+        if (authRequest.mode === "connect") {
+          await saveStore(storeData);
+          return redirect(res, "/projects?google=connected");
+        }
+        acceptPendingInvitations(storeData, user);
+        const session = createSession(storeData, user);
+        await saveStore(storeData);
+        return redirect(res, "/projects?google=connected", { "set-cookie": sessionCookie(req, session.id) });
+      } catch (error) {
+        return await fail(clean(error.message || "Google sign-in failed."));
+      }
+    }
     const sharedGoogleAccount = storeData.googleAccounts.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
     if (sharedGoogleAccount) {
       if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
@@ -3757,6 +3903,11 @@ async function api(req, res, url, route) {
     await saveStore(storeData);
     return send(res, 202, { accepted: true, duplicate: result.duplicate, eventId: result.event.id, status: result.event.status, drafts: result.plan?.draftRecordIds?.length || 0, reviewUrl: "/dashboard#crm-review" });
   }
+  if (req.method === "GET" && route === "/api/account/google-accounts") {
+    const user = currentUser(req, storeData);
+    if (!user) return send(res, 401, { error: "Sign in to view Google accounts." });
+    return send(res, 200, { accounts: googleAccountsForUser(storeData, user.id).map((entry) => googleAccountSafe(entry, storeData)), apps: googleAppCatalogSafe() });
+  }
   let ctx = requestContext(req, url, storeData);
   const publicWorkspaceId = clean(url.searchParams.get("workspaceId") || "");
   if (!ctx && publicWorkspaceId && req.method === "POST" && ["/api/analytics/events", "/api/sources/form"].includes(route)) {
@@ -3788,25 +3939,25 @@ async function api(req, res, url, route) {
       });
     return send(res, 200, { records });
   }
-  if (req.method === "GET" && route === "/api/sources") return send(res, 200, { sources: storeData.sources.filter((entry) => entry.workspaceId === ctx.workspaceId), snippet: snippet(ctx.workspaceId, ctx.demo) });
+  if (req.method === "GET" && route === "/api/sources") return send(res, 200, { sources: storeData.sources.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => sourceSafeForUser(storeData, entry, ctx.user?.id || "")), snippet: snippet(ctx.workspaceId, ctx.demo) });
   if (req.method === "GET" && route === "/api/plans") return send(res, 200, { plans: storeData.plans.filter((plan) => plan.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/reports") return send(res, 200, { reports: storeData.reports.filter((report) => report.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/analytics/events") return send(res, 200, { events: storeData.events.filter((event) => event.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
   if (req.method === "GET" && route === "/api/form-connections") return send(res, 200, { connections: storeData.formConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ tokenHash, ...entry }) => entry) });
   if (req.method === "GET" && route === "/api/website-connections") return send(res, 200, { connections: storeData.websiteConnections.filter((entry) => entry.workspaceId === ctx.workspaceId) });
   if (req.method === "GET" && route === "/api/ingestion-events") return send(res, 200, { events: storeData.ingestionEvents.filter((entry) => entry.workspaceId === ctx.workspaceId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
-  if (req.method === "GET" && route === "/api/google-accounts") return send(res, 200, { accounts: storeData.googleAccounts.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => googleAccountSafe(entry, storeData)), apps: googleAppCatalogSafe() });
-  if (req.method === "GET" && route === "/api/adsense-connections") return send(res, 200, { connections: storeData.adsenseConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => adsenseConnectionSafe(entry, storeData)) });
+  if (req.method === "GET" && route === "/api/google-accounts") return send(res, 200, { accounts: googleAccountsForUser(storeData, ctx.user.id).map((entry) => googleAccountSafe(entry, storeData, ctx.workspaceId)), apps: googleAppCatalogSafe() });
+  if (req.method === "GET" && route === "/api/adsense-connections") return send(res, 200, { connections: storeData.adsenseConnections.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id).map((entry) => adsenseConnectionSafe(entry, storeData)) });
   if (req.method === "POST" && route === "/api/adsense-connections/discover") {
     const body = await readBody(req);
-    const googleAccount = requireAdsenseGoogleAccount(storeData, ctx.workspaceId, body.googleAccountId);
+    const googleAccount = requireAdsenseGoogleAccount(storeData, ctx.workspaceId, body.googleAccountId, ctx.user.id);
     const accounts = await listAdsenseAccounts(googleAccount);
     await saveStore(storeData);
     return send(res, 200, { accounts, googleAccount: googleAccountSafe(googleAccount, storeData) });
   }
   if (req.method === "POST" && route === "/api/adsense-connections") {
     const body = await readBody(req);
-    const googleAccount = requireAdsenseGoogleAccount(storeData, ctx.workspaceId, body.googleAccountId);
+    const googleAccount = requireAdsenseGoogleAccount(storeData, ctx.workspaceId, body.googleAccountId, ctx.user.id);
     const availableAccounts = await listAdsenseAccounts(googleAccount);
     const selectedAccount = availableAccounts.find((entry) => entry.name === clean(body.adsenseAccountName));
     if (!selectedAccount) throw Object.assign(new Error("That AdSense account is not available to the connected Google account."), { status: 400 });
@@ -3816,7 +3967,7 @@ async function api(req, res, url, route) {
       const sourceId = id("source");
       connection = { id: id("adsense"), accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, sourceId, googleAccountId: googleAccount.id, name: clean(body.name || selectedAccount.displayName || "Google AdSense"), adsenseAccountName: selectedAccount.name, adsenseDisplayName: selectedAccount.displayName, adsenseState: selectedAccount.state, timeZone: selectedAccount.timeZone, status: "active", authorizationStatus: "authorized", reportRange: adsenseReportRange(body.reportRange), latestReport: null, lastSyncedAt: "", lastError: "", createdAt: now, updatedAt: now };
       storeData.adsenseConnections.push(connection);
-      storeData.sources.push({ id: sourceId, workspaceId: ctx.workspaceId, name: connection.name, type: "adsense", status: "connected", metadata: { googleAccountId: googleAccount.id, adsenseAccountName: selectedAccount.name } });
+      storeData.sources.push({ id: sourceId, accountUserId: ctx.user.id, workspaceId: ctx.workspaceId, name: connection.name, type: "adsense", status: "connected", metadata: { googleAccountId: googleAccount.id, adsenseAccountName: selectedAccount.name } });
     } else {
       connection.name = clean(body.name || connection.name || selectedAccount.displayName || "Google AdSense");
       connection.adsenseDisplayName = selectedAccount.displayName;
@@ -3832,7 +3983,7 @@ async function api(req, res, url, route) {
   const adsenseSyncMatch = route.match(/^\/api\/adsense-connections\/([^/]+)\/sync$/);
   if (req.method === "POST" && adsenseSyncMatch) {
     const body = await readBody(req);
-    const connection = storeData.adsenseConnections.find((entry) => entry.id === adsenseSyncMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.adsenseConnections.find((entry) => entry.id === adsenseSyncMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) throw Object.assign(new Error("AdSense connection not found."), { status: 404 });
     try {
       await syncAdsenseConnection(storeData, connection, body.reportRange);
@@ -3845,20 +3996,20 @@ async function api(req, res, url, route) {
     await saveStore(storeData);
     return send(res, 200, { connection: adsenseConnectionSafe(connection, storeData) });
   }
-  if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.provider === "gmail").map(({ oauthTokens, oauthStateHash, ...entry }) => ({ ...entry, automationPolicy: emailAutomationPolicy(entry.automationPolicy) })) });
-  if (req.method === "GET" && route === "/api/calendar-connections") return send(res, 200, { connections: storeData.calendarConnections.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.provider === "google").map((entry) => calendarConnectionSafe({ ...entry, oauthRedirectUri: calendarOAuthRedirectUri(req) })) });
+  if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id && entry.provider === "gmail").map(({ oauthTokens, oauthStateHash, ...entry }) => ({ ...entry, automationPolicy: emailAutomationPolicy(entry.automationPolicy) })) });
+  if (req.method === "GET" && route === "/api/calendar-connections") return send(res, 200, { connections: storeData.calendarConnections.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id && entry.provider === "google").map((entry) => calendarConnectionSafe({ ...entry, oauthRedirectUri: calendarOAuthRedirectUri(req) })) });
   if (req.method === "POST" && route === "/api/calendar-connections/sync") {
-    const result = await syncWorkspaceCalendars(storeData, ctx.workspaceId);
+    const result = await syncWorkspaceCalendars(storeData, ctx.workspaceId, ctx.user.id);
     await saveStore(storeData);
     return send(res, 200, result);
   }
   if (req.method === "GET" && route === "/api/business-connections") return send(res, 200, {
-    connections: storeData.businessConnections.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.provider === "google_sheets").map((entry) => businessConnectionSafe(entry, storeData)),
-    providers: BUSINESS_PROVIDER_IDS.map((provider) => businessProviderReadiness(provider, storeData, ctx.workspaceId))
+    connections: storeData.businessConnections.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id && entry.provider === "google_sheets").map((entry) => businessConnectionSafe(entry, storeData)),
+    providers: BUSINESS_PROVIDER_IDS.map((provider) => businessProviderReadiness(provider, storeData, ctx.workspaceId, ctx.user.id))
   });
   if (req.method === "GET" && route === "/api/connected-resources") {
     const resources = storeData.sources
-      .filter((entry) => entry.workspaceId === ctx.workspaceId && entry.status === "connected" && !["messaging", "website_form"].includes(entry.type))
+      .filter((entry) => entry.workspaceId === ctx.workspaceId && entry.status === "connected" && !["messaging", "website_form"].includes(entry.type) && (!sourceGoogleOwnerId(storeData, entry) || sourceGoogleOwnerId(storeData, entry) === ctx.user.id))
       .map((entry) => ({
         id: entry.id,
         name: entry.name,
@@ -3868,27 +4019,32 @@ async function api(req, res, url, route) {
         metadata: entry.metadata || {}
       }))
       .filter((entry) => entry.resourceId);
-    resources.unshift(...storeData.googleAccounts.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.status === "active").map((entry) => ({ id: entry.id, name: entry.name || entry.email || "Google account", type: "google_account", status: "connected", resourceId: "google-account", metadata: { email: entry.email, enabledResources: entry.enabledResources || { gmail: true, calendar: true } } })));
+    resources.unshift(...googleAccountsForUser(storeData, ctx.user.id).filter((entry) => entry.status === "active").map((entry) => ({ id: entry.id, name: entry.name || entry.email || "Google account", type: "google_account", status: "connected", resourceId: "google-account", metadata: { email: entry.email, enabledResources: entry.enabledResources || {}, linkedToProject: googleAccountWorkspaceIds(entry).includes(ctx.workspaceId) } })));
     return send(res, 200, { resources });
   }
   if (req.method === "POST" && route === "/api/google-accounts") {
     const body = await readBody(req);
     const email = clean(body.email).toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(email)) return send(res, 400, { error: "Enter the Google account email address." });
-    const existing = storeData.googleAccounts.find((entry) => entry.workspaceId === ctx.workspaceId && entry.email === email);
-    if (existing) return send(res, 200, { account: googleAccountSafe(existing, storeData) });
+    const existing = storeData.googleAccounts.find((entry) => entry.accountUserId === ctx.user.id && entry.email === email);
+    if (existing) {
+      linkGoogleAccountToWorkspace(existing, ctx.workspaceId);
+      await saveStore(storeData);
+      return send(res, 200, { account: googleAccountSafe(existing, storeData, ctx.workspaceId) });
+    }
     const config = googleAccountProviderConfig();
     const authorizationReady = Boolean(emailTokenKey() && config.clientId && config.clientSecret);
     const now = new Date().toISOString();
-    const account = { id: id("google"), accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, name: clean(body.name || "Google Workspace"), displayName: "", email, status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, enabledResources: {}, selectedApps: [], appScan: { status: "not_scanned", scannedAt: "", apps: [] }, oauthClient: "calendar", oauthTokens: "", oauthRedirectUri: calendarOAuthRedirectUri(req), authorizedAt: "", lastError: "", createdAt: now, updatedAt: now };
+    const account = { id: id("google"), accountUserId: ctx.user?.id || "", workspaceId: "", linkedWorkspaceIds: [ctx.workspaceId], name: clean(body.name || "Google Workspace"), displayName: "", email, status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, enabledResources: {}, selectedApps: [], appScan: { status: "not_scanned", scannedAt: "", apps: [] }, oauthClient: "calendar", oauthTokens: "", oauthRedirectUri: calendarOAuthRedirectUri(req), authorizedAt: "", lastError: "", createdAt: now, updatedAt: now };
     storeData.googleAccounts.push(account);
     await saveStore(storeData);
-    return send(res, 201, { account: googleAccountSafe(account, storeData) });
+    return send(res, 201, { account: googleAccountSafe(account, storeData, ctx.workspaceId) });
   }
   const googleAccountAuthorizeMatch = route.match(/^\/api\/google-accounts\/([^/]+)\/authorize$/);
   if (req.method === "POST" && googleAccountAuthorizeMatch) {
-    const account = storeData.googleAccounts.find((entry) => entry.id === googleAccountAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const account = ownedGoogleAccount(storeData, ctx.user.id, googleAccountAuthorizeMatch[1]);
     if (!account) return send(res, 404, { error: "Google account connection not found." });
+    linkGoogleAccountToWorkspace(account, ctx.workspaceId);
     account.pendingApps = [];
     account.oauthRequestedScopes = GOOGLE_IDENTITY_SCOPES;
     const config = googleAccountProviderConfig(account.oauthClient, account.oauthRequestedScopes);
@@ -3914,8 +4070,9 @@ async function api(req, res, url, route) {
   }
   const googleAppsAuthorizeMatch = route.match(/^\/api\/google-accounts\/([^/]+)\/apps\/authorize$/);
   if (req.method === "POST" && googleAppsAuthorizeMatch) {
-    const account = storeData.googleAccounts.find((entry) => entry.id === googleAppsAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const account = ownedGoogleAccount(storeData, ctx.user.id, googleAppsAuthorizeMatch[1]);
     if (!account) return send(res, 404, { error: "Google account connection not found." });
+    linkGoogleAccountToWorkspace(account, ctx.workspaceId);
     const body = await readBody(req);
     const selectedApps = [...new Set((Array.isArray(body.apps) ? body.apps : []).map(clean))].filter((appId) => GOOGLE_APP_CATALOG.some((app) => app.id === appId));
     account.selectedApps = selectedApps;
@@ -3924,7 +4081,7 @@ async function api(req, res, url, route) {
     account.updatedAt = new Date().toISOString();
     if (!selectedApps.length) {
       await saveStore(storeData);
-      return send(res, 200, { account: googleAccountSafe(account, storeData), authorizeUrl: "" });
+      return send(res, 200, { account: googleAccountSafe(account, storeData, ctx.workspaceId), authorizeUrl: "" });
     }
     account.pendingApps = selectedApps;
     account.oauthRequestedScopes = googleScopesForApps(selectedApps);
@@ -3950,11 +4107,11 @@ async function api(req, res, url, route) {
   }
   const googleAppsScanMatch = route.match(/^\/api\/google-accounts\/([^/]+)\/apps\/scan$/);
   if (req.method === "POST" && googleAppsScanMatch) {
-    const account = storeData.googleAccounts.find((entry) => entry.id === googleAppsScanMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const account = ownedGoogleAccount(storeData, ctx.user.id, googleAppsScanMatch[1], { workspaceId: ctx.workspaceId });
     if (!account) return send(res, 404, { error: "Google account connection not found." });
     const scan = await scanGoogleAccountApps(account);
     await saveStore(storeData);
-    return send(res, 200, { account: googleAccountSafe(account, storeData), scan });
+    return send(res, 200, { account: googleAccountSafe(account, storeData, ctx.workspaceId), scan });
   }
   if (req.method === "POST" && route === "/api/microsoft-accounts") {
     const body = await readBody(req);
@@ -4041,7 +4198,7 @@ async function api(req, res, url, route) {
   }
   const emailSettingsMatch = route.match(/^\/api\/email-connections\/([^/]+)$/);
   if (req.method === "PATCH" && emailSettingsMatch) {
-    const connection = storeData.emailConnections.find((entry) => entry.id === emailSettingsMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailSettingsMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Email connection not found." });
     const body = await readBody(req);
     if (body.name !== undefined) {
@@ -4097,7 +4254,7 @@ async function api(req, res, url, route) {
   }
   const calendarSettingsMatch = route.match(/^\/api\/calendar-connections\/([^/]+)$/);
   if (req.method === "PATCH" && calendarSettingsMatch) {
-    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarSettingsMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarSettingsMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Calendar connection not found." });
     const body = await readBody(req);
     if (body.name !== undefined) connection.name = clean(body.name) || connection.name;
@@ -4133,7 +4290,7 @@ async function api(req, res, url, route) {
   }
   const calendarScanMatch = route.match(/^\/api\/calendar-connections\/([^/]+)\/calendars\/scan$/);
   if (req.method === "POST" && calendarScanMatch) {
-    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarScanMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarScanMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Calendar connection not found." });
     if (connection.provider !== "google") return send(res, 400, { error: "Calendar scanning is currently available for Google Calendar connections." });
     if (connection.authorizationStatus !== "authorized") return send(res, 409, { error: "Authorize the Google account before scanning its calendars." });
@@ -4147,12 +4304,13 @@ async function api(req, res, url, route) {
   }
   const calendarGoogleLinkMatch = route.match(/^\/api\/calendar-connections\/([^/]+)\/link-google$/);
   if (req.method === "POST" && calendarGoogleLinkMatch) {
-    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarGoogleLinkMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarGoogleLinkMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Calendar connection not found." });
     if (connection.provider !== "google") return send(res, 400, { error: "Only Google Calendar connections can use a connected Google account." });
     const body = await readBody(req);
-    const account = storeData.googleAccounts.find((entry) => entry.id === clean(body.googleAccountId) && entry.workspaceId === ctx.workspaceId && entry.status === "active" && entry.authorizationStatus === "authorized");
+    const account = ownedGoogleAccount(storeData, ctx.user.id, body.googleAccountId, { authorized: true, app: "calendar" });
     if (!account) return send(res, 409, { error: "Connect and authorize the Google account first." });
+    linkGoogleAccountToWorkspace(account, ctx.workspaceId);
     const now = new Date().toISOString();
     connection.googleAccountId = account.id;
     connection.oauthTokens = "";
@@ -4212,7 +4370,7 @@ async function api(req, res, url, route) {
   }
   const calendarVerifyMatch = route.match(/^\/api\/calendar-connections\/([^/]+)\/verify$/);
   if (req.method === "POST" && calendarVerifyMatch) {
-    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarVerifyMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarVerifyMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Calendar connection not found." });
     await verifyCalendarCredential(connection, await readBody(req));
     await saveStore(storeData);
@@ -4220,7 +4378,7 @@ async function api(req, res, url, route) {
   }
   const calendarAuthorizeMatch = route.match(/^\/api\/calendar-connections\/([^/]+)\/authorize$/);
   if (req.method === "POST" && calendarAuthorizeMatch) {
-    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Calendar connection not found." });
     const config = calendarProviderConfig(connection.provider);
     if (!config?.clientId || !config?.clientSecret) return send(res, 503, { error: `OAuth credentials are not configured for ${calendarProviderName(connection.provider)}.` });
@@ -4247,7 +4405,7 @@ async function api(req, res, url, route) {
   }
   const calendarActivateMatch = route.match(/^\/api\/calendar-connections\/([^/]+)\/activate$/);
   if (req.method === "POST" && calendarActivateMatch) {
-    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarActivateMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.calendarConnections.find((entry) => entry.id === calendarActivateMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Calendar connection not found." });
     if (connection.authorizationStatus !== "authorized") return send(res, 409, { error: "Verify or authorize this calendar before activation." });
     connection.status = "active";
@@ -4265,7 +4423,7 @@ async function api(req, res, url, route) {
     const body = await readBody(req);
     const provider = clean(body.provider).toLowerCase();
     if (!BUSINESS_PROVIDER_IDS.includes(provider)) return send(res, 400, { error: "Google Sheets is the available business-tool migration." });
-    const providerReadiness = businessProviderReadiness(provider, storeData, ctx.workspaceId);
+    const providerReadiness = businessProviderReadiness(provider, storeData, ctx.workspaceId, ctx.user.id);
     const authorizationReady = providerReadiness.ready;
     const now = new Date().toISOString();
     const connection = {
@@ -4284,13 +4442,13 @@ async function api(req, res, url, route) {
   }
   const businessGoogleLinkMatch = route.match(/^\/api\/business-connections\/([^/]+)\/link-google$/);
   if (req.method === "POST" && businessGoogleLinkMatch) {
-    const connection = storeData.businessConnections.find((entry) => entry.id === businessGoogleLinkMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.businessConnections.find((entry) => entry.id === businessGoogleLinkMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Business-tool connection not found." });
     if (connection.provider !== "google_sheets") return send(res, 400, { error: "A Google account can only be reused for Google Sheets." });
     const body = await readBody(req);
-    const account = storeData.googleAccounts.find((entry) => entry.id === clean(body.googleAccountId) && entry.workspaceId === ctx.workspaceId && entry.status === "active" && entry.authorizationStatus === "authorized");
+    const account = ownedGoogleAccount(storeData, ctx.user.id, body.googleAccountId, { authorized: true, app: "sheets" });
     if (!account) return send(res, 404, { error: "Connected Google account not found." });
-    if (!googleAuthorizedApps(account).includes("sheets")) return send(res, 409, { error: "Add Google Sheets permission from Manage Google account first." });
+    linkGoogleAccountToWorkspace(account, ctx.workspaceId);
     connection.googleAccountId = account.id;
     connection.accountLabel = account.email || account.displayName || connection.accountLabel;
     connection.authorizationStatus = "authorized";
@@ -4310,7 +4468,7 @@ async function api(req, res, url, route) {
   }
   const businessGoogleSheetsScanMatch = route.match(/^\/api\/business-connections\/([^/]+)\/google-sheets\/scan$/);
   if (req.method === "POST" && businessGoogleSheetsScanMatch) {
-    const connection = storeData.businessConnections.find((entry) => entry.id === businessGoogleSheetsScanMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.businessConnections.find((entry) => entry.id === businessGoogleSheetsScanMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Business-tool connection not found." });
     if (connection.provider !== "google_sheets" || connection.authorizationStatus !== "authorized") return send(res, 409, { error: "Connect Google Sheets before scanning for spreadsheets." });
     const documents = await listGoogleSpreadsheets(storeData, connection);
@@ -4320,7 +4478,7 @@ async function api(req, res, url, route) {
   }
   const businessGoogleSheetsMigrateMatch = route.match(/^\/api\/business-connections\/([^/]+)\/google-sheets\/migrate$/);
   if (req.method === "POST" && businessGoogleSheetsMigrateMatch) {
-    const connection = storeData.businessConnections.find((entry) => entry.id === businessGoogleSheetsMigrateMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.businessConnections.find((entry) => entry.id === businessGoogleSheetsMigrateMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Business-tool connection not found." });
     if (connection.provider !== "google_sheets" || connection.authorizationStatus !== "authorized") return send(res, 409, { error: "Connect Google Sheets before migrating spreadsheets." });
     const body = await readBody(req);
@@ -4354,7 +4512,7 @@ async function api(req, res, url, route) {
   }
   const businessSettingsMatch = route.match(/^\/api\/business-connections\/([^/]+)$/);
   if (req.method === "PATCH" && businessSettingsMatch) {
-    const connection = storeData.businessConnections.find((entry) => entry.id === businessSettingsMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.businessConnections.find((entry) => entry.id === businessSettingsMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Business-tool connection not found." });
     const body = await readBody(req);
     if (body.name !== undefined) connection.name = clean(body.name) || connection.name;
@@ -4395,10 +4553,10 @@ async function api(req, res, url, route) {
   }
   const businessAuthorizeMatch = route.match(/^\/api\/business-connections\/([^/]+)\/authorize$/);
   if (req.method === "POST" && businessAuthorizeMatch) {
-    const connection = storeData.businessConnections.find((entry) => entry.id === businessAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.businessConnections.find((entry) => entry.id === businessAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Business-tool connection not found." });
     const config = businessProviderConfig(connection.provider);
-    const providerReadiness = businessProviderReadiness(connection.provider, storeData, ctx.workspaceId);
+    const providerReadiness = businessProviderReadiness(connection.provider, storeData, ctx.workspaceId, ctx.user.id);
     if (!config?.clientId || !config?.clientSecret || !emailTokenKey()) return send(res, 503, { error: `${businessProviderName(connection.provider)} setup is incomplete. Missing: ${providerReadiness.missing.join(", ") || "provider OAuth credentials"}.` });
     const state = crypto.randomBytes(32).toString("base64url");
     connection.oauthStateHash = hashToken(state);
@@ -4428,7 +4586,7 @@ async function api(req, res, url, route) {
   }
   const businessActivateMatch = route.match(/^\/api\/business-connections\/([^/]+)\/activate$/);
   if (req.method === "POST" && businessActivateMatch) {
-    const connection = storeData.businessConnections.find((entry) => entry.id === businessActivateMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.businessConnections.find((entry) => entry.id === businessActivateMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Business-tool connection not found." });
     if (connection.authorizationStatus !== "authorized") return send(res, 409, { error: "Authorize this business tool before activation." });
     connection.status = "active";
@@ -4555,7 +4713,7 @@ async function api(req, res, url, route) {
   }
   const emailMessagesMatch = route.match(/^\/api\/email-connections\/([^/]+)\/messages$/);
   if (req.method === "GET" && emailMessagesMatch) {
-    const connection = storeData.emailConnections.find((entry) => entry.id === emailMessagesMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailMessagesMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Email connection not found." });
     const view = ["new", "all", "review"].includes(url.searchParams.get("view")) ? url.searchParams.get("view") : "new";
     const limit = Math.min(50, Math.max(1, Number(url.searchParams.get("limit")) || 50));
@@ -4597,7 +4755,7 @@ async function api(req, res, url, route) {
   }
   const emailViewedMatch = route.match(/^\/api\/email-connections\/([^/]+)\/messages\/([^/]+)\/viewed$/);
   if (req.method === "POST" && emailViewedMatch) {
-    const connection = storeData.emailConnections.find((entry) => entry.id === emailViewedMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailViewedMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Email connection not found." });
     const event = storeData.ingestionEvents.find((entry) => entry.id === emailViewedMatch[2] && entry.connectionId === connection.id && entry.workspaceId === ctx.workspaceId && entry.kind === "email");
     if (!event) return send(res, 404, { error: "Email message not found." });
@@ -4775,12 +4933,13 @@ async function api(req, res, url, route) {
   }
   const emailGoogleLinkMatch = route.match(/^\/api\/email-connections\/([^/]+)\/link-google$/);
   if (req.method === "POST" && emailGoogleLinkMatch) {
-    const connection = storeData.emailConnections.find((entry) => entry.id === emailGoogleLinkMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailGoogleLinkMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Email connection not found." });
     if (connection.provider !== "gmail") return send(res, 400, { error: "Only Gmail connections can use a connected Google account." });
     const body = await readBody(req);
-    const account = storeData.googleAccounts.find((entry) => entry.id === clean(body.googleAccountId) && entry.workspaceId === ctx.workspaceId && entry.status === "active" && entry.authorizationStatus === "authorized");
+    const account = ownedGoogleAccount(storeData, ctx.user.id, body.googleAccountId, { authorized: true, app: "gmail" });
     if (!account) return send(res, 409, { error: "Connect and authorize the Google account first." });
+    linkGoogleAccountToWorkspace(account, ctx.workspaceId);
     connection.googleAccountId = account.id;
     connection.oauthTokens = "";
     connection.emailAddress = account.email;
@@ -4794,7 +4953,7 @@ async function api(req, res, url, route) {
     if (source) source.metadata = { ...(source.metadata || {}), googleAccountId: account.id, emailAddress: connection.emailAddress };
     await saveStore(storeData);
     const { oauthTokens, oauthStateHash, ...safeConnection } = connection;
-    return send(res, 200, { connection: safeConnection, account: googleAccountSafe(account, storeData) });
+    return send(res, 200, { connection: safeConnection, account: googleAccountSafe(account, storeData, ctx.workspaceId) });
   }
   const emailMicrosoftLinkMatch = route.match(/^\/api\/email-connections\/([^/]+)\/link-microsoft$/);
   if (req.method === "POST" && emailMicrosoftLinkMatch) {
@@ -4841,7 +5000,7 @@ async function api(req, res, url, route) {
   }
   const emailTestMatch = route.match(/^\/api\/email-connections\/([^/]+)\/test$/);
   if (req.method === "POST" && emailTestMatch) {
-    const connection = storeData.emailConnections.find((entry) => entry.id === emailTestMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailTestMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Email connection not found." });
     const body = await readBody(req);
     const emailPayload = { from: clean(body.from), to: clean(body.to || connection.emailAddress), subject: clean(body.subject), body: clean(body.body), threadId: clean(body.threadId), messageId: clean(body.messageId), receivedAt: clean(body.receivedAt || new Date().toISOString()) };
@@ -4853,7 +5012,7 @@ async function api(req, res, url, route) {
   }
   const emailAuthorizeMatch = route.match(/^\/api\/email-connections\/([^/]+)\/authorize$/);
   if (req.method === "POST" && emailAuthorizeMatch) {
-    const connection = storeData.emailConnections.find((entry) => entry.id === emailAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailAuthorizeMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Email connection not found." });
     const config = emailProviderConfig(connection.provider);
     if (!config?.clientId || !config?.clientSecret) return send(res, 503, { error: `OAuth credentials are not configured for ${connection.provider}.` });
@@ -4879,7 +5038,7 @@ async function api(req, res, url, route) {
   }
   const emailSyncMatch = route.match(/^\/api\/email-connections\/([^/]+)\/sync$/);
   if (req.method === "POST" && emailSyncMatch) {
-    const connection = storeData.emailConnections.find((entry) => entry.id === emailSyncMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailSyncMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Email connection not found." });
     try {
       const result = await syncEmailConnection(storeData, connection);
@@ -4894,7 +5053,7 @@ async function api(req, res, url, route) {
   }
   const emailActivateMatch = route.match(/^\/api\/email-connections\/([^/]+)\/activate$/);
   if (req.method === "POST" && emailActivateMatch) {
-    const connection = storeData.emailConnections.find((entry) => entry.id === emailActivateMatch[1] && entry.workspaceId === ctx.workspaceId);
+    const connection = storeData.emailConnections.find((entry) => entry.id === emailActivateMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
     if (!connection) return send(res, 404, { error: "Email connection not found." });
     if (!connection.testEventId) return send(res, 409, { error: "Process a test email before activation." });
     const body = await readBody(req);
