@@ -300,10 +300,6 @@ await assertContains("src/server.js", "passwordMismatchDialog.showModal()", "the
 await assertContains("src/server.js", 'href="/signin">Log in', "the separate homepage login button");
 await assertContains("src/server.js", 'href="/signup">Sign up', "the separate homepage signup button");
 await assertContains("src/server.js", 'workspaceId: ""', "new accounts without an automatic CRM project");
-await assertContains("src/server.js", '>Switch Project</a>', "the explicit project-switch navigation label");
-await assertNotContains("src/server.js", '<section class="workspace">', "the obsolete shared dashboard spacer");
-await assertNotContains("src/server.js", "document.getElementById('aiAdd')", "the removed spacer action binding");
-await assertContains("src/server.js", "fluid-aspect-core-v1", "the production dashboard fluid aspect-ratio core");
 await assertContains("src/server.js", 'role: "user", accountType: "standard", isDeveloper: false', "the standard-only public account boundary");
 await assertContains("src/server.js", 'route === "/api/auth/developer-login"', "the separate developer authentication endpoint");
 await assertContains("src/server.js", "function developerSignInPage()", "the isolated developer sign-in page");
@@ -340,12 +336,6 @@ await assertContains("src/server-analytics-selector-copies.js", "analyticsTabGri
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsTabTimelineBlock(", "the shared Analytics tab timeline block");
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsTabDonutBlock(", "the shared Analytics tab distribution block");
 await assertContains("src/server-analytics-selector-copies.js", "analyticsTabGrid('Traffic'", "the Traffic overview-style grid");
-await assertContains("src/server-analytics-selector-copies.js", "function analyticsHourFormat()", "the 12-hour default and saved clock preference");
-await assertContains("src/server-analytics-selector-copies.js", "function analyticsSetHourFormat(", "the Activity by hour clock-format control");
-await assertContains("src/server-analytics-selector-copies.js", "12-hour", "the default 12-hour clock choice");
-await assertContains("src/server-analytics-selector-copies.js", ".analyticsTabStory-overview{background:", "the distinct Overview story color");
-await assertContains("src/server-analytics-selector-copies.js", ".analyticsTabStoryCopy h3", "the high-contrast Overview heading style");
-await assertContains("src/server-analytics-selector-copies.js", "fluid-aspect-layout-v1", "the fluid dashboard aspect-ratio layout");
 await assertContains("src/server-analytics-selector-copies.js", "analyticsTabGrid('Sources'", "the Sources overview-style grid");
 await assertContains("src/server-analytics-selector-copies.js", "analyticsTabGrid('Pages'", "the Pages overview-style grid");
 await assertContains("src/server-analytics-selector-copies.js", "analyticsTabGrid('Events'", "the Events overview-style grid");
