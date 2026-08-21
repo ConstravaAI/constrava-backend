@@ -8,7 +8,7 @@ globalThis.fetch = async function accountEmailTestFetch(input, init = {}) {
     const payload = JSON.parse(String(init.body || "{}"));
     const verificationUrl = String(payload.text || "").match(/https?:\/\/[^\s]+\/verify-email\?token=[a-f0-9]{64}/i)?.[0] || "";
     const required = [
-      Array.isArray(payload.to) && payload.to.includes("taylor@example.com"),
+      Array.isArray(payload.to) && payload.to.length === 1 && /^[^@\s]+@example\.com$/i.test(payload.to[0]),
       payload.from === "Constrava <accounts@updates.example.com>",
       payload.subject === "Verify your Constrava account",
       verificationUrl,

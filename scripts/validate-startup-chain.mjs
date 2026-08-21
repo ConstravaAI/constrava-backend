@@ -294,7 +294,12 @@ await assertContains("src/server.js", "const database = await databaseHealth();"
 await assertContains("src/server.js", "function freePublicPage()", "free public homepage renderer");
 await assertContains("src/server.js", "Free business management + SEO tools", "free-service homepage positioning");
 await assertContains("src/server.js", "Create your free account", "free account homepage call to action");
-await assertContains("src/server.js", "SIGNUP_PASSWORD_MIN_LENGTH = 15", "the secure public passphrase minimum");
+await assertContains("src/server.js", "SIGNUP_PASSWORD_MIN_LENGTH = 7", "the public password minimum");
+await assertContains("src/server.js", "SIGNUP_SPECIAL_CHARACTER", "the public special-character requirement");
+await assertContains("src/server.js", "passwordMismatchDialog.showModal()", "the password mismatch warning pop-up");
+await assertContains("src/server.js", 'href="/signin">Log in', "the separate homepage login button");
+await assertContains("src/server.js", 'href="/signup">Sign up', "the separate homepage signup button");
+await assertContains("src/server.js", 'workspaceId: ""', "new accounts without an automatic CRM project");
 await assertContains("src/server.js", 'role: "user", accountType: "standard", isDeveloper: false', "the standard-only public account boundary");
 await assertContains("src/server.js", 'route === "/api/auth/developer-login"', "the separate developer authentication endpoint");
 await assertContains("src/server.js", "function developerSignInPage()", "the isolated developer sign-in page");
@@ -327,6 +332,7 @@ await assertContains("src/server-analytics-selector-copies.js", "function analyt
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewJourney(", "the Overview visitor journey");
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsOverviewBlock(", "the reusable Overview data block");
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsTabGrid(", "the shared Analytics tab card grid");
+await assertContains("src/server-analytics-selector-copies.js", "analyticsTabGrid('Overview'", "the Overview shared Analytics tab layout");
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsTabTimelineBlock(", "the shared Analytics tab timeline block");
 await assertContains("src/server-analytics-selector-copies.js", "function analyticsTabDonutBlock(", "the shared Analytics tab distribution block");
 await assertContains("src/server-analytics-selector-copies.js", "analyticsTabGrid('Traffic'", "the Traffic overview-style grid");
@@ -365,4 +371,3 @@ if (failures.length) {
 }
 
 console.log("Startup chain validation passed.");
-
