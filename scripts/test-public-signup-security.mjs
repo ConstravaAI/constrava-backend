@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import vm from "node:vm";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -112,7 +113,7 @@ try {
   assert.match(signupPage, /Standard account only/);
   assert.match(signupPage, /at least 7 characters and include 1 special character/i);
   assert.match(signupPage, /id="passwordMismatchDialog"/);
-  assert.match(signupPage, /passwordMismatchDialog\.showModal\(\)/);
+  assert.match(signupPage, /mismatchDialog\.showModal/);
   assert.match(signupPage, /Sign up with Google/);
   assert.match(signupPage, /\/api\/auth\/google\/start\?mode=signup/);
   assert.doesNotMatch(signupPage, /DEV_LOGIN_KEY|constrava@constravaai\.com/);
@@ -120,6 +121,32 @@ try {
   const signInPageResponse = await request("/signin");
   const signInPageMarkup = await signInPageResponse.text();
   assert.match(signInPageMarkup, /Log in with Google/);
+  assert.match(signInPageMarkup, /document\.getElementById\("status"\)/);
+  assert.doesNotMatch(signInPageMarkup, /(?<!el\.)status\.textContent/);
+  const signInClientScript = signInPageMarkup.split("<script>")[1].split("</script>")[0];
+  assert.doesNotThrow(() => new vm.Script(signInClientScript));
+  const elements = Object.fromEntries(["authForm", "loginTab", "signupTab", "nameWrap", "confirmWrap", "confirmPassword", "passwordInput", "passwordHelp", "securityNote", "title", "copy", "submitBtn", "status", "googleAuthButton", "googleAuthLabel", "passwordMismatchDialog", "passwordMismatchClose"].map((elementId) => {
+    const handlers = {};
+    return [elementId, { id: elementId, handlers, style: {}, dataset: {}, classList: { toggle() {} }, setAttribute() {}, addEventListener(type, handler) { handlers[type] = handler; }, querySelector() { return elements?.nameInput; }, close() {}, focus() {} }];
+  }));
+  elements.nameInput = { required: false, focus() {} };
+  const clientWindow = {
+    location: { search: "?google_error=Google%20test%20error", pathname: "/signin", assign() {} },
+    history: { replaceState(_state, _title, nextPath) { clientWindow.location.pathname = nextPath; clientWindow.location.search = ""; } },
+    addEventListener() {}
+  };
+  vm.runInNewContext(signInClientScript, {
+    window: clientWindow,
+    document: { getElementById: (elementId) => elements[elementId] || null, querySelector: () => elements.nameInput },
+    localStorage: { removeItem() {} }, URLSearchParams, FormData: class { *[Symbol.iterator]() {} }, fetch: async () => { throw new Error("not called"); },
+    Object, String, JSON, Error
+  });
+  assert.equal(elements.status.textContent, "Google test error");
+  assert.equal(elements.googleAuthButton.href, "/api/auth/google/start?mode=login");
+  elements.signupTab.handlers.click();
+  assert.equal(elements.googleAuthButton.href, "/api/auth/google/start?mode=signup");
+  assert.equal(elements.confirmPassword.required, true);
+  assert.equal(elements.passwordInput.minLength, 7);
   const googleStart = await request("/api/auth/google/start?mode=login");
   assert.equal(googleStart.status, 302);
   const googleAuthorizeUrl = new URL(googleStart.headers.get("location"));

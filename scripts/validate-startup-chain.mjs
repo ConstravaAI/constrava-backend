@@ -296,7 +296,7 @@ await assertContains("src/server.js", "Free business management + SEO tools", "f
 await assertContains("src/server.js", "Create your free account", "free account homepage call to action");
 await assertContains("src/server.js", "SIGNUP_PASSWORD_MIN_LENGTH = 7", "the public password minimum");
 await assertContains("src/server.js", "SIGNUP_SPECIAL_CHARACTER", "the public special-character requirement");
-await assertContains("src/server.js", "passwordMismatchDialog.showModal()", "the password mismatch warning pop-up");
+await assertContains("src/server.js", "el.mismatchDialog.showModal", "the password mismatch warning pop-up");
 await assertContains("src/server.js", 'href="/signin">Log in', "the separate homepage login button");
 await assertContains("src/server.js", 'href="/signup">Sign up', "the separate homepage signup button");
 await assertContains("src/server.js", 'workspaceId: ""', "new accounts without an automatic CRM project");
