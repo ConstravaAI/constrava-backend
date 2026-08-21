@@ -16,6 +16,15 @@ The existing file store remains available as a fallback. On a paid Render servic
 
 `/api/health` reports `dataStore: "postgres"`, `postgresStoreConfigured: true`, and `databaseStatus: "ready"` when Neon is active. If Neon is unavailable, the public site and sign-in page stay online, health reports a safe error code, and account APIs return `503` instead of silently writing to Render's temporary filesystem.
 
+### Relational migration safety
+
+Deployment 1 adds migration safeguards without changing the current data layout. `public.constrava_app_store_v2` remains the only application data source, and `DATA_STORAGE_MODE` defaults to `legacy` even when omitted. The deployment creates only two safety tables:
+
+- `public.constrava_schema_migrations` records migration identifiers, checksums, status, and safe error codes.
+- `public.constrava_store_snapshots` can hold idempotent copies of the primary legacy JSONB row before a future migration.
+
+Migration operations use a Postgres advisory lock and transactions so concurrent service instances cannot apply the same migration simultaneously. `/api/health` exposes the active storage mode and migration-safety status without exposing database credentials or stored account data. The values `shadow` and `relational` are reserved for later deployments and are not activated by Deployment 1.
+
 ## Developer handoff email
 
 Website Tracker developer handoffs are sent through Resend. In Render, set `RESEND_API_KEY` and `DEVELOPER_HANDOFF_FROM`; the sender must use a domain verified in Resend. `DEVELOPER_HANDOFF_REPLY_TO` is optional. When it is omitted, replies go to the signed-in user's email address.
