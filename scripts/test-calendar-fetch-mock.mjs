@@ -7,7 +7,7 @@ globalThis.fetch = async function calendarTestFetch(input, init) {
       access_token: "combined-google-access-token",
       refresh_token: "combined-google-refresh-token",
       expires_in: 3600,
-      scope: "openid email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/adsense.readonly",
+      scope: "openid email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/adsense.readonly https://www.googleapis.com/auth/analytics.readonly",
       token_type: "Bearer"
     }), { status: 200, headers: { "content-type": "application/json" } });
   }
@@ -56,6 +56,18 @@ globalThis.fetch = async function calendarTestFetch(input, init) {
     const row = (values) => ({ cells: values.map((value) => ({ value: String(value) })) });
     if (dimensions[0] === "DOMAIN_NAME") return new Response(JSON.stringify({ headers, rows: [row(["example.com", 8.25, 900, 720, 18, 9.17, 0.02])], totals: row(["", 8.25, 900, 720, 18, 9.17, 0.02]), warnings: [] }), { status: 200, headers: { "content-type": "application/json" } });
     return new Response(JSON.stringify({ headers, rows: [row(["2026-08-14", 5.5, 600, 480, 12, 9.17, 0.02]), row(["2026-08-15", 2.75, 300, 240, 6, 9.17, 0.02])], totals: row(["", 8.25, 900, 720, 18, 9.17, 0.02]), warnings: [], startDate: { year: 2026, month: 8, day: 1 }, endDate: { year: 2026, month: 8, day: 15 } }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (url.origin === "https://analyticsadmin.googleapis.com" && url.pathname === "/v1beta/accountSummaries") {
+    return new Response(JSON.stringify({ accountSummaries: [{ account: "accounts/1001", displayName: "Constrava Analytics", propertySummaries: [{ property: "properties/2002", displayName: "Constrava Website", propertyType: "PROPERTY_TYPE_ORDINARY", parent: "accounts/1001" }] }] }), { status: 200, headers: { "content-type": "application/json" } });
+  }
+  if (url.origin === "https://analyticsdata.googleapis.com" && url.pathname === "/v1beta/properties/2002:runReport") {
+    const body = JSON.parse(String(init?.body || "{}"));
+    const dimension = body.dimensions?.[0]?.name || "date";
+    const dimensionHeaders = [{ name: dimension }];
+    const metricHeaders = ["activeUsers", "sessions", "screenPageViews", "keyEvents", "engagementRate"].map((name) => ({ name, type: name === "engagementRate" ? "TYPE_FLOAT" : "TYPE_INTEGER" }));
+    const row = (dimensionValue, metrics) => ({ dimensionValues: [{ value: dimensionValue }], metricValues: metrics.map((value) => ({ value: String(value) })) });
+    const rows = dimension === "date" ? [row("20260814", [40, 50, 90, 3, 0.72]), row("20260815", [55, 70, 120, 5, 0.8])] : [row("Organic Search", [60, 75, 130, 5, 0.79]), row("Direct", [30, 45, 80, 3, 0.73])];
+    return new Response(JSON.stringify({ dimensionHeaders, metricHeaders, rows, totals: [row("", [95, 120, 210, 8, 0.77])], rowCount: rows.length }), { status: 200, headers: { "content-type": "application/json" } });
   }
   if (url.origin === "https://www.googleapis.com" && url.pathname === "/calendar/v3/users/me/calendarList") {
     return new Response(JSON.stringify({

@@ -73,7 +73,7 @@ async function checkPublicResourceCatalog() {
     return;
   }
   const catalog = source.slice(start, end);
-  const required = ["google-account", "google-adsense", "website-tracker", "email-inbox", "manual-notes", "file-uploads", "crm-tools", "calendar"];
+  const required = ["google-account", "google-adsense", "google-analytics", "website-tracker", "email-inbox", "manual-notes", "file-uploads", "crm-tools", "calendar"];
   const retired = ["microsoft-account", "website-forms", "messaging", "payments", "commerce", "phone-calls", "hubspot", "salesforce", "airtable", "notion"];
   for (const id of required) if (!catalog.includes(`id:'${id}'`)) fail(`The public resource catalog is missing ${id}.`);
   for (const id of retired) if (catalog.includes(`id:'${id}'`)) fail(`The public resource catalog still exposes retired resource ${id}.`);
@@ -197,11 +197,18 @@ await assertContains("src/server-connected-resources.js", "function constravaGoo
 await assertContains("src/server-connected-resources.js", "data-google-scan", "manual Google account scanning");
 await assertContains("src/server.js", 'id: "adsense"', "the Google AdSense app catalog entry");
 await assertContains("src/server.js", '"https://www.googleapis.com/auth/adsense.readonly"', "the read-only AdSense permission");
+await assertContains("src/server.js", 'id: "analytics"', "the Google Analytics app catalog entry");
+await assertContains("src/server.js", '"https://www.googleapis.com/auth/analytics.readonly"', "the read-only Google Analytics permission");
 await assertContains("src/server.js", "async function syncAdsenseConnection", "AdSense report synchronization");
 await assertContains("src/server.js", 'route === "/api/adsense-connections/discover"', "AdSense account discovery");
 await assertContains("src/server-connected-resources.js", "function constravaAdsenseSetup", "the Google AdSense setup interface");
 await assertContains("src/server-connected-resources.js", "function constravaAdsenseDashboard", "the Google AdSense performance dashboard");
 await assertContains("src/server-connected-resources.js", "data-adsense-sync", "the AdSense report refresh control");
+await assertContains("src/server.js", 'route === "/api/google-analytics-connections/discover"', "Google Analytics property discovery");
+await assertContains("src/server.js", "syncGoogleAnalyticsConnection", "Google Analytics report synchronization");
+await assertContains("src/server-connected-resources.js", "function constravaAnalyticsSetup", "the Google Analytics property picker");
+await assertContains("src/server-connected-resources.js", "function constravaAnalyticsDashboard", "the Google Analytics performance dashboard");
+await assertContains("src/server-connected-resources.js", "data-google-analytics-sync", "the Google Analytics report refresh control");
 await assertContains("src/server.js", "/link-google", "Google account resource linking");
 await assertContains("src/server-connected-resources.js", "function constravaGoogleSetup", "the reusable Google account interface");
 await assertContains("src/server-connected-resources.js", "data-use-google-for-email", "Gmail reuse without another login");
