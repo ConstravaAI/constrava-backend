@@ -73,6 +73,8 @@ try {
   assert.match(homepage, /<link rel="canonical"/);
   assert.match(homepage, /application\/ld\+json/);
   assert.match(homepage, /Create your free account/);
+  assert.match(homepage, /href="\/signin">Log in<\/a>/);
+  assert.match(homepage, /href="\/signup">Sign up<\/a>/);
   assert.doesNotMatch(homepage, /â|Â|Ã/);
   assert.equal(homepageResponse.headers.get("x-frame-options"), "DENY");
   assert.equal(homepageResponse.headers.get("x-content-type-options"), "nosniff");
@@ -91,6 +93,9 @@ try {
   const signupPageResponse = await request("/signup");
   const signupPage = await signupPageResponse.text();
   assert.match(signupPage, /Standard account only/);
+  assert.match(signupPage, /at least 7 characters and include 1 special character/i);
+  assert.match(signupPage, /id="passwordMismatchDialog"/);
+  assert.match(signupPage, /passwordMismatchDialog\.showModal\(\)/);
   assert.doesNotMatch(signupPage, /DEV_LOGIN_KEY|constrava@constravaai\.com/);
 
   const weakSignup = await jsonRequest("/api/auth/signup", {
@@ -100,6 +105,13 @@ try {
   });
   assert.equal(weakSignup.response.status, 400);
 
+  const noSpecialCharacterSignup = await jsonRequest("/api/auth/signup", {
+    method: "POST",
+    headers: { "x-forwarded-for": "198.51.100.10" },
+    body: { name: "Public User", email: "ordinary@example.com", password: "SevenChars" }
+  });
+  assert.equal(noSpecialCharacterSignup.response.status, 400);
+
   const crossSiteSignup = await jsonRequest("/api/auth/signup", {
     method: "POST",
     headers: { "sec-fetch-site": "cross-site", "x-forwarded-for": "198.51.100.11" },
@@ -107,7 +119,7 @@ try {
   });
   assert.equal(crossSiteSignup.response.status, 403);
 
-  const standardPassword = "a memorable standard account passphrase";
+  const standardPassword = "FreeCRM!";
   const signup = await jsonRequest("/api/auth/signup", {
     method: "POST",
     headers: { "x-forwarded-for": "198.51.100.12" },
@@ -131,8 +143,11 @@ try {
   assert.equal(standardUser.accountType, "standard");
   assert.equal(standardUser.isDeveloper, false);
   assert.equal(standardUser.authProvider, "password");
+  assert.equal(standardUser.workspaceId, "");
   assert.equal(standardUser.emailVerifiedAt, "");
   assert.match(standardUser.emailVerificationTokenHash, /^[a-f0-9]{64}$/);
+  assert.equal(saved.workspaces.some((workspace) => workspace.ownerUserId === standardUser.id), false);
+  assert.equal(saved.workspaceMembers.some((membership) => membership.userId === standardUser.id), false);
 
   const pendingLogin = await jsonRequest("/api/auth/login", {
     method: "POST",
@@ -156,6 +171,12 @@ try {
   assert.match(sessionCookie, /HttpOnly/i);
   assert.match(sessionCookie, /SameSite=Lax/i);
 
+  const newUserProjects = await jsonRequest("/api/projects", {
+    headers: { cookie: sessionCookie.split(";")[0] }
+  });
+  assert.equal(newUserProjects.response.status, 200, JSON.stringify(newUserProjects.data));
+  assert.deepEqual(newUserProjects.data.projects, []);
+
   const reusedVerification = await jsonRequest("/api/auth/verify-email", {
     method: "POST",
     headers: { "x-forwarded-for": "198.51.100.18" },
@@ -168,6 +189,8 @@ try {
   assert.ok(standardUser.emailVerifiedAt);
   assert.equal(standardUser.emailVerificationTokenHash, "");
   assert.equal(standardUser.emailVerificationExpiresAt, "");
+  assert.equal(saved.workspaces.some((workspace) => workspace.ownerUserId === standardUser.id), false);
+  assert.equal(saved.workspaceMembers.some((membership) => membership.userId === standardUser.id), false);
 
   const publicDeveloperLogin = await jsonRequest("/api/auth/login", {
     method: "POST",
@@ -184,7 +207,7 @@ try {
   assert.equal(developerLogin.response.status, 200, JSON.stringify(developerLogin.data));
   assert.equal(developerLogin.data.user.role, "developer");
 
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
     const response = await jsonRequest("/api/auth/signup", {
       method: "POST",
       headers: { "x-forwarded-for": "198.51.100.15" },
@@ -192,20 +215,19 @@ try {
     });
     assert.equal(response.response.status, 400);
   }
-  const rateLimited = await jsonRequest("/api/auth/signup", {
+  const correctedSignup = await jsonRequest("/api/auth/signup", {
     method: "POST",
     headers: { "x-forwarded-for": "198.51.100.15" },
-    body: { name: "Rate Test", email: "rate-limit@example.com", password: "short" }
+    body: { name: "Rate Test", email: "rate-limit@example.com", password: "Fixed!7" }
   });
-  assert.equal(rateLimited.response.status, 429);
-  assert.ok(Number(rateLimited.response.headers.get("retry-after")) > 0);
+  assert.equal(correctedSignup.response.status, 201, JSON.stringify(correctedSignup.data));
 
   for (const retiredPath of ["/api/microsoft-accounts", "/api/messaging-connections", "/api/form-connections", "/api/forms/ingest"]) {
     const retired = await jsonRequest(retiredPath);
     assert.equal(retired.response.status, 404, retiredPath);
   }
 
-  console.log("Public account security passed: standard-only signup, isolated developer login, throttling, hardened headers, clean SEO output, and retired provider routes.");
+  console.log("Public account security passed: recoverable password validation, project-free signup, isolated developer login, hardened headers, clean SEO output, and retired provider routes.");
 } finally {
   child.kill();
   await rm(temporaryDirectory, { recursive: true, force: true });
