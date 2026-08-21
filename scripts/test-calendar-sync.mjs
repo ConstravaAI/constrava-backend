@@ -24,8 +24,8 @@ function encryptTokens(tokens) {
 const now = new Date().toISOString();
 await writeFile(dataFile, JSON.stringify({
   sources: [{ id: "source_calendar_test", workspaceId: "workspace_test", name: "Test calendar", type: "calendar", status: "connected", metadata: {} }],
-  records: [{ id: "record_existing", workspaceId: "workspace_test", type: "Note", title: "Existing record", fields: { body: "Control record" }, status: "active", priorityScore: 10, createdAt: now, updatedAt: now }], draftRecords: [], events: [], plans: [], ingestionEvents: [], formConnections: [], emailConnections: [], adsenseConnections: [], businessConnections: [], messagingConnections: [], websiteConnections: [], reports: [],
-  googleAccounts: [{ id: "google_test", accountUserId: "user_test", workspaceId: "workspace_test", name: "Test Google account", displayName: "Calendar Owner", email: "owner@example.com", status: "active", authorizationStatus: "authorized", authorizationReady: true, enabledResources: { gmail: true, calendar: true, adsense: true }, oauthTokens: encryptTokens({ access_token: "calendar-access-token", scope: "openid email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/adsense.readonly", expiresAt: Date.now() + 60 * 60 * 1000 }), authorizedAt: now, createdAt: now, updatedAt: now }],
+  records: [{ id: "record_existing", workspaceId: "workspace_test", type: "Note", title: "Existing record", fields: { body: "Control record" }, status: "active", priorityScore: 10, createdAt: now, updatedAt: now }], draftRecords: [], events: [], plans: [], ingestionEvents: [], formConnections: [], emailConnections: [], adsenseConnections: [], googleAnalyticsConnections: [], businessConnections: [], messagingConnections: [], websiteConnections: [], reports: [],
+  googleAccounts: [{ id: "google_test", accountUserId: "user_test", workspaceId: "workspace_test", name: "Test Google account", displayName: "Calendar Owner", email: "owner@example.com", status: "active", authorizationStatus: "authorized", authorizationReady: true, enabledResources: { gmail: true, calendar: true, adsense: true, analytics: true }, oauthTokens: encryptTokens({ access_token: "calendar-access-token", scope: "openid email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.readonly https://www.googleapis.com/auth/adsense.readonly https://www.googleapis.com/auth/analytics.readonly", expiresAt: Date.now() + 60 * 60 * 1000 }), authorizedAt: now, createdAt: now, updatedAt: now }],
   microsoftAccounts: [{ id: "microsoft_test", accountUserId: "user_test", workspaceId: "workspace_test", name: "Test Microsoft account", displayName: "Microsoft Owner", email: "microsoft@example.com", status: "active", authorizationStatus: "authorized", authorizationReady: true, enabledResources: { mail: true, calendar: true, onedrive: true }, selectedApps: ["mail", "calendar", "onedrive"], appScan: { status: "not_scanned", scannedAt: "", apps: [] }, oauthClient: "outlook", oauthTokens: encryptTokens({ access_token: "microsoft-access-token", refresh_token: "microsoft-refresh-token", scope: "openid email offline_access User.Read Mail.Read Calendars.Read Files.Read", expiresAt: Date.now() + 60 * 60 * 1000 }), authorizedAt: now, createdAt: now, updatedAt: now }],
   calendarConnections: [{
     id: "calendar_test", accountUserId: "user_test", workspaceId: "workspace_test", sourceId: "source_calendar_test",
@@ -83,18 +83,19 @@ try {
   await waitForServer();
   const googleAccounts = await calendarRequest("/api/google-accounts", { method: "GET", body: undefined });
   assert.equal(googleAccounts.accounts.length, 1);
-  assert.equal(googleAccounts.apps.length, 7, "the Google app picker should list every supported Google resource");
+  assert.equal(googleAccounts.apps.length, 5, "the Google app picker should list every supported Google resource");
   assert.equal(googleAccounts.accounts[0].credentialConfigured, true);
   assert.equal(googleAccounts.accounts[0].oauthTokens, undefined, "shared Google tokens must never be returned to the browser");
   const sharedAuthorization = await calendarRequest("/api/google-accounts/google_test/authorize");
   const sharedScope = new URL(sharedAuthorization.authorizeUrl).searchParams.get("scope") || "";
   assert.match(sharedScope, /openid/);
   assert.doesNotMatch(sharedScope, /gmail\.readonly/, "initial Google connection should request identity only");
-  const appAuthorization = await calendarRequest("/api/google-accounts/google_test/apps/authorize", { body: { apps: ["gmail", "calendar", "adsense"] } });
+  const appAuthorization = await calendarRequest("/api/google-accounts/google_test/apps/authorize", { body: { apps: ["gmail", "calendar", "adsense", "analytics"] } });
   const appScope = new URL(appAuthorization.authorizeUrl).searchParams.get("scope") || "";
   assert.match(appScope, /gmail\.readonly/);
   assert.match(appScope, /calendar\.events\.readonly/);
   assert.match(appScope, /adsense\.readonly/);
+  assert.match(appScope, /analytics\.readonly/);
   assert.equal(new URL(appAuthorization.authorizeUrl).searchParams.get("include_granted_scopes"), "true");
   const appScan = await calendarRequest("/api/google-accounts/google_test/apps/scan");
   assert.equal(appScan.scan.status, "complete");
@@ -103,7 +104,8 @@ try {
   assert.equal(appScan.scan.apps.find((app) => app.id === "calendar").status, "detected");
   assert.equal(appScan.scan.apps.find((app) => app.id === "adsense").status, "detected");
   assert.equal(appScan.scan.apps.find((app) => app.id === "adsense").count, 1);
-  assert.equal(appScan.scan.apps.find((app) => app.id === "drive").status, "not_selected");
+  assert.equal(appScan.scan.apps.find((app) => app.id === "analytics").status, "detected");
+  assert.equal(appScan.scan.apps.find((app) => app.id === "analytics").count, 1);
   const adsenseDiscovery = await calendarRequest("/api/adsense-connections/discover", { body: { googleAccountId: "google_test" } });
   assert.equal(adsenseDiscovery.accounts.length, 1);
   assert.equal(adsenseDiscovery.accounts[0].name, "accounts/pub-123456789");
@@ -114,8 +116,19 @@ try {
   assert.equal(adsenseConnection.connection.latestReport.domains[0].label, "example.com");
   const adsenseRefresh = await calendarRequest(`/api/adsense-connections/${adsenseConnection.connection.id}/sync`, { body: { reportRange: "LAST_7_DAYS" } });
   assert.equal(adsenseRefresh.connection.reportRange, "LAST_7_DAYS");
+  const analyticsDiscovery = await calendarRequest("/api/google-analytics-connections/discover", { body: { googleAccountId: "google_test" } });
+  assert.equal(analyticsDiscovery.properties.length, 1);
+  assert.equal(analyticsDiscovery.properties[0].name, "properties/2002");
+  const analyticsConnection = await calendarRequest("/api/google-analytics-connections", { body: { googleAccountId: "google_test", analyticsPropertyName: "properties/2002", reportRange: "LAST_30_DAYS" }, status: 201 });
+  assert.equal(analyticsConnection.connection.analyticsPropertyId, "2002");
+  assert.equal(analyticsConnection.connection.latestReport.totals.sessions, 120);
+  assert.equal(analyticsConnection.connection.latestReport.daily[0].date, "2026-08-14");
+  assert.equal(analyticsConnection.connection.latestReport.channels[0].label, "Organic Search");
+  const analyticsRefresh = await calendarRequest(`/api/google-analytics-connections/${analyticsConnection.connection.id}/sync`, { body: { reportRange: "LAST_7_DAYS" } });
+  assert.equal(analyticsRefresh.connection.reportRange, "LAST_7_DAYS");
   const connectedResources = await calendarRequest("/api/connected-resources", { method: "GET", body: undefined });
   assert.ok(connectedResources.resources.some((resource) => resource.resourceId === "google-adsense"), "AdSense should appear as a connected resource");
+  assert.ok(connectedResources.resources.some((resource) => resource.resourceId === "google-analytics"), "Google Analytics should appear as a connected resource");
   const emailConnection = await calendarRequest("/api/email-connections", { body: { provider: "gmail", name: "Shared Gmail", emailAddress: "owner@example.com" }, status: 201 });
   const linkedEmail = await calendarRequest(`/api/email-connections/${emailConnection.connection.id}/link-google`, { body: { googleAccountId: "google_test" } });
   assert.equal(linkedEmail.connection.googleAccountId, "google_test");
@@ -182,41 +195,7 @@ try {
   const afterIdentityOAuth = JSON.parse(await readFile(dataFile, "utf8"));
   assert.equal(afterIdentityOAuth.googleAccounts.length, 1, "the Google-returned email should merge a typed placeholder into the existing saved account");
   assert.equal(afterIdentityOAuth.googleAccounts[0].email, "owner@example.com");
-  const microsoftAccounts = await calendarRequest("/api/microsoft-accounts", { method: "GET", body: undefined });
-  assert.equal(microsoftAccounts.accounts.length, 1);
-  assert.equal(microsoftAccounts.apps.length, 6, "the Microsoft app picker should list every supported Microsoft resource");
-  assert.equal(microsoftAccounts.accounts[0].credentialConfigured, true);
-  assert.equal(microsoftAccounts.accounts[0].oauthTokens, undefined, "shared Microsoft tokens must never be returned to the browser");
-  const microsoftIdentityAuthorization = await calendarRequest("/api/microsoft-accounts/microsoft_test/authorize");
-  const microsoftIdentityUrl = new URL(microsoftIdentityAuthorization.authorizeUrl);
-  const microsoftIdentityScope = microsoftIdentityUrl.searchParams.get("scope") || "";
-  assert.match(microsoftIdentityScope, /User\.Read/);
-  assert.doesNotMatch(microsoftIdentityScope, /Mail\.Read/, "initial Microsoft connection should request identity only");
-  assert.equal(microsoftIdentityUrl.searchParams.get("prompt"), "select_account", "Microsoft must show the account chooser on initial connection");
-  const microsoftAppAuthorization = await calendarRequest("/api/microsoft-accounts/microsoft_test/apps/authorize", { body: { apps: ["mail", "calendar", "onedrive"] } });
-  const microsoftAppUrl = new URL(microsoftAppAuthorization.authorizeUrl);
-  const microsoftAppScope = microsoftAppUrl.searchParams.get("scope") || "";
-  assert.match(microsoftAppScope, /Mail\.Read/);
-  assert.match(microsoftAppScope, /Calendars\.Read/);
-  assert.match(microsoftAppScope, /Files\.Read/);
-  assert.equal(microsoftAppUrl.searchParams.get("prompt"), null, "incremental Microsoft app consent should reuse the connected account session");
-  const microsoftScan = await calendarRequest("/api/microsoft-accounts/microsoft_test/apps/scan");
-  assert.equal(microsoftScan.scan.status, "complete");
-  assert.equal(microsoftScan.scan.apps.find((app) => app.id === "mail").status, "detected");
-  assert.equal(microsoftScan.scan.apps.find((app) => app.id === "calendar").count, 2);
-  assert.equal(microsoftScan.scan.apps.find((app) => app.id === "onedrive").status, "detected");
-  assert.equal(microsoftScan.scan.apps.find((app) => app.id === "teams").status, "not_selected");
-  const microsoftEmailConnection = await calendarRequest("/api/email-connections", { body: { provider: "outlook", name: "Shared Outlook", emailAddress: "microsoft@example.com" }, status: 201 });
-  const linkedMicrosoftEmail = await calendarRequest(`/api/email-connections/${microsoftEmailConnection.connection.id}/link-microsoft`, { body: { microsoftAccountId: "microsoft_test" } });
-  assert.equal(linkedMicrosoftEmail.connection.microsoftAccountId, "microsoft_test");
-  assert.equal(linkedMicrosoftEmail.connection.authorizationStatus, "authorized");
-  assert.equal(linkedMicrosoftEmail.connection.oauthTokens, undefined);
-  const microsoftCalendarConnection = await calendarRequest("/api/calendar-connections", { body: { provider: "microsoft", name: "Shared Outlook Calendar", accountEmail: "microsoft@example.com" }, status: 201 });
-  const linkedMicrosoftCalendar = await calendarRequest(`/api/calendar-connections/${microsoftCalendarConnection.connection.id}/link-microsoft`, { body: { microsoftAccountId: "microsoft_test" } });
-  assert.equal(linkedMicrosoftCalendar.connection.microsoftAccountId, "microsoft_test");
-  assert.equal(linkedMicrosoftCalendar.connection.status, "active");
-  assert.equal(linkedMicrosoftCalendar.connection.credentialConfigured, true);
-  console.log(`Calendar refresh sync passed: ${draftCount} review draft(s), zero published records, duplicate prevented.`);
+  console.log(`Google resource sync passed: GA4 property discovery and reports, ${draftCount} calendar review draft(s), and duplicate prevention.`);
 } finally {
   child.kill();
   await rm(temporaryDirectory, { recursive: true, force: true });

@@ -150,6 +150,7 @@ function seed() {
     googleAccounts: [],
     googleAuthRequests: [],
     adsenseConnections: [],
+    googleAnalyticsConnections: [],
     microsoftAccounts: [],
     calendarConnections: [],
     businessConnections: [],
@@ -264,6 +265,7 @@ function normalize(storeData) {
   storeData.googleAccounts ||= [];
   storeData.googleAuthRequests ||= [];
   storeData.adsenseConnections ||= [];
+  storeData.googleAnalyticsConnections ||= [];
   storeData.microsoftAccounts ||= [];
   storeData.calendarConnections ||= [];
   storeData.businessConnections ||= [];
@@ -297,7 +299,7 @@ function normalize(storeData) {
     account.linkedWorkspaceIds = [...new Set([
       ...(Array.isArray(account.linkedWorkspaceIds) ? account.linkedWorkspaceIds : []),
       account.workspaceId,
-      ...[...(storeData.emailConnections || []), ...(storeData.calendarConnections || []), ...(storeData.businessConnections || []), ...(storeData.adsenseConnections || [])]
+      ...[...(storeData.emailConnections || []), ...(storeData.calendarConnections || []), ...(storeData.businessConnections || []), ...(storeData.adsenseConnections || []), ...(storeData.googleAnalyticsConnections || [])]
         .filter((entry) => entry.googleAccountId === account.id && entry.accountUserId === account.accountUserId)
         .map((entry) => entry.workspaceId)
     ].map(clean).filter(Boolean))];
@@ -312,6 +314,12 @@ function normalize(storeData) {
     connection.accountUserId ||= storeData.users.find((user) => user.workspaceId === connection.workspaceId)?.id || "";
     connection.status ||= "active";
     connection.reportRange ||= "MONTH_TO_DATE";
+    connection.latestReport ||= null;
+  }
+  for (const connection of storeData.googleAnalyticsConnections) {
+    connection.accountUserId ||= storeData.users.find((user) => user.workspaceId === connection.workspaceId)?.id || "";
+    connection.status ||= "active";
+    connection.reportRange ||= "LAST_30_DAYS";
     connection.latestReport ||= null;
   }
   for (const account of storeData.microsoftAccounts) {
@@ -1233,7 +1241,8 @@ const GOOGLE_APP_CATALOG = [
   { id: "gmail", name: "Gmail", resource: "Email inbox", description: "Review incoming email for CRM activity.", scopes: ["https://www.googleapis.com/auth/gmail.readonly"] },
   { id: "calendar", name: "Google Calendar", resource: "Calendar", description: "Review selected calendars for meetings, tasks, and follow-ups.", scopes: ["https://www.googleapis.com/auth/calendar.calendarlist.readonly", "https://www.googleapis.com/auth/calendar.events.readonly"] },
   { id: "sheets", name: "Google Sheets", resource: "CRM and business tools", description: "Find spreadsheets that can support CRM imports and workflows.", scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly", "https://www.googleapis.com/auth/spreadsheets.readonly"] },
-  { id: "adsense", name: "Google AdSense", resource: "Ad revenue", description: "Read publisher accounts and performance reports for revenue analytics.", scopes: ["https://www.googleapis.com/auth/adsense.readonly"] }
+  { id: "adsense", name: "Google AdSense", resource: "Ad revenue", description: "Read publisher accounts and performance reports for revenue analytics.", scopes: ["https://www.googleapis.com/auth/adsense.readonly"] },
+  { id: "analytics", name: "Google Analytics", resource: "Website analytics", description: "Choose a GA4 property and view read-only traffic, engagement, and key-event performance.", scopes: ["https://www.googleapis.com/auth/analytics.readonly"] }
 ];
 const GOOGLE_SHARED_SCOPES = [...GOOGLE_IDENTITY_SCOPES, ...GOOGLE_APP_CATALOG.filter((app) => ["gmail", "calendar"].includes(app.id)).flatMap((app) => app.scopes)];
 
@@ -1301,7 +1310,7 @@ function ownedGoogleAccount(storeData, userId, accountId, { workspaceId = "", au
 }
 
 function sourceGoogleOwnerId(storeData, source) {
-  if (!source || !["email", "calendar", "business_tool", "adsense"].includes(source.type)) return "";
+  if (!source || !["email", "calendar", "business_tool", "adsense", "google_analytics"].includes(source.type)) return "";
   if (source.accountUserId) return source.accountUserId;
   const account = storeData.googleAccounts.find((entry) => entry.id === source.metadata?.googleAccountId);
   return account?.accountUserId || "";
@@ -1311,7 +1320,7 @@ function sourceSafeForUser(storeData, source, userId) {
   const ownerId = sourceGoogleOwnerId(storeData, source);
   if (!ownerId || ownerId === userId) return source;
   const metadata = { ...(source.metadata || {}) };
-  for (const key of ["googleAccountId", "accountEmail", "emailAddress", "accountLabel", "calendarName", "adsenseAccountName"]) delete metadata[key];
+  for (const key of ["googleAccountId", "accountEmail", "emailAddress", "accountLabel", "calendarName", "adsenseAccountName", "analyticsPropertyName"]) delete metadata[key];
   return { ...source, name: "Member-owned Google resource", accountUserId: undefined, metadata };
 }
 
@@ -1322,7 +1331,8 @@ function googleAccountSafe(account, storeData, workspaceId = "") {
   const linkedCalendars = storeData?.calendarConnections?.filter(inWorkspace).length || 0;
   const linkedSheets = storeData?.businessConnections?.filter(inWorkspace).length || 0;
   const linkedAdsense = storeData?.adsenseConnections?.filter(inWorkspace).length || 0;
-  return { ...safe, selectedApps: Array.isArray(account.selectedApps) ? account.selectedApps : [], authorizedApps: googleAuthorizedApps(account), credentialConfigured: Boolean(oauthTokens), linkedToProject: workspaceId ? googleAccountWorkspaceIds(account).includes(workspaceId) : undefined, linkedResources: { email: linkedEmail, calendar: linkedCalendars, sheets: linkedSheets, adsense: linkedAdsense } };
+  const linkedAnalytics = storeData?.googleAnalyticsConnections?.filter(inWorkspace).length || 0;
+  return { ...safe, selectedApps: Array.isArray(account.selectedApps) ? account.selectedApps : [], authorizedApps: googleAuthorizedApps(account), credentialConfigured: Boolean(oauthTokens), linkedToProject: workspaceId ? googleAccountWorkspaceIds(account).includes(workspaceId) : undefined, linkedResources: { email: linkedEmail, calendar: linkedCalendars, sheets: linkedSheets, adsense: linkedAdsense, analytics: linkedAnalytics } };
 }
 
 function linkedGoogleAccount(storeData, connection) {
@@ -1377,7 +1387,7 @@ function saveGoogleAccountOAuth(storeData, { account, connection, tokens, email,
     storeData.googleAccounts.push(savedAccount);
   }
   if (matchingAccount && account && matchingAccount.id !== account.id) {
-    for (const linked of [...(storeData.emailConnections || []), ...(storeData.calendarConnections || []), ...(storeData.adsenseConnections || [])]) if (linked.googleAccountId === account.id) linked.googleAccountId = matchingAccount.id;
+    for (const linked of [...(storeData.emailConnections || []), ...(storeData.calendarConnections || []), ...(storeData.businessConnections || []), ...(storeData.adsenseConnections || []), ...(storeData.googleAnalyticsConnections || [])]) if (linked.googleAccountId === account.id) linked.googleAccountId = matchingAccount.id;
     storeData.googleAccounts.splice(storeData.googleAccounts.indexOf(account), 1);
   }
   let previousTokens = {};
@@ -1474,7 +1484,8 @@ async function scanGoogleApp(account, app, tokens, granted) {
     contacts: { url: "https://people.googleapis.com/v1/people/me/connections", params: { pageSize: "1", personFields: "names,emailAddresses" }, summarize: (data) => ({ status: "detected", count: Number(data.totalItems || data.totalPeople || (data.connections || []).length), detail: "Google Contacts is available." }) },
     sheets: { url: "https://www.googleapis.com/drive/v3/files", params: { pageSize: "10", fields: "files(id,name)", q: "mimeType='application/vnd.google-apps.spreadsheet' and trashed=false" }, summarize: (data) => ({ status: "detected", count: (data.files || []).length, detail: `${(data.files || []).length}${(data.files || []).length === 10 ? "+" : ""} spreadsheet${(data.files || []).length === 1 ? "" : "s"} found.` }) },
     forms: { url: "https://www.googleapis.com/drive/v3/files", params: { pageSize: "10", fields: "files(id,name)", q: "mimeType='application/vnd.google-apps.form' and trashed=false" }, summarize: (data) => ({ status: "detected", count: (data.files || []).length, detail: `${(data.files || []).length}${(data.files || []).length === 10 ? "+" : ""} form${(data.files || []).length === 1 ? "" : "s"} found.` }) },
-    adsense: { url: "https://adsense.googleapis.com/v2/accounts", params: { pageSize: "100" }, summarize: (data) => ({ status: (data.accounts || []).length ? "detected" : "not_available", count: (data.accounts || []).length, detail: (data.accounts || []).length ? `${(data.accounts || []).length} AdSense account${(data.accounts || []).length === 1 ? "" : "s"} found.` : "No AdSense publisher account was found for this Google account." }) }
+    adsense: { url: "https://adsense.googleapis.com/v2/accounts", params: { pageSize: "100" }, summarize: (data) => ({ status: (data.accounts || []).length ? "detected" : "not_available", count: (data.accounts || []).length, detail: (data.accounts || []).length ? `${(data.accounts || []).length} AdSense account${(data.accounts || []).length === 1 ? "" : "s"} found.` : "No AdSense publisher account was found for this Google account." }) },
+    analytics: { url: "https://analyticsadmin.googleapis.com/v1beta/accountSummaries", params: { pageSize: "200" }, summarize: (data) => { const count = (data.accountSummaries || []).reduce((total, account) => total + (account.propertySummaries || []).length, 0); return { status: count ? "detected" : "not_available", count, detail: count ? `${count} GA4 propert${count === 1 ? "y" : "ies"} found.` : "No Google Analytics 4 property was found for this Google account." }; } }
   };
   const result = await googleProbe(tokens.access_token, probes[app.id]);
   return { id: app.id, ...result };
@@ -1590,6 +1601,140 @@ async function syncAdsenseConnection(storeData, connection, requestedRange = "")
     daily: (dailyReport.rows || []).map((row) => adsenseCompactRow(adsenseReportObject(dailyReport, row), "DATE")).filter((row) => row.label),
     domains: domainResult.status === "fulfilled" ? (domainResult.value.rows || []).map((row) => adsenseCompactRow(adsenseReportObject(domainResult.value, row), "DOMAIN_NAME")).filter((row) => row.label) : [],
     warnings: [...(dailyReport.warnings || []), ...(domainResult.status === "rejected" ? [domainResult.reason?.message || "Domain details were unavailable."] : domainResult.value.warnings || [])].map(clean).filter(Boolean).slice(0, 10),
+    syncedAt: new Date().toISOString()
+  };
+  connection.reportRange = range;
+  connection.latestReport = latestReport;
+  connection.lastSyncedAt = latestReport.syncedAt;
+  connection.lastError = "";
+  connection.updatedAt = latestReport.syncedAt;
+  return latestReport;
+}
+
+function googleAnalyticsConnectionSafe(connection, storeData) {
+  const googleAccount = storeData?.googleAccounts?.find((entry) => entry.id === connection.googleAccountId && entry.accountUserId === connection.accountUserId);
+  return { ...connection, googleAccountEmail: googleAccount?.email || "" };
+}
+
+function requireGoogleAnalyticsAccount(storeData, workspaceId, googleAccountId, userId) {
+  const account = ownedGoogleAccount(storeData, userId, googleAccountId, { workspaceId, authorized: true, app: "analytics" });
+  if (!account) throw Object.assign(new Error("Connect your Google account and approve Google Analytics access first."), { status: 409 });
+  return account;
+}
+
+async function googleAnalyticsRequest(googleAccount, url, options = {}) {
+  const tokens = await googleAccountTokens(googleAccount);
+  const response = await fetch(url, {
+    ...options,
+    headers: { authorization: `Bearer ${tokens.access_token}`, accept: "application/json", ...(options.headers || {}) },
+    signal: AbortSignal.timeout(20_000)
+  });
+  let data = {};
+  try { data = await response.json(); } catch {}
+  if (!response.ok) {
+    const message = clean(data?.error?.message || `Google Analytics returned ${response.status}.`);
+    const setupRequired = response.status === 403 && /disabled|not been used|access not configured|enable/i.test(message);
+    const helpfulMessage = setupRequired ? `${message ? `${message} ` : ""}Enable the Google Analytics Admin API and Google Analytics Data API in Google Cloud, then try again.` : message || "Could not read Google Analytics.";
+    throw Object.assign(new Error(helpfulMessage), { status: response.status === 401 || response.status === 403 ? 409 : 502 });
+  }
+  return data;
+}
+
+function googleAnalyticsPropertySafe(property, accountSummary = {}) {
+  const name = clean(property?.property);
+  return {
+    name,
+    propertyId: name.replace(/^properties\//, ""),
+    displayName: clean(property?.displayName || name),
+    propertyType: clean(property?.propertyType),
+    parent: clean(property?.parent || accountSummary.account),
+    account: clean(accountSummary.account),
+    accountDisplayName: clean(accountSummary.displayName || accountSummary.account)
+  };
+}
+
+async function listGoogleAnalyticsProperties(googleAccount) {
+  const properties = [];
+  let pageToken = "";
+  do {
+    const url = new URL("https://analyticsadmin.googleapis.com/v1beta/accountSummaries");
+    url.searchParams.set("pageSize", "200");
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+    const data = await googleAnalyticsRequest(googleAccount, url);
+    for (const account of data.accountSummaries || []) {
+      for (const property of account.propertySummaries || []) {
+        const safe = googleAnalyticsPropertySafe(property, account);
+        if (/^properties\/\d+$/.test(safe.name)) properties.push(safe);
+      }
+    }
+    pageToken = clean(data.nextPageToken);
+  } while (pageToken && properties.length < 2_000);
+  return properties;
+}
+
+const GOOGLE_ANALYTICS_RANGES = new Map([
+  ["LAST_7_DAYS", "6daysAgo"],
+  ["LAST_30_DAYS", "29daysAgo"],
+  ["LAST_90_DAYS", "89daysAgo"]
+]);
+const GOOGLE_ANALYTICS_METRICS = ["activeUsers", "sessions", "screenPageViews", "keyEvents", "engagementRate"];
+
+function googleAnalyticsRange(value) {
+  const range = clean(value).toUpperCase();
+  return GOOGLE_ANALYTICS_RANGES.has(range) ? range : "LAST_30_DAYS";
+}
+
+async function runGoogleAnalyticsReport(googleAccount, propertyName, range, dimension, limit = 100, orderBys = []) {
+  if (!/^properties\/\d+$/.test(propertyName)) throw Object.assign(new Error("Choose a valid Google Analytics 4 property."), { status: 400 });
+  return googleAnalyticsRequest(googleAccount, `https://analyticsdata.googleapis.com/v1beta/${propertyName}:runReport`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      dateRanges: [{ startDate: GOOGLE_ANALYTICS_RANGES.get(range), endDate: "today" }],
+      dimensions: [{ name: dimension }],
+      metrics: GOOGLE_ANALYTICS_METRICS.map((name) => ({ name })),
+      metricAggregations: ["TOTAL"],
+      keepEmptyRows: false,
+      limit: String(limit),
+      orderBys
+    })
+  });
+}
+
+function googleAnalyticsReportRow(report, row) {
+  const dimensions = Object.fromEntries((report?.dimensionHeaders || []).map((header, index) => [clean(header.name), clean(row?.dimensionValues?.[index]?.value)]));
+  const metrics = Object.fromEntries((report?.metricHeaders || []).map((header, index) => {
+    const value = Number(row?.metricValues?.[index]?.value || 0);
+    return [clean(header.name), Number.isFinite(value) ? value : 0];
+  }));
+  return { ...dimensions, ...metrics };
+}
+
+function googleAnalyticsDate(value) {
+  const date = clean(value);
+  return /^\d{8}$/.test(date) ? `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}` : date;
+}
+
+async function syncGoogleAnalyticsConnection(storeData, connection, requestedRange = "") {
+  const googleAccount = requireGoogleAnalyticsAccount(storeData, connection.workspaceId, connection.googleAccountId, connection.accountUserId);
+  const range = googleAnalyticsRange(requestedRange || connection.reportRange);
+  const [dailyReport, channelReport] = await Promise.all([
+    runGoogleAnalyticsReport(googleAccount, connection.analyticsPropertyName, range, "date", 100, [{ dimension: { dimensionName: "date" } }]),
+    runGoogleAnalyticsReport(googleAccount, connection.analyticsPropertyName, range, "sessionDefaultChannelGroup", 12, [{ metric: { metricName: "sessions" }, desc: true }])
+  ]);
+  const total = googleAnalyticsReportRow(dailyReport, dailyReport.totals?.[0]);
+  const latestReport = {
+    range,
+    totals: {
+      activeUsers: total.activeUsers || 0,
+      sessions: total.sessions || 0,
+      screenPageViews: total.screenPageViews || 0,
+      keyEvents: total.keyEvents || 0,
+      engagementRate: total.engagementRate || 0
+    },
+    daily: (dailyReport.rows || []).map((row) => { const parsed = googleAnalyticsReportRow(dailyReport, row); return { ...parsed, date: googleAnalyticsDate(parsed.date) }; }),
+    channels: (channelReport.rows || []).map((row) => { const parsed = googleAnalyticsReportRow(channelReport, row); return { ...parsed, label: parsed.sessionDefaultChannelGroup || "(not set)" }; }),
+    rowCount: Number(dailyReport.rowCount || 0),
     syncedAt: new Date().toISOString()
   };
   connection.reportRange = range;
@@ -4103,6 +4248,55 @@ async function api(req, res, url, route) {
     await saveStore(storeData);
     return send(res, 200, { connection: adsenseConnectionSafe(connection, storeData) });
   }
+  if (req.method === "GET" && route === "/api/google-analytics-connections") return send(res, 200, { connections: storeData.googleAnalyticsConnections.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id).map((entry) => googleAnalyticsConnectionSafe(entry, storeData)) });
+  if (req.method === "POST" && route === "/api/google-analytics-connections/discover") {
+    const body = await readBody(req);
+    const googleAccount = requireGoogleAnalyticsAccount(storeData, ctx.workspaceId, body.googleAccountId, ctx.user.id);
+    const properties = await listGoogleAnalyticsProperties(googleAccount);
+    await saveStore(storeData);
+    return send(res, 200, { properties, googleAccount: googleAccountSafe(googleAccount, storeData, ctx.workspaceId) });
+  }
+  if (req.method === "POST" && route === "/api/google-analytics-connections") {
+    const body = await readBody(req);
+    const googleAccount = requireGoogleAnalyticsAccount(storeData, ctx.workspaceId, body.googleAccountId, ctx.user.id);
+    const availableProperties = await listGoogleAnalyticsProperties(googleAccount);
+    const selectedProperty = availableProperties.find((entry) => entry.name === clean(body.analyticsPropertyName));
+    if (!selectedProperty) throw Object.assign(new Error("That GA4 property is not available to the connected Google account."), { status: 400 });
+    let connection = storeData.googleAnalyticsConnections.find((entry) => entry.workspaceId === ctx.workspaceId && entry.googleAccountId === googleAccount.id && entry.analyticsPropertyName === selectedProperty.name);
+    const now = new Date().toISOString();
+    if (!connection) {
+      const sourceId = id("source");
+      connection = { id: id("google_analytics"), accountUserId: ctx.user.id, workspaceId: ctx.workspaceId, sourceId, googleAccountId: googleAccount.id, name: clean(body.name || selectedProperty.displayName || "Google Analytics"), analyticsPropertyName: selectedProperty.name, analyticsPropertyId: selectedProperty.propertyId, analyticsPropertyDisplayName: selectedProperty.displayName, analyticsAccountName: selectedProperty.account, analyticsAccountDisplayName: selectedProperty.accountDisplayName, status: "active", authorizationStatus: "authorized", reportRange: googleAnalyticsRange(body.reportRange), latestReport: null, lastSyncedAt: "", lastError: "", createdAt: now, updatedAt: now };
+      storeData.googleAnalyticsConnections.push(connection);
+      storeData.sources.push({ id: sourceId, accountUserId: ctx.user.id, workspaceId: ctx.workspaceId, name: connection.name, type: "google_analytics", status: "connected", metadata: { googleAccountId: googleAccount.id, analyticsPropertyName: selectedProperty.name } });
+    } else {
+      connection.name = clean(body.name || connection.name || selectedProperty.displayName || "Google Analytics");
+      connection.analyticsPropertyDisplayName = selectedProperty.displayName;
+      connection.analyticsAccountName = selectedProperty.account;
+      connection.analyticsAccountDisplayName = selectedProperty.accountDisplayName;
+      connection.status = "active";
+      connection.authorizationStatus = "authorized";
+    }
+    await syncGoogleAnalyticsConnection(storeData, connection, body.reportRange);
+    await saveStore(storeData);
+    return send(res, 201, { connection: googleAnalyticsConnectionSafe(connection, storeData) });
+  }
+  const googleAnalyticsSyncMatch = route.match(/^\/api\/google-analytics-connections\/([^/]+)\/sync$/);
+  if (req.method === "POST" && googleAnalyticsSyncMatch) {
+    const body = await readBody(req);
+    const connection = storeData.googleAnalyticsConnections.find((entry) => entry.id === googleAnalyticsSyncMatch[1] && entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id);
+    if (!connection) throw Object.assign(new Error("Google Analytics connection not found."), { status: 404 });
+    try {
+      await syncGoogleAnalyticsConnection(storeData, connection, body.reportRange);
+    } catch (error) {
+      connection.lastError = clean(error.message);
+      connection.updatedAt = new Date().toISOString();
+      await saveStore(storeData);
+      throw error;
+    }
+    await saveStore(storeData);
+    return send(res, 200, { connection: googleAnalyticsConnectionSafe(connection, storeData) });
+  }
   if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id && entry.provider === "gmail").map(({ oauthTokens, oauthStateHash, ...entry }) => ({ ...entry, automationPolicy: emailAutomationPolicy(entry.automationPolicy) })) });
   if (req.method === "GET" && route === "/api/calendar-connections") return send(res, 200, { connections: storeData.calendarConnections.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.accountUserId === ctx.user.id && entry.provider === "google").map((entry) => calendarConnectionSafe({ ...entry, oauthRedirectUri: calendarOAuthRedirectUri(req) })) });
   if (req.method === "POST" && route === "/api/calendar-connections/sync") {
@@ -4122,7 +4316,7 @@ async function api(req, res, url, route) {
         name: entry.name,
         type: entry.type,
         status: entry.status,
-        resourceId: entry.type === "email" ? "email-inbox" : entry.type === "calendar" ? "calendar" : entry.type === "adsense" ? "google-adsense" : entry.type === "business_tool" ? "crm-tools" : entry.type === "website" ? "website-tracker" : entry.type === "manual_note" ? "manual-notes" : entry.type === "file_upload" ? "file-uploads" : "",
+        resourceId: entry.type === "email" ? "email-inbox" : entry.type === "calendar" ? "calendar" : entry.type === "adsense" ? "google-adsense" : entry.type === "google_analytics" ? "google-analytics" : entry.type === "business_tool" ? "crm-tools" : entry.type === "website" ? "website-tracker" : entry.type === "manual_note" ? "manual-notes" : entry.type === "file_upload" ? "file-uploads" : "",
         metadata: entry.metadata || {}
       }))
       .filter((entry) => entry.resourceId);
