@@ -51,6 +51,8 @@ const RECORD_MODEL = process.env.CONSTRAVA_RECORD_MODEL || "gpt-5.6-terra";
 const EMAIL_TOKEN_KEY_ENV = "EMAIL_TOKEN_ENCRYPTION_KEY";
 const RESEND_API_KEY_ENV = "RESEND_API_KEY";
 const DEVELOPER_HANDOFF_FROM_ENV = "DEVELOPER_HANDOFF_FROM";
+const ACCOUNT_EMAIL_FROM_ENV = "ACCOUNT_EMAIL_FROM";
+const EMAIL_VERIFICATION_MAX_AGE_MS = 24 * 60 * 60_000;
 const DEVELOPER_HANDOFF_REPLY_TO_ENV = "DEVELOPER_HANDOFF_REPLY_TO";
 const DEVELOPER_HANDOFF_RATE_LIMIT = 10;
 const EMAIL_SYNC_INTERVAL_MS = Math.max(30_000, Number(process.env.EMAIL_SYNC_INTERVAL_MS || 60_000));
@@ -63,6 +65,12 @@ const MAX_FILE_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_FILE_UPLOAD_BODY_BYTES = 7 * 1024 * 1024;
 const MAX_EXTRACTED_FILE_CHARS = 60_000;
 const FILE_UPLOAD_EXTENSIONS = new Set([".txt", ".md", ".csv", ".tsv", ".json", ".pdf", ".docx", ".xlsx"]);
+const AUTH_RATE_WINDOW_MS = 15 * 60_000;
+const AUTH_RATE_LIMITS = { signup: 5, login: 12, developer: 6 };
+const AUTH_ATTEMPTS = new Map();
+const SIGNUP_PASSWORD_MIN_LENGTH = 15;
+const SIGNUP_PASSWORD_MAX_LENGTH = 128;
+const COMMON_PASSWORDS = new Set(["password", "password123", "123456789012345", "qwertyuiop12345", "letmeinletmein", "constravaconstrava"]);
 
 function emailAutomationPolicy(value) {
   const normalized = clean(value).toLowerCase();
@@ -227,6 +235,7 @@ function ensureDeveloperAccount(storeData) {
   }
   user.role = "developer";
   user.authProvider = DEV_LOGIN_KEY_ENV;
+  user.emailVerifiedAt ||= new Date().toISOString();
   user.workspaceId ||= "workspace_developer";
   ensureUserWorkspace(storeData, user);
   return user;
@@ -329,7 +338,14 @@ function normalize(storeData) {
   for (const collection of [storeData.records, storeData.draftRecords, storeData.events, storeData.plans, storeData.reports]) for (const item of collection) item.workspaceId ||= "demo";
   if (!storeData.records.some((record) => record.workspaceId === "demo")) storeData.records.push(...starterRecords("demo"));
   if (!storeData.workspaces.some((workspace) => workspace.id === "demo")) storeData.workspaces.push(fresh.workspaces[0]);
-  for (const user of storeData.users) ensureWorkspaceProject(storeData, user);
+  for (const user of storeData.users) {
+    user.role = clean(user.email).toLowerCase() === DEV_EMAIL ? "developer" : "user";
+    if (user.role !== "developer") { user.accountType = "standard"; user.isDeveloper = false; }
+    if (user.emailVerifiedAt === undefined) user.emailVerifiedAt = user.createdAt || new Date().toISOString();
+    user.emailVerificationTokenHash ||= "";
+    user.emailVerificationExpiresAt ||= "";
+    ensureWorkspaceProject(storeData, user);
+  }
   ensureDeveloperAccount(storeData);
   return storeData;
 }
@@ -831,18 +847,37 @@ function ensureFileUploadSource(storeData, workspaceId, userId = "") {
   return source;
 }
 
+function securityHeaders({ htmlResponse = false, indexable = false } = {}) {
+  const headers = {
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "strict-origin-when-cross-origin",
+    "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    "cross-origin-opener-policy": "same-origin",
+    "x-robots-tag": indexable ? "index, follow" : "noindex, nofollow"
+  };
+  if (ORIGIN.startsWith("https://")) headers["strict-transport-security"] = "max-age=31536000; includeSubDomains";
+  if (htmlResponse) headers["content-security-policy"] = `default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'`;
+  return headers;
+}
+
 function send(res, status, data, headers = {}) {
-  res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers });
+  res.writeHead(status, { ...securityHeaders(), "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...headers });
   res.end(JSON.stringify(data, null, 2));
 }
 
-function html(res, markup) {
-  res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+function html(res, markup, { status = 200, indexable = false, cacheControl = "no-store", headers = {} } = {}) {
+  res.writeHead(status, { ...securityHeaders({ htmlResponse: true, indexable }), "content-type": "text/html; charset=utf-8", "cache-control": cacheControl, ...headers });
   res.end(markup);
 }
 
+function textResponse(res, body, { contentType = "text/plain; charset=utf-8", cacheControl = "public, max-age=3600" } = {}) {
+  res.writeHead(200, { ...securityHeaders({ indexable: true }), "content-type": contentType, "cache-control": cacheControl });
+  res.end(body);
+}
+
 function redirect(res, location) {
-  res.writeHead(302, { location, "cache-control": "no-store" });
+  res.writeHead(302, { ...securityHeaders(), location, "cache-control": "no-store" });
   res.end();
 }
 
@@ -862,6 +897,55 @@ function verifyPassword(password, user) {
   return safeEqualText(hash, user.passwordHash);
 }
 
+function authClientAddress(req) {
+  return clean(String(req.headers["x-forwarded-for"] || "").split(",")[0] || req.socket?.remoteAddress || "unknown").slice(0, 80);
+}
+
+function authRateKeys(req, email, kind) {
+  const emailKey = crypto.createHash("sha256").update(clean(email).toLowerCase()).digest("hex").slice(0, 24);
+  return [`${kind}:ip:${authClientAddress(req)}`, `${kind}:account:${emailKey}`];
+}
+
+function authRateStatus(req, email, kind) {
+  const now = Date.now(), limit = AUTH_RATE_LIMITS[kind] || AUTH_RATE_LIMITS.login;
+  let retryAfter = 0;
+  for (const key of authRateKeys(req, email, kind)) {
+    const recent = (AUTH_ATTEMPTS.get(key) || []).filter((timestamp) => timestamp > now - AUTH_RATE_WINDOW_MS);
+    AUTH_ATTEMPTS.set(key, recent);
+    if (recent.length >= limit) retryAfter = Math.max(retryAfter, Math.ceil((recent[0] + AUTH_RATE_WINDOW_MS - now) / 1000));
+  }
+  return retryAfter;
+}
+
+function recordAuthAttempt(req, email, kind) {
+  const now = Date.now();
+  for (const key of authRateKeys(req, email, kind)) AUTH_ATTEMPTS.set(key, [...(AUTH_ATTEMPTS.get(key) || []).filter((timestamp) => timestamp > now - AUTH_RATE_WINDOW_MS), now]);
+}
+
+function clearAuthAttempts(req, email, kind) {
+  for (const key of authRateKeys(req, email, kind)) AUTH_ATTEMPTS.delete(key);
+}
+
+function validAccountEmail(value) {
+  const email = clean(value).toLowerCase();
+  return email.length <= 254 && /^[^\s@]{1,64}@[a-z0-9.-]+\.[a-z]{2,63}$/i.test(email);
+}
+
+function signupPasswordError(password) {
+  if (password.length < SIGNUP_PASSWORD_MIN_LENGTH) return `Use at least ${SIGNUP_PASSWORD_MIN_LENGTH} characters. A memorable passphrase works well.`;
+  if (password.length > SIGNUP_PASSWORD_MAX_LENGTH) return `Use no more than ${SIGNUP_PASSWORD_MAX_LENGTH} characters.`;
+  if (COMMON_PASSWORDS.has(password.toLowerCase().replace(/\s+/g, ""))) return "Choose a less common passphrase.";
+  return "";
+}
+
+function createSession(storeData, user) {
+  const now = new Date();
+  storeData.sessions = storeData.sessions.filter((entry) => entry.expiresAt > now.toISOString() && entry.userId !== user.id);
+  const session = { id: id("session"), userId: user.id, activeWorkspaceId: "", createdAt: now.toISOString(), lastSeenAt: now.toISOString(), expiresAt: new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1000).toISOString() };
+  storeData.sessions.push(session);
+  return session;
+}
+
 function currentSession(req, storeData) {
   const sessionId = parseCookies(req)[COOKIE_NAME];
   if (!sessionId) return null;
@@ -878,12 +962,13 @@ function currentUser(req, storeData) {
   const session = currentSession(req, storeData);
   if (!session) return null;
   const user = storeData.users.find((entry) => entry.id === session.userId) || null;
+  if (user && user.role !== "developer" && !user.emailVerifiedAt) return null;
   if (user) ensureUserWorkspace(storeData, user);
   return user;
 }
 
 function publicUser(user) {
-  return user ? { id: user.id, email: user.email, name: user.name, role: user.role || "user", workspaceId: user.workspaceId } : null;
+  return user ? { id: user.id, email: user.email, name: user.name, role: user.role || "user", workspaceId: user.workspaceId, emailVerified: user.role === "developer" || Boolean(user.emailVerifiedAt) } : null;
 }
 
 function workspaceMembership(storeData, userId, workspaceId) {
@@ -1119,10 +1204,7 @@ const GOOGLE_IDENTITY_SCOPES = ["openid", "email"];
 const GOOGLE_APP_CATALOG = [
   { id: "gmail", name: "Gmail", resource: "Email inbox", description: "Review incoming email for CRM activity.", scopes: ["https://www.googleapis.com/auth/gmail.readonly"] },
   { id: "calendar", name: "Google Calendar", resource: "Calendar", description: "Review selected calendars for meetings, tasks, and follow-ups.", scopes: ["https://www.googleapis.com/auth/calendar.calendarlist.readonly", "https://www.googleapis.com/auth/calendar.events.readonly"] },
-  { id: "drive", name: "Google Drive", resource: "File uploads", description: "Find Drive files that can be brought into the project.", scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly"] },
-  { id: "contacts", name: "Google Contacts", resource: "CRM", description: "Check whether Google Contacts is available for contact enrichment.", scopes: ["https://www.googleapis.com/auth/contacts.readonly"] },
   { id: "sheets", name: "Google Sheets", resource: "CRM and business tools", description: "Find spreadsheets that can support CRM imports and workflows.", scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly", "https://www.googleapis.com/auth/spreadsheets.readonly"] },
-  { id: "forms", name: "Google Forms", resource: "Forms", description: "Find forms that can become customer-intake sources.", scopes: ["https://www.googleapis.com/auth/drive.metadata.readonly", "https://www.googleapis.com/auth/forms.body.readonly", "https://www.googleapis.com/auth/forms.responses.readonly"] },
   { id: "adsense", name: "Google AdSense", resource: "Ad revenue", description: "Read publisher accounts and performance reports for revenue analytics.", scopes: ["https://www.googleapis.com/auth/adsense.readonly"] }
 ];
 const GOOGLE_SHARED_SCOPES = [...GOOGLE_IDENTITY_SCOPES, ...GOOGLE_APP_CATALOG.filter((app) => ["gmail", "calendar"].includes(app.id)).flatMap((app) => app.scopes)];
@@ -1801,6 +1883,40 @@ async function sendDeveloperHandoffEmail({ to, subject, text, html, replyTo, ide
   return { providerMessageId: clean(result.id) };
 }
 
+function createEmailVerification(user) {
+  const token = crypto.randomBytes(32).toString("hex");
+  user.emailVerificationTokenHash = hashToken(token);
+  user.emailVerificationExpiresAt = new Date(Date.now() + EMAIL_VERIFICATION_MAX_AGE_MS).toISOString();
+  return token;
+}
+
+async function sendAccountVerificationEmail(user, token) {
+  const apiKey = clean(process.env[RESEND_API_KEY_ENV]);
+  const from = clean(process.env[ACCOUNT_EMAIL_FROM_ENV] || process.env[DEVELOPER_HANDOFF_FROM_ENV]);
+  if (!apiKey || !from) {
+    throw Object.assign(new Error(`Account verification email is not configured. Add ${RESEND_API_KEY_ENV} and ${ACCOUNT_EMAIL_FROM_ENV} in Render, or reuse ${DEVELOPER_HANDOFF_FROM_ENV} as the sender.`), { status: 503, code: "account_email_not_configured" });
+  }
+  const verificationUrl = `${ORIGIN.replace(/\/+$/, "")}/verify-email?token=${encodeURIComponent(token)}`;
+  const text = `Welcome to Constrava, ${user.name}.\n\nVerify your email address to finish creating your free standard account:\n${verificationUrl}\n\nThis one-time link expires in 24 hours. If you did not request this account, you can ignore this email.`;
+  const html = `<!doctype html><html><body style="margin:0;background:#f5f3ff;font-family:Arial,sans-serif;color:#302852"><main style="max-width:600px;margin:30px auto;padding:30px;border-radius:20px;background:#fff"><div style="font-size:22px;font-weight:900;color:#061a33">Constrava</div><h1 style="color:#061a33">Verify your email</h1><p>Welcome, ${esc(user.name)}. Confirm this email address to finish creating your free standard account.</p><p style="margin:28px 0"><a href="${esc(verificationUrl)}" style="display:inline-block;padding:13px 20px;border-radius:999px;background:#7357ff;color:#fff;font-weight:900;text-decoration:none">Verify email address</a></p><p style="color:#716b89;font-size:13px;line-height:1.5">This one-time link expires in 24 hours. If you did not request this account, you can ignore this email.</p></main></body></html>`;
+  let response;
+  try {
+    response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json", "idempotency-key": `account-verification:${user.id}:${user.emailVerificationTokenHash.slice(0, 18)}` },
+      body: JSON.stringify({ from, to: [user.email], subject: "Verify your Constrava account", text, html }),
+      signal: AbortSignal.timeout(15_000)
+    });
+  } catch (error) {
+    throw Object.assign(new Error("The account verification email service could not be reached. Try again."), { status: 502, code: "account_email_unavailable", cause: error });
+  }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !clean(result.id)) {
+    throw Object.assign(new Error(clean(result.message || result.error?.message) || "The verification email could not be sent. Check the sender configuration and try again."), { status: 502, code: "account_email_rejected" });
+  }
+  return { providerMessageId: clean(result.id), verificationUrl };
+}
+
 
 function businessProviderConfig(provider) {
   if (provider === "hubspot") return {
@@ -1851,7 +1967,19 @@ function businessProviderName(provider) {
   return provider === "hubspot" ? "HubSpot" : provider === "salesforce" ? "Salesforce" : provider === "airtable" ? "Airtable" : provider === "notion" ? "Notion" : provider === "google_sheets" ? "Google Sheets" : "Business tool";
 }
 
-const BUSINESS_PROVIDER_IDS = ["hubspot", "salesforce", "airtable", "notion", "google_sheets"];
+const BUSINESS_PROVIDER_IDS = ["google_sheets"];
+const RETIRED_RESOURCE_API_PREFIXES = [
+  "/api/microsoft",
+  "/api/messaging",
+  "/api/form-connections",
+  "/api/forms"
+];
+
+function isRetiredResourceRoute(route) {
+  return RETIRED_RESOURCE_API_PREFIXES.some((prefix) => route.startsWith(prefix))
+    || /^\/api\/email-connections\/[^/]+\/(?:link-microsoft|imap)$/.test(route)
+    || /^\/api\/calendar-connections\/[^/]+\/link-microsoft$/.test(route);
+}
 
 function businessProviderEnvironmentKeys(provider) {
   if (provider === "hubspot") return ["HUBSPOT_CLIENT_ID", "HUBSPOT_CLIENT_SECRET", EMAIL_TOKEN_KEY_ENV];
@@ -2893,33 +3021,73 @@ function publicPage() {
 }
 
 function freePublicPage() {
+  const homepageUrl = `${ORIGIN.replace(/\/+$/, "")}/`;
+  const description = "Constrava is a free online business management platform with CRM, colorful analytics, website tracking, SEO performance insights, and secure Google integrations.";
+  const structuredData = JSON.stringify([
+    { "@context": "https://schema.org", "@type": "SoftwareApplication", name: "Constrava", applicationCategory: "BusinessApplication", operatingSystem: "Web", url: homepageUrl, description, offers: { "@type": "Offer", price: "0", priceCurrency: "USD" }, featureList: ["Free business management workspace", "Free CRM tools", "Website and SEO analytics", "Google Calendar integration", "Gmail integration", "Google Sheets migration", "Google AdSense analytics"] },
+    { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: [
+      { "@type": "Question", name: "Is Constrava free business management software?", acceptedAnswer: { "@type": "Answer", text: "Yes. Constrava provides a free online workspace for CRM records, tasks, deals, analytics, website activity, and supported Google integrations." } },
+      { "@type": "Question", name: "What free SEO tools does Constrava include?", acceptedAnswer: { "@type": "Answer", text: "Constrava includes website traffic, page activity, traffic-source, campaign, conversion, and AdSense reporting that helps businesses understand SEO and website performance." } },
+      { "@type": "Question", name: "Which Google services can connect to Constrava?", acceptedAnswer: { "@type": "Answer", text: "Constrava supports read-only connections for Gmail, Google Calendar, Google Sheets, and Google AdSense through a connected Google account." } }
+    ] }
+  ]).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="Constrava is a free online CRM and analytics workspace that turns business activity into organized records, priorities, and next actions.">
-<title>Constrava | Free online CRM and analytics</title>
+<meta name="description" content="${esc(description)}">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+<meta name="theme-color" content="#21194f">
+<link rel="canonical" href="${esc(homepageUrl)}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Constrava">
+<meta property="og:title" content="Free Business Management, CRM &amp; SEO Tools | Constrava">
+<meta property="og:description" content="${esc(description)}">
+<meta property="og:url" content="${esc(homepageUrl)}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Free Business Management, CRM &amp; SEO Tools | Constrava">
+<meta name="twitter:description" content="${esc(description)}">
+<title>Free Business Management, CRM &amp; SEO Tools | Constrava</title>
+<script type="application/ld+json">${structuredData}</script>
 <style>
 :root{--navy:#061a33;--navy-2:#102c52;--violet:#7357ff;--cyan:#00c2ff;--pink:#ff5d8f;--amber:#ffb020;--mint:#20c997;--ink:#21194f;--muted:#716b89;--line:#e4e0f0;--paper:#fff;--soft:#f1edff}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;overflow-x:hidden;background:radial-gradient(circle at 8% 2%,rgba(0,194,255,.15),transparent 25%),radial-gradient(circle at 92% 8%,rgba(115,87,255,.18),transparent 28%),radial-gradient(circle at 75% 72%,rgba(255,93,143,.08),transparent 25%),#faf9ff;color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{width:min(1160px,calc(100% - 40px));margin:auto}a{color:inherit}.siteHeader{position:relative;z-index:20}.nav{height:80px;display:flex;align-items:center;justify-content:space-between;gap:24px}.brand{display:inline-flex;align-items:center;gap:10px;color:var(--navy);font-size:24px;font-weight:950;letter-spacing:-.05em;text-decoration:none}.brandMark{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(135deg,var(--violet),var(--cyan));color:#fff;font-size:17px;box-shadow:0 9px 24px rgba(93,72,202,.24)}.freeTag{padding:5px 8px;border-radius:999px;background:#dcf8ec;color:#08744e;font-size:9px;font-weight:950;letter-spacing:.08em;text-transform:uppercase}.links{display:flex;align-items:center;gap:10px}.links>a:not(.btn){padding:10px 8px;color:#554d70;font-size:13px;font-weight:850;text-decoration:none}.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:11px 17px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.88);color:var(--navy);font-size:13px;font-weight:950;text-decoration:none;box-shadow:0 8px 24px rgba(68,52,135,.07);transition:transform .16s ease,box-shadow .16s ease}.btn:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(68,52,135,.13)}.primary{border:0!important;background:linear-gradient(135deg,var(--violet),#4f46e5)!important;color:#fff!important;box-shadow:0 12px 30px rgba(93,72,202,.25)!important}.hero{padding:72px 0 84px}.heroGrid{display:grid;grid-template-columns:minmax(0,.96fr) minmax(460px,1.04fr);gap:58px;align-items:center}.eyebrow{display:inline-flex;align-items:center;gap:9px;margin:0;padding:7px 11px;border:1px solid #d8d1ff;border-radius:999px;background:rgba(240,237,255,.9);color:#5943c2;font-size:11px;font-weight:950;letter-spacing:.06em;text-transform:uppercase}.eyebrowDot{width:8px;height:8px;border-radius:50%;background:var(--mint);box-shadow:0 0 0 5px rgba(32,201,151,.13)}h1{max-width:680px;margin:20px 0 18px;color:var(--navy);font-size:clamp(52px,6.7vw,82px);line-height:.94;letter-spacing:-.075em}.gradientText{background:linear-gradient(100deg,#5d43e6,#148eb9 52%,#159c75);-webkit-background-clip:text;background-clip:text;color:transparent}.lead{max-width:650px;margin:0;color:#625a79;font-size:19px;line-height:1.62}.actions{display:flex;gap:11px;flex-wrap:wrap;margin-top:28px}.heroProof{display:flex;gap:18px;flex-wrap:wrap;margin-top:20px;color:#6f6882;font-size:12px;font-weight:800}.heroProof span{display:inline-flex;align-items:center;gap:6px}.heroProof i{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:#dcf8ec;color:#08744e;font-style:normal;font-size:11px;font-weight:950}.productStage{position:relative}.productStage:before,.productStage:after{content:"";position:absolute;border-radius:50%;filter:blur(2px)}.productStage:before{width:170px;height:170px;right:-50px;top:-45px;background:rgba(255,93,143,.18)}.productStage:after{width:150px;height:150px;left:-50px;bottom:-40px;background:rgba(0,194,255,.17)}.dashboardMock{position:relative;z-index:2;overflow:hidden;border:1px solid rgba(255,255,255,.55);border-radius:28px;background:#faf9ff;box-shadow:0 32px 90px rgba(31,24,78,.23),0 0 0 8px rgba(255,255,255,.42);transform:rotate(1deg)}.mockTop{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;background:radial-gradient(circle at 16% -100%,rgba(0,194,255,.6),transparent 42%),radial-gradient(circle at 82% -100%,rgba(255,93,143,.45),transparent 40%),linear-gradient(115deg,var(--navy),#21194f 58%,#153d58);color:#fff}.mockBrand{font-weight:950;letter-spacing:-.04em}.mockTabs{display:flex;gap:5px}.mockTabs span{padding:6px 9px;border-radius:999px;color:rgba(255,255,255,.72);font-size:9px;font-weight:900}.mockTabs .active{background:#fff;color:#302852}.mockBody{padding:17px}.mockWorkspace{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.mockWorkspace b{color:#302852;font-size:13px}.mockWorkspace span{padding:5px 8px;border-radius:999px;background:#e6f8f1;color:#08744e;font-size:8px;font-weight:950}.metricGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.metric{position:relative;overflow:hidden;min-height:85px;padding:12px;border:1px solid var(--line);border-radius:15px;background:#fff;box-shadow:0 8px 22px rgba(68,52,135,.06)}.metric:before{content:"";position:absolute;inset:0 0 auto;height:4px;background:linear-gradient(90deg,var(--violet),#9d8cff)}.metric:nth-child(2):before{background:linear-gradient(90deg,var(--cyan),var(--mint))}.metric:nth-child(3):before{background:linear-gradient(90deg,var(--pink),var(--amber))}.metric small{display:block;color:#77708d;font-size:8px;font-weight:850}.metric strong{display:block;margin-top:8px;color:#302852;font-size:22px}.metric em{display:block;margin-top:2px;color:#169268;font-size:8px;font-style:normal;font-weight:900}.chartPanel{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(130px,.6fr);gap:9px;margin-top:9px}.chartCard,.priorityCard{padding:13px;border:1px solid var(--line);border-radius:15px;background:#fff}.panelHead{display:flex;align-items:center;justify-content:space-between;color:#302852;font-size:10px;font-weight:950}.panelHead span{color:#7c7690;font-size:7px}.chart{height:118px;display:flex;align-items:end;gap:7px;padding-top:18px;border-bottom:1px solid #e9e5f2;background:repeating-linear-gradient(to top,transparent 0,transparent 28px,#f0edf7 29px)}.bar{flex:1;min-width:8px;border-radius:7px 7px 2px 2px;background:linear-gradient(180deg,var(--violet),#9b8cff)}.bar:nth-child(2),.bar:nth-child(5){background:linear-gradient(180deg,var(--cyan),#3bd6ca)}.bar:nth-child(3),.bar:nth-child(6){background:linear-gradient(180deg,var(--pink),#ff9d75)}.priorityList{display:grid;gap:7px;margin-top:12px}.priority{padding:8px;border-radius:10px;background:#f7f5ff}.priority b{display:block;color:#3c3558;font-size:8px}.priority span{display:block;margin-top:3px;color:#857e99;font-size:7px}.section{padding:74px 0}.sectionHead{display:flex;align-items:end;justify-content:space-between;gap:30px;margin-bottom:24px}.sectionHead h2,.freePanel h2{max-width:700px;margin:8px 0 0;color:var(--navy);font-size:clamp(34px,5vw,54px);line-height:1;letter-spacing:-.06em}.sectionHead p{max-width:440px;margin:0;color:var(--muted);line-height:1.6}.bento{display:grid;grid-template-columns:1.15fr .85fr .85fr;grid-template-rows:auto auto;gap:15px}.feature{position:relative;overflow:hidden;min-height:235px;padding:24px;border:1px solid var(--line);border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 16px 45px rgba(68,52,135,.08)}.feature:first-child{grid-row:span 2;min-height:485px;background:radial-gradient(circle at 90% 6%,rgba(0,194,255,.24),transparent 32%),linear-gradient(145deg,#171132,#2e2464 58%,#075c78);color:#fff}.feature:nth-child(2){background:linear-gradient(145deg,#f1edff,#fff)}.feature:nth-child(3){background:linear-gradient(145deg,#e9fbff,#fff)}.feature:nth-child(4){grid-column:span 2;background:linear-gradient(120deg,#fff1f5,#fff9e8)}.featureIcon{width:46px;height:46px;border-radius:15px;display:grid;place-items:center;background:linear-gradient(135deg,var(--violet),#4f46e5);color:#fff;font-size:12px;font-weight:950;box-shadow:0 10px 24px rgba(93,72,202,.2)}.feature:nth-child(3) .featureIcon{background:linear-gradient(135deg,#00a8d6,#20c997)}.feature:nth-child(4) .featureIcon{background:linear-gradient(135deg,var(--pink),var(--amber))}.feature h3{margin:22px 0 8px;color:var(--navy);font-size:25px;letter-spacing:-.04em}.feature p{max-width:520px;margin:0;color:var(--muted);line-height:1.55}.feature:first-child h3{color:#fff;font-size:34px}.feature:first-child p{color:rgba(241,245,255,.74)}.miniFlow{display:grid;gap:10px;margin-top:30px}.flowRow{display:grid;grid-template-columns:36px 1fr auto;gap:10px;align-items:center;padding:11px;border:1px solid rgba(255,255,255,.13);border-radius:14px;background:rgba(255,255,255,.08)}.flowIcon{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:rgba(255,255,255,.12);font-size:11px;font-weight:950}.flowRow b{display:block;font-size:11px}.flowRow small{display:block;margin-top:3px;color:rgba(255,255,255,.6);font-size:8px}.flowPill{padding:5px 7px;border-radius:999px;background:rgba(32,201,151,.18);color:#7ff0ca;font-size:7px;font-weight:950}.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.step{padding:24px;border-top:5px solid var(--violet);border-radius:22px;background:#fff;box-shadow:0 14px 36px rgba(68,52,135,.07)}.step:nth-child(2){border-color:var(--cyan)}.step:nth-child(3){border-color:var(--mint)}.stepNum{display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:#ece8ff;color:#5943c2;font-size:12px;font-weight:950}.step:nth-child(2) .stepNum{background:#e0f9ff;color:#087a9c}.step:nth-child(3) .stepNum{background:#dcf8ec;color:#08744e}.step h3{margin:18px 0 7px;color:var(--navy)}.step p{margin:0;color:var(--muted);line-height:1.55}.freePanel{position:relative;overflow:hidden;display:grid;grid-template-columns:1fr auto;gap:35px;align-items:center;margin:22px auto 74px;padding:42px;border-radius:32px;background:radial-gradient(circle at 86% -10%,rgba(0,194,255,.38),transparent 30%),radial-gradient(circle at 63% 110%,rgba(255,93,143,.3),transparent 35%),linear-gradient(120deg,#171132,#30236d 57%,#075f78);color:#fff;box-shadow:0 28px 70px rgba(31,24,78,.23)}.freePanel h2{color:#fff}.freePanel p{max-width:650px;margin:13px 0 0;color:rgba(240,245,255,.75);font-size:17px;line-height:1.6}.freePanel .btn{background:#fff;border:0;color:#302852;white-space:nowrap}.freePanel:after{content:"FREE";position:absolute;right:22px;bottom:-35px;color:rgba(255,255,255,.05);font-size:130px;font-weight:950;letter-spacing:-.08em;pointer-events:none}footer{padding:28px 0;border-top:1px solid var(--line);color:#766f89;font-size:12px}.footerRow{display:flex;align-items:center;justify-content:space-between;gap:20px}.footerLinks{display:flex;gap:16px}.footerLinks a{text-decoration:none;font-weight:850}@media(max-width:960px){.heroGrid{grid-template-columns:1fr}.productStage{max-width:680px}.bento{grid-template-columns:1fr 1fr}.feature:first-child{grid-column:span 2;grid-row:auto;min-height:430px}.feature:nth-child(4){grid-column:span 2}.freePanel{grid-template-columns:1fr}.freePanel .btn{justify-self:start}}@media(max-width:700px){.wrap{width:calc(100% - 28px)}.nav{height:auto;padding:15px 0}.links>a:not(.btn){display:none}.hero{padding:52px 0 58px}.heroGrid{gap:42px}h1{font-size:clamp(48px,15vw,66px)}.lead{font-size:17px}.dashboardMock{transform:none;border-radius:21px}.mockTabs{display:none}.mockBody{padding:11px}.metricGrid{gap:6px}.metric{padding:9px}.metric strong{font-size:18px}.chartPanel{grid-template-columns:1fr}.priorityCard{display:none}.section{padding:55px 0}.sectionHead{display:block}.sectionHead p{margin-top:14px}.bento,.steps{grid-template-columns:1fr}.feature:first-child,.feature:nth-child(4){grid-column:auto;min-height:0}.feature{min-height:0}.freePanel{padding:30px 24px;margin-bottom:50px}.freePanel:after{font-size:86px}.footerRow{align-items:start;flex-direction:column}}@media(max-width:440px){.brand{font-size:21px}.brandMark{width:31px;height:31px}.freeTag{display:none}.links .btn:not(.primary){display:none}.heroProof{display:grid;gap:8px}.metricGrid{grid-template-columns:1fr 1fr}.metric:nth-child(3){display:none}.chart{height:100px}.freePanel .btn{width:100%}.footerLinks{flex-wrap:wrap}}
+.toolGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:15px}.toolCard{padding:22px;border:1px solid var(--line);border-radius:22px;background:#fff;box-shadow:0 14px 36px rgba(68,52,135,.07)}.toolCard h3{margin:13px 0 7px;color:var(--navy);font-size:20px}.toolCard p{margin:0;color:var(--muted);font-size:14px;line-height:1.55}.toolBadge{display:inline-flex;padding:6px 9px;border-radius:999px;background:#ece8ff;color:#5943c2;font-size:10px;font-weight:950}.faqGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:15px}.faqCard{padding:22px;border:1px solid var(--line);border-radius:22px;background:linear-gradient(145deg,#fff,#f7f5ff)}.faqCard h3{margin:0 0 8px;color:var(--navy);font-size:18px}.faqCard p{margin:0;color:var(--muted);line-height:1.55}@media(max-width:900px){.toolGrid{grid-template-columns:1fr 1fr}.faqGrid{grid-template-columns:1fr}}@media(max-width:600px){.toolGrid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<header class="siteHeader"><div class="wrap nav"><a class="brand" href="/"><span class="brandMark">C</span><span>Constrava</span><span class="freeTag">Free</span></a><nav class="links" aria-label="Primary navigation"><a href="#features">Features</a><a href="#how-it-works">How it works</a><a class="btn" href="/demo">View demo</a><a class="btn primary" href="/signin">Create free account</a></nav></div></header>
+<header class="siteHeader"><div class="wrap nav"><a class="brand" href="/"><span class="brandMark">C</span><span>Constrava</span><span class="freeTag">Free</span></a><nav class="links" aria-label="Primary navigation"><a href="#features">Features</a><a href="#free-tools">Free tools</a><a href="#how-it-works">How it works</a><a class="btn" href="/demo">View demo</a><a class="btn primary" href="/signup">Create free account</a></nav></div></header>
 <main>
-<section class="wrap hero"><div class="heroGrid"><div><p class="eyebrow"><span class="eyebrowDot"></span>Free online CRM + analytics</p><h1>Your business, organized. <span class="gradientText">For free.</span></h1><p class="lead">Constrava turns notes, calendars, website activity, and customer conversations into clean CRM records, useful analytics, and clear next actionsâ€”all in one colorful online workspace.</p><div class="actions"><a class="btn primary" href="/signin">Create your free account <span aria-hidden="true">â†’</span></a><a class="btn" href="/demo">Explore the live demo</a></div><div class="heroProof"><span><i>âœ“</i>No credit card</span><span><i>âœ“</i>Works in your browser</span><span><i>âœ“</i>Share CRM projects</span></div></div><div class="productStage" aria-label="Preview of the Constrava dashboard"><div class="dashboardMock"><div class="mockTop"><span class="mockBrand">Constrava</span><div class="mockTabs"><span class="active">Analytics</span><span>CRM</span><span>Connect Resources</span></div></div><div class="mockBody"><div class="mockWorkspace"><b>Business overview</b><span>Live workspace</span></div><div class="metricGrid"><div class="metric"><small>New leads</small><strong>24</strong><em>â†‘ 18% this month</em></div><div class="metric"><small>Active deals</small><strong>11</strong><em>$48k opportunity</em></div><div class="metric"><small>Follow-ups</small><strong>7</strong><em>3 high priority</em></div></div><div class="chartPanel"><div class="chartCard"><div class="panelHead">Business activity <span>Last 7 days</span></div><div class="chart"><i class="bar" style="height:42%"></i><i class="bar" style="height:66%"></i><i class="bar" style="height:54%"></i><i class="bar" style="height:82%"></i><i class="bar" style="height:70%"></i><i class="bar" style="height:94%"></i><i class="bar" style="height:76%"></i></div></div><div class="priorityCard"><div class="panelHead">AI priorities <span>Today</span></div><div class="priorityList"><div class="priority"><b>Follow up with North Star</b><span>Deal Â· High priority</span></div><div class="priority"><b>Review website lead</b><span>Person Â· New</span></div><div class="priority"><b>Prepare Friday quote</b><span>Task Â· Tomorrow</span></div></div></div></div></div></div></div></div></section>
-<section class="wrap section" id="features"><div class="sectionHead"><div><p class="eyebrow">One free workspace</p><h2>Everything you need to understand and grow your business.</h2></div><p>Bring scattered business activity into one system that is visual, organized, and built to help you decide what to do next.</p></div><div class="bento"><article class="feature"><div class="featureIcon">CRM</div><h3>A CRM that builds itself with you.</h3><p>Add plain text, calendar events, files, website activity, and connected resources. Constrava prepares useful records for review instead of making you enter everything by hand.</p><div class="miniFlow"><div class="flowRow"><span class="flowIcon">TXT</span><span><b>Meeting notes added</b><small>Unstructured business context</small></span><span class="flowPill">Captured</span></div><div class="flowRow"><span class="flowIcon">AI</span><span><b>Records prepared</b><small>Company, person, deal, and task</small></span><span class="flowPill">Reviewed</span></div><div class="flowRow"><span class="flowIcon">CRM</span><span><b>Relationships connected</b><small>Ready for follow-up and reporting</small></span><span class="flowPill">Organized</span></div></div></article><article class="feature"><div class="featureIcon">AI</div><h3>AI-assisted organization</h3><p>Turn messy information into suggested records, priorities, dates, relationships, and follow-upsâ€”with a review step that keeps you in control.</p></article><article class="feature"><div class="featureIcon">AN</div><h3>Colorful, useful analytics</h3><p>See leads, deals, activity, website performance, priorities, and trends through modern interactive charts instead of walls of text.</p></article><article class="feature"><div class="featureIcon">GO</div><h3>Connect the places where work already happens.</h3><p>Bring in supported Google services, calendars, website tracking, forms, email, files, and more so useful business activity can flow into the same CRM project.</p></article></div></section>
+<section class="wrap hero"><div class="heroGrid"><div><p class="eyebrow"><span class="eyebrowDot"></span>Free business management + SEO tools</p><h1>Your business, organized. <span class="gradientText">For free.</span></h1><p class="lead">Constrava combines free CRM and business management tools with website tracking, SEO performance insights, and secure Google integrations&mdash;all in one colorful online workspace.</p><div class="actions"><a class="btn primary" href="/signup">Create your free account <span aria-hidden="true">&rarr;</span></a><a class="btn" href="/demo">Explore the live demo</a></div><div class="heroProof"><span><i>&#10003;</i>No credit card</span><span><i>&#10003;</i>Works in your browser</span><span><i>&#10003;</i>Standard user accounts</span></div></div><div class="productStage" aria-label="Preview of the Constrava dashboard"><div class="dashboardMock"><div class="mockTop"><span class="mockBrand">Constrava</span><div class="mockTabs"><span class="active">Analytics</span><span>CRM</span><span>Connect Resources</span></div></div><div class="mockBody"><div class="mockWorkspace"><b>Business overview</b><span>Live workspace</span></div><div class="metricGrid"><div class="metric"><small>New leads</small><strong>24</strong><em>&uarr; 18% this month</em></div><div class="metric"><small>Active deals</small><strong>11</strong><em>$48k opportunity</em></div><div class="metric"><small>Follow-ups</small><strong>7</strong><em>3 high priority</em></div></div><div class="chartPanel"><div class="chartCard"><div class="panelHead">Business activity <span>Last 7 days</span></div><div class="chart"><i class="bar" style="height:42%"></i><i class="bar" style="height:66%"></i><i class="bar" style="height:54%"></i><i class="bar" style="height:82%"></i><i class="bar" style="height:70%"></i><i class="bar" style="height:94%"></i><i class="bar" style="height:76%"></i></div></div><div class="priorityCard"><div class="panelHead">AI priorities <span>Today</span></div><div class="priorityList"><div class="priority"><b>Follow up with North Star</b><span>Deal &middot; High priority</span></div><div class="priority"><b>Review website lead</b><span>Person &middot; New</span></div><div class="priority"><b>Prepare Friday quote</b><span>Task &middot; Tomorrow</span></div></div></div></div></div></div></div></div></section>
+<section class="wrap section" id="features"><div class="sectionHead"><div><p class="eyebrow">One free workspace</p><h2>Everything you need to understand and grow your business.</h2></div><p>Bring scattered business activity into one system that is visual, organized, and built to help you decide what to do next.</p></div><div class="bento"><article class="feature"><div class="featureIcon">CRM</div><h3>A CRM that builds itself with you.</h3><p>Add plain text, Google Calendar events, selected Google Sheets, files, and website activity. Constrava prepares useful records for review instead of making you enter everything by hand.</p><div class="miniFlow"><div class="flowRow"><span class="flowIcon">TXT</span><span><b>Meeting notes added</b><small>Unstructured business context</small></span><span class="flowPill">Captured</span></div><div class="flowRow"><span class="flowIcon">AI</span><span><b>Records prepared</b><small>Company, person, deal, and task</small></span><span class="flowPill">Reviewed</span></div><div class="flowRow"><span class="flowIcon">CRM</span><span><b>Relationships connected</b><small>Ready for follow-up and reporting</small></span><span class="flowPill">Organized</span></div></div></article><article class="feature"><div class="featureIcon">AI</div><h3>AI-assisted organization</h3><p>Turn messy information into suggested records, priorities, dates, relationships, and follow-ups&mdash;with a review step that keeps you in control.</p></article><article class="feature"><div class="featureIcon">AN</div><h3>Colorful, useful analytics</h3><p>See leads, deals, activity, website performance, priorities, and trends through modern interactive charts instead of walls of text.</p></article><article class="feature"><div class="featureIcon">GO</div><h3>Focused Google connections.</h3><p>Connect Gmail, Google Calendar, Google Sheets, and Google AdSense through one secure Google account. Unfinished third-party integrations are not shown.</p></article></div></section>
+<section class="wrap section" id="free-tools"><div class="sectionHead"><div><p class="eyebrow">Free tools for small business</p><h2>Business management and SEO insights in the same system.</h2></div><p>Use the tools together so customer work, website performance, and next actions tell one clear story.</p></div><div class="toolGrid"><article class="toolCard"><span class="toolBadge">Business management</span><h3>Free business management tools</h3><p>Organize companies, contacts, deals, tasks, notes, priorities, and shared CRM projects online.</p></article><article class="toolCard"><span class="toolBadge">CRM</span><h3>Free CRM tools</h3><p>Prepare customer records from plain text, files, Gmail, Calendar, and selected Google Sheets, then review before publishing.</p></article><article class="toolCard"><span class="toolBadge">SEO + website</span><h3>Free SEO and website analytics</h3><p>Measure pages, traffic sources, campaigns, forms, and visitor activity to understand which content and channels bring attention.</p></article><article class="toolCard"><span class="toolBadge">Google</span><h3>Google business integrations</h3><p>Reuse one Google account for read-only Gmail, Calendar, Sheets, and AdSense workflows.</p></article></div></section>
 <section class="wrap section" id="how-it-works"><div class="sectionHead"><div><p class="eyebrow">Simple by design</p><h2>Start organizing in three steps.</h2></div><p>No complicated software rollout. Create an account, open a CRM project, and begin with the information you already have.</p></div><div class="steps"><article class="step"><span class="stepNum">01</span><h3>Create a free account</h3><p>Sign up online and create the CRM project where you want your records, resources, and analytics to live.</p></article><article class="step"><span class="stepNum">02</span><h3>Add business activity</h3><p>Paste notes, upload files, connect supported resources, or install the website tracker when you are ready.</p></article><article class="step"><span class="stepNum">03</span><h3>Review and take action</h3><p>Approve useful CRM records, explore visual analytics, and focus on the relationships and follow-ups moving forward.</p></article></div></section>
-<section class="wrap freePanel"><div><p class="eyebrow">Free online service</p><h2>Useful business software should be accessible.</h2><p>Constrava is free to use online. Create your workspace, invite collaborators, organize customer activity, and explore your analytics without choosing a paid plan.</p></div><a class="btn" href="/signin">Start using Constrava free <span aria-hidden="true">â†’</span></a></section>
+<section class="wrap section" id="faq"><div class="sectionHead"><div><p class="eyebrow">Common questions</p><h2>Free business software, explained.</h2></div></div><div class="faqGrid"><article class="faqCard"><h3>Is Constrava free business management software?</h3><p>Yes. Standard user accounts can create a free online workspace for CRM records, tasks, deals, analytics, and supported integrations.</p></article><article class="faqCard"><h3>What free SEO tools are included?</h3><p>The website tracker and analytics show page activity, traffic sources, campaigns, conversions, and AdSense performance to support SEO decisions.</p></article><article class="faqCard"><h3>Which Google apps work with Constrava?</h3><p>Constrava currently focuses on read-only Gmail, Google Calendar, Google Sheets, and Google AdSense connections.</p></article></div></section>
+<section class="wrap freePanel"><div><p class="eyebrow">Free online service</p><h2>Useful business software should be accessible.</h2><p>Constrava is free to use online. Create your workspace, invite collaborators, organize customer activity, and explore your analytics without choosing a paid plan.</p></div><a class="btn" href="/signup">Start using Constrava free <span aria-hidden="true">&rarr;</span></a></section>
 </main>
-<footer><div class="wrap footerRow"><a class="brand" href="/"><span class="brandMark">C</span><span>Constrava</span></a><div class="footerLinks"><a href="#features">Features</a><a href="/demo">Demo</a><a href="/signin">Sign in</a></div><span>Â© 2026 Constrava Â· Free online CRM and analytics</span></div></footer>
+<footer><div class="wrap footerRow"><a class="brand" href="/"><span class="brandMark">C</span><span>Constrava</span></a><div class="footerLinks"><a href="#features">Features</a><a href="#free-tools">Free tools</a><a href="/demo">Demo</a><a href="/signin">Sign in</a></div><span>&copy; 2026 Constrava &middot; Free business management, CRM, and SEO tools</span></div></footer>
 </body>
 </html>`;
 }
 
-function signInPage() {
-  const devConfigured = Boolean(process.env[DEV_LOGIN_KEY_ENV]);
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in | Constrava</title><style>:root{--navy:#061a33;--violet:#7357ff;--cyan:#00c2ff;--pink:#ff5d8f;--mint:#20c997;--ink:#21194f;--muted:#716b89;--line:#e4e0f0}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at 12% 8%,rgba(0,194,255,.2),transparent 28%),radial-gradient(circle at 88% 12%,rgba(115,87,255,.22),transparent 31%),radial-gradient(circle at 76% 90%,rgba(255,93,143,.13),transparent 28%),#faf9ff;color:var(--ink);font-family:Inter,system-ui,sans-serif}.card{position:relative;overflow:hidden;width:min(460px,calc(100% - 36px));background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:28px;padding:32px;box-shadow:0 28px 80px rgba(68,52,135,.16)}.card:before{content:"";position:absolute;inset:0 0 auto;height:6px;background:linear-gradient(90deg,var(--violet),var(--cyan),var(--mint),var(--pink))}h1{color:var(--navy);font-size:42px;letter-spacing:-.06em;margin-bottom:8px}.card>p:not(.status):not(.hint){color:var(--muted);line-height:1.5}label{font-weight:900;color:#302852}input{width:100%;border:1px solid var(--line);border-radius:14px;padding:13px;margin:6px 0 12px;font:inherit;color:var(--ink);outline:none}input:focus{border-color:var(--violet);box-shadow:0 0 0 4px rgba(115,87,255,.12)}.tabs{display:flex;gap:8px;margin:20px 0 8px;padding:4px;border-radius:999px;background:#f3f1fa}.tabs button,.submit,.back{flex:1;border:1px solid var(--line);border-radius:999px;padding:12px;font:inherit;font-weight:900;cursor:pointer}.tabs button{border:0;background:transparent;color:#625a79}.active,.submit{border:0!important;background:linear-gradient(135deg,var(--violet),#4f46e5)!important;color:white;box-shadow:0 10px 24px rgba(93,72,202,.22)}.submit{width:100%;margin-top:7px}.back{display:flex;justify-content:center;text-decoration:none;color:var(--navy);margin-top:12px;background:white}.status{min-height:22px;color:#bd3562}.hint{font-size:13px;background:linear-gradient(135deg,#f0edff,#e8faff);border:1px solid #dcd5f4;padding:11px;border-radius:14px;color:#554d70}</style></head><body><main class="card"><h1 id="title">Sign in</h1><p id="copy">Enter your saved account details to choose a CRM project.</p>${devConfigured ? `<p class="hint">Developer login is enabled for ${DEV_EMAIL}. Use the configured ${DEV_LOGIN_KEY_ENV} value as the password.</p>` : ""}<div class="tabs"><button id="loginTab" class="active">Sign in</button><button id="signupTab">Create account</button></div><form id="authForm"><div id="nameWrap" style="display:none"><label>Name</label><input name="name" autocomplete="name" placeholder="Your name"></div><label>Email</label><input name="email" type="email" autocomplete="email" required><label>Password</label><input name="password" type="password" autocomplete="current-password" required><button class="submit" id="submitBtn">Sign in</button></form><p class="status" id="status"></p><a class="back" href="/">Back to homepage</a></main><script>localStorage.removeItem("constrava_session_token");let mode="login";function setMode(next){mode=next;loginTab.classList.toggle("active",mode==="login");signupTab.classList.toggle("active",mode==="signup");nameWrap.style.display=mode==="signup"?"block":"none";title.textContent=mode==="signup"?"Create account":"Sign in";copy.textContent=mode==="signup"?"Create a saved account and choose your first CRM project.":"Enter your saved account details to choose a CRM project.";submitBtn.textContent=mode==="signup"?"Create account":"Sign in";status.textContent=""}loginTab.onclick=function(){setMode("login")};signupTab.onclick=function(){setMode("signup")};authForm.onsubmit=async function(e){e.preventDefault();status.textContent="";submitBtn.disabled=true;try{const payload=Object.fromEntries(new FormData(authForm));const r=await fetch(mode==="signup"?"/api/auth/signup":"/api/auth/login",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const data=await r.json();if(!r.ok)throw new Error(data.error||"Authentication failed");location.href=data.next||"/projects"}catch(err){status.textContent=err.message}finally{submitBtn.disabled=false}};</script></body></html>`;
+function signInPage({ signup = false } = {}) {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${signup ? "Create a free account" : "Sign in"} | Constrava</title><style>:root{--navy:#061a33;--violet:#7357ff;--cyan:#00c2ff;--pink:#ff5d8f;--mint:#20c997;--ink:#21194f;--muted:#716b89;--line:#e4e0f0}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px 0;background:radial-gradient(circle at 12% 8%,rgba(0,194,255,.2),transparent 28%),radial-gradient(circle at 88% 12%,rgba(115,87,255,.22),transparent 31%),radial-gradient(circle at 76% 90%,rgba(255,93,143,.13),transparent 28%),#faf9ff;color:var(--ink);font-family:Inter,system-ui,sans-serif}.card{position:relative;overflow:hidden;width:min(480px,calc(100% - 36px));background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:28px;padding:32px;box-shadow:0 28px 80px rgba(68,52,135,.16)}.card:before{content:"";position:absolute;inset:0 0 auto;height:6px;background:linear-gradient(90deg,var(--violet),var(--cyan),var(--mint),var(--pink))}h1{color:var(--navy);font-size:42px;letter-spacing:-.06em;margin:14px 0 8px}.card>p:not(.status):not(.securityNote){color:var(--muted);line-height:1.5}label{display:block;font-weight:900;color:#302852}input{width:100%;border:1px solid var(--line);border-radius:14px;padding:13px;margin:6px 0 12px;font:inherit;color:var(--ink);outline:none}input:focus{border-color:var(--violet);box-shadow:0 0 0 4px rgba(115,87,255,.12)}.tabs{display:flex;gap:8px;margin:20px 0 14px;padding:4px;border-radius:999px;background:#f3f1fa}.tabs button,.submit,.back{flex:1;border:1px solid var(--line);border-radius:999px;padding:12px;font:inherit;font-weight:900;cursor:pointer}.tabs button{border:0;background:transparent;color:#625a79}.active,.submit{border:0!important;background:linear-gradient(135deg,var(--violet),#4f46e5)!important;color:white;box-shadow:0 10px 24px rgba(93,72,202,.22)}.submit{width:100%;margin-top:7px}.submit:disabled{opacity:.65;cursor:wait}.back{display:flex;justify-content:center;text-decoration:none;color:var(--navy);margin-top:12px;background:white}.status{min-height:22px;color:#bd3562;font-weight:750;line-height:1.4}.securityNote{display:flex;gap:9px;margin:8px 0 14px;padding:11px;border:1px solid #b8ead4;border-radius:13px;background:#ecfbf3;color:#176243;font-size:12px;line-height:1.45}.securityNote b{display:block}.fieldHelp{display:block;margin:-7px 0 12px;color:var(--muted);font-size:11px;line-height:1.4}.botField{position:absolute!important;left:-10000px!important;width:1px!important;height:1px!important;overflow:hidden!important}@media(max-width:520px){.card{padding:25px}h1{font-size:37px}}</style></head><body><main class="card"><h1 id="title">${signup ? "Create your free account" : "Sign in"}</h1><p id="copy">${signup ? "Create a standard user account and your first private CRM project." : "Enter your account details to choose a CRM project."}</p><div class="tabs"><button type="button" id="loginTab" class="${signup ? "" : "active"}">Sign in</button><button type="button" id="signupTab" class="${signup ? "active" : ""}">Create account</button></div><form id="authForm"><div id="nameWrap" style="display:${signup ? "block" : "none"}"><label>Name</label><input name="name" autocomplete="name" maxlength="80" placeholder="Your name"></div><label>Email</label><input name="email" type="email" autocomplete="email" maxlength="254" required><label>Password</label><input id="passwordInput" name="password" type="password" autocomplete="${signup ? "new-password" : "current-password"}" maxlength="128" required><small class="fieldHelp" id="passwordHelp" style="display:${signup ? "block" : "none"}">Use at least 15 characters. A memorable passphrase is welcome.</small><div id="confirmWrap" style="display:${signup ? "block" : "none"}"><label>Confirm password</label><input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" maxlength="128"></div><label class="botField" aria-hidden="true">Website<input name="website" tabindex="-1" autocomplete="off"></label><div class="securityNote" id="securityNote" style="display:${signup ? "flex" : "none"}"><span aria-hidden="true">&#128274;</span><span><b>Standard account only</b>This creates a normal Constrava user. Developer and server permissions cannot be requested through signup.</span></div><button class="submit" id="submitBtn">${signup ? "Create free account" : "Sign in"}</button></form><p class="status" id="status" aria-live="polite"></p><a class="back" href="/">Back to homepage</a></main><script>localStorage.removeItem("constrava_session_token");let mode=${JSON.stringify(signup ? "signup" : "login")};function setMode(next){mode=next;const creating=mode==="signup";loginTab.classList.toggle("active",!creating);signupTab.classList.toggle("active",creating);nameWrap.style.display=creating?"block":"none";confirmWrap.style.display=creating?"block":"none";securityNote.style.display=creating?"flex":"none";passwordHelp.style.display=creating?"block":"none";nameWrap.querySelector("input").required=creating;confirmPassword.required=creating;passwordInput.minLength=creating?15:1;passwordInput.autocomplete=creating?"new-password":"current-password";title.textContent=creating?"Create your free account":"Sign in";copy.textContent=creating?"Create a standard user account and your first private CRM project.":"Enter your account details to choose a CRM project.";submitBtn.textContent=creating?"Create free account":"Sign in";history.replaceState(null,"",creating?"/signup":"/signin");status.textContent=""}loginTab.onclick=function(){setMode("login")};signupTab.onclick=function(){setMode("signup")};setMode(mode);authForm.onsubmit=async function(e){e.preventDefault();status.textContent="";const payload=Object.fromEntries(new FormData(authForm));if(mode==="signup"&&payload.password!==payload.confirmPassword){status.textContent="Passwords do not match.";return}delete payload.confirmPassword;submitBtn.disabled=true;try{const r=await fetch(mode==="signup"?"/api/auth/signup":"/api/auth/login",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const data=await r.json();if(!r.ok)throw new Error(data.error||"Authentication failed");location.href=data.next||"/projects"}catch(err){status.textContent=err.message}finally{submitBtn.disabled=false}};</script></body></html>`;
+}
+
+function developerSignInPage() {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Developer sign in | Constrava</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#07182e;color:#eef5ff;font-family:Inter,system-ui,sans-serif}.card{width:min(420px,calc(100% - 36px));padding:30px;border:1px solid #314967;border-radius:22px;background:#102640;box-shadow:0 30px 90px #020811}h1{margin:0 0 8px}p{color:#aebed2;line-height:1.5}label{display:block;margin-top:20px;font-weight:800}input,button{box-sizing:border-box;width:100%;margin-top:8px;padding:13px;border-radius:12px;font:inherit}input{border:1px solid #45617f;background:#07182e;color:#fff}button{border:0;background:#7357ff;color:#fff;font-weight:900;cursor:pointer}.status{min-height:22px;color:#ff9fa9}</style></head><body><main class="card"><h1>Developer sign in</h1><p>Restricted server-managed access. Public accounts use the standard sign-in page.</p><form id="developerForm"><label>Developer login key<input name="password" type="password" autocomplete="current-password" maxlength="256" required></label><button id="developerButton">Sign in</button></form><p class="status" id="developerStatus" aria-live="polite"></p></main><script>developerForm.onsubmit=async function(event){event.preventDefault();developerButton.disabled=true;developerStatus.textContent="";try{const response=await fetch("/api/auth/developer-login",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify(Object.fromEntries(new FormData(developerForm)))}),data=await response.json();if(!response.ok)throw new Error(data.error||"Developer authentication failed.");location.href=data.next||"/projects"}catch(error){developerStatus.textContent=error.message}finally{developerButton.disabled=false}};</script></body></html>`;
+}
+
+function verificationPageStyles() {
+  return `:root{--navy:#061a33;--violet:#7357ff;--ink:#21194f;--muted:#716b89;--line:#e4e0f0}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 12% 8%,rgba(0,194,255,.2),transparent 28%),radial-gradient(circle at 88% 12%,rgba(115,87,255,.22),transparent 31%),#faf9ff;color:var(--ink);font-family:Inter,system-ui,sans-serif}.card{width:min(500px,100%);padding:32px;border:1px solid var(--line);border-radius:28px;background:#fff;box-shadow:0 28px 80px rgba(68,52,135,.16)}.icon{width:54px;height:54px;display:grid;place-items:center;border-radius:18px;background:linear-gradient(135deg,#7357ff,#00c2ff);color:#fff;font-size:24px}h1{margin:20px 0 8px;color:var(--navy);font-size:39px;letter-spacing:-.05em}p{color:var(--muted);line-height:1.55}label{display:block;margin-top:20px;color:#302852;font-weight:900}input,button,a{box-sizing:border-box;width:100%;padding:13px;border-radius:999px;font:inherit}input{margin:7px 0 12px;border:1px solid var(--line);border-radius:14px}button,a{display:flex;justify-content:center;border:0;background:#7357ff;color:#fff;font-weight:900;text-decoration:none;cursor:pointer}.secondary{margin-top:10px;border:1px solid var(--line);background:#fff;color:var(--navy)}.status{min-height:22px;color:#a5224c;font-weight:750}`;
+}
+
+function verificationSentPage() {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Check your email | Constrava</title><style>${verificationPageStyles()}</style></head><body><main class="card"><div class="icon" aria-hidden="true">&#9993;</div><h1>Check your email.</h1><p>We sent a one-time verification link. Open it within 24 hours to activate your free standard account. You cannot sign in or accept shared-project access until the address is verified.</p><details><summary>Need a new link?</summary><form id="resendForm"><label>Email address<input name="email" type="email" autocomplete="email" maxlength="254" required></label><button id="resendButton">Send another verification link</button></form><p class="status" id="resendStatus" aria-live="polite"></p></details><a class="secondary" href="/signin">Return to sign in</a></main><script>resendForm.onsubmit=async function(event){event.preventDefault();resendButton.disabled=true;resendStatus.textContent="";try{const response=await fetch("/api/auth/resend-verification",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify(Object.fromEntries(new FormData(resendForm)))}),data=await response.json();if(!response.ok)throw new Error(data.error||"Could not send a new link.");resendStatus.style.color="#08744e";resendStatus.textContent="If that account is waiting for verification, a new link has been sent."}catch(error){resendStatus.style.color="";resendStatus.textContent=error.message}finally{resendButton.disabled=false}};</script></body></html>`;
+}
+
+function verifyEmailPage(token) {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Verify your email | Constrava</title><style>${verificationPageStyles()}</style></head><body><main class="card"><div class="icon" aria-hidden="true">&#128274;</div><h1>Verify your email.</h1><p>Confirm this address to activate the standard Constrava account. Verification links are one-time use.</p><button id="verifyButton">Verify email and continue</button><p class="status" id="verifyStatus" aria-live="polite"></p><a class="secondary" href="/signin">Return to sign in</a></main><script>const verificationToken=${JSON.stringify(token)};verifyButton.onclick=async function(){verifyButton.disabled=true;verifyStatus.textContent="Verifying...";try{const response=await fetch("/api/auth/verify-email",{method:"POST",credentials:"include",headers:{"content-type":"application/json"},body:JSON.stringify({token:verificationToken})}),data=await response.json();if(!response.ok)throw new Error(data.error||"Verification failed.");location.href=data.next||"/projects"}catch(error){verifyStatus.textContent=error.message;verifyButton.disabled=false}};</script></body></html>`;
 }
 
 function projectSelectionPage({ user, projects, storeData }) {
@@ -3027,7 +3195,7 @@ async function auth(req, res, route, storeData) {
   if (req.method === "GET" && route === "/api/auth/me") {
     const user = currentUser(req, storeData);
     const active = user ? activeWorkspaceContext(req, storeData) : null;
-    return send(res, user ? 200 : 401, { user: publicUser(user), activeProject: active ? publicProject(storeData, active.project, active.membership) : null, next: active ? "/dashboard" : "/projects", developerAccountConfigured: Boolean(process.env[DEV_LOGIN_KEY_ENV]) });
+    return send(res, user ? 200 : 401, { user: publicUser(user), activeProject: active ? publicProject(storeData, active.project, active.membership) : null, next: active ? "/dashboard" : "/projects" });
   }
   if (req.method === "POST" && route === "/api/auth/logout") {
     const sessionId = parseCookies(req)[COOKIE_NAME];
@@ -3035,31 +3203,86 @@ async function auth(req, res, route, storeData) {
     await saveStore(storeData);
     return send(res, 200, { ok: true }, { "set-cookie": sessionCookie(req, "", true) });
   }
-  if (req.method === "POST" && (route === "/api/auth/signup" || route === "/api/auth/login")) {
-    const body = await readBody(req);
+  if (req.method === "POST" && route === "/api/auth/verify-email") {
+    if (String(req.headers["sec-fetch-site"] || "").toLowerCase() === "cross-site") return send(res, 403, { error: "Cross-site authentication requests are not allowed." });
+    const token = String((await readBody(req, 4096)).token || "").trim();
+    if (!/^[a-f0-9]{64}$/i.test(token)) return send(res, 400, { error: "This verification link is invalid or expired." });
+    const tokenHash = hashToken(token);
+    const user = storeData.users.find((entry) => entry.emailVerificationTokenHash && safeEqualText(entry.emailVerificationTokenHash, tokenHash) && entry.emailVerificationExpiresAt > new Date().toISOString());
+    if (!user || user.role === "developer") return send(res, 400, { error: "This verification link is invalid or expired." });
+    user.emailVerifiedAt = new Date().toISOString();
+    user.emailVerificationTokenHash = "";
+    user.emailVerificationExpiresAt = "";
+    ensureUserWorkspace(storeData, user);
+    const session = createSession(storeData, user);
+    await saveStore(storeData);
+    return send(res, 200, { ok: true, user: publicUser(user), next: "/projects" }, { "set-cookie": sessionCookie(req, session.id) });
+  }
+  if (req.method === "POST" && route === "/api/auth/resend-verification") {
+    if (String(req.headers["sec-fetch-site"] || "").toLowerCase() === "cross-site") return send(res, 403, { error: "Cross-site authentication requests are not allowed." });
+    const email = clean((await readBody(req, 4096)).email).toLowerCase();
+    if (!validAccountEmail(email)) return send(res, 200, { ok: true });
+    const retryAfter = authRateStatus(req, email, "signup");
+    if (retryAfter > 0) return send(res, 429, { error: "Too many verification requests. Wait a few minutes and try again." }, { "retry-after": String(retryAfter) });
+    recordAuthAttempt(req, email, "signup");
+    const user = storeData.users.find((entry) => entry.email === email && entry.role !== "developer" && !entry.emailVerifiedAt);
+    if (user) {
+      const token = createEmailVerification(user);
+      await sendAccountVerificationEmail(user, token);
+      await saveStore(storeData);
+    }
+    return send(res, 200, { ok: true });
+  }
+  if (req.method === "POST" && ["/api/auth/signup", "/api/auth/login", "/api/auth/developer-login"].includes(route)) {
+    if (String(req.headers["sec-fetch-site"] || "").toLowerCase() === "cross-site") return send(res, 403, { error: "Cross-site authentication requests are not allowed." });
+    const body = await readBody(req, 16 * 1024);
     const email = clean(body.email).toLowerCase();
     const password = String(body.password || "");
-    if (!email.includes("@")) return send(res, 400, { error: "Enter a valid email address." });
-    if (password.length < 6) return send(res, 400, { error: "Password must be at least 6 characters." });
+    const kind = route === "/api/auth/signup" ? "signup" : route === "/api/auth/developer-login" ? "developer" : "login";
+    const throttleEmail = kind === "developer" ? DEV_EMAIL : email;
+    const retryAfter = authRateStatus(req, throttleEmail, kind);
+    if (retryAfter > 0) return send(res, 429, { error: "Too many authentication attempts. Wait a few minutes and try again." }, { "retry-after": String(retryAfter) });
+    recordAuthAttempt(req, throttleEmail, kind);
+    if (kind === "developer") {
+      if (!process.env[DEV_LOGIN_KEY_ENV]) return send(res, 503, { error: "Developer access is not configured." });
+      if (!password || !safeEqualText(password, process.env[DEV_LOGIN_KEY_ENV])) return send(res, 401, { error: "Developer authentication failed." });
+      const developer = ensureDeveloperAccount(storeData);
+      const session = createSession(storeData, developer);
+      clearAuthAttempts(req, DEV_EMAIL, kind);
+      await saveStore(storeData);
+      return send(res, 200, { ok: true, user: publicUser(developer), next: "/projects" }, { "set-cookie": sessionCookie(req, session.id) });
+    }
+    if (!validAccountEmail(email)) return send(res, 400, { error: "Enter a valid email address." });
+    if (!password || password.length > SIGNUP_PASSWORD_MAX_LENGTH) return send(res, 400, { error: "Enter a valid password." });
     let user = storeData.users.find((candidate) => candidate.email === email);
     if (route === "/api/auth/signup") {
-      if (email === DEV_EMAIL) return send(res, 403, { error: "The developer account is managed by the server login key." });
+      if (clean(body.website)) return send(res, 400, { error: "Account creation could not be completed." });
+      const name = clean(body.name).slice(0, 80);
+      if (name.length < 2) return send(res, 400, { error: "Enter your name." });
+      const passwordError = signupPasswordError(password);
+      if (passwordError) return send(res, 400, { error: passwordError });
+      if (email === DEV_EMAIL) return send(res, 403, { error: "This email cannot be used for public account creation." });
       if (user) return send(res, 409, { error: "An account with that email already exists. Sign in instead." });
       const pass = passwordHash(password);
-      user = { id: id("user"), email, name: clean(body.name) || email.split("@")[0], role: "user", workspaceId: "", passwordSalt: pass.salt, passwordHash: pass.hash, createdAt: new Date().toISOString() };
+      user = { id: id("user"), email, name, role: "user", accountType: "standard", isDeveloper: false, authProvider: "password", workspaceId: "", passwordSalt: pass.salt, passwordHash: pass.hash, createdAt: new Date().toISOString(), emailVerifiedAt: "", emailVerificationTokenHash: "", emailVerificationExpiresAt: "" };
       user.workspaceId = `workspace_${user.id}`;
       storeData.users.push(user);
-      ensureUserWorkspace(storeData, user);
-    } else if (email === DEV_EMAIL) {
-      if (!process.env[DEV_LOGIN_KEY_ENV]) return send(res, 503, { error: `${DEV_LOGIN_KEY_ENV} is not configured on the server.` });
-      if (!safeEqualText(password, process.env[DEV_LOGIN_KEY_ENV])) return send(res, 401, { error: "Developer login key is incorrect." });
-      user = ensureDeveloperAccount(storeData);
+      ensureWorkspaceProject(storeData, user);
+      const verificationToken = createEmailVerification(user);
+      await sendAccountVerificationEmail(user, verificationToken);
+      await saveStore(storeData);
+      return send(res, 201, { ok: true, verificationRequired: true, next: "/verify-email-sent" });
     } else {
+      if (email === DEV_EMAIL) return send(res, 401, { error: "Email or password is incorrect." });
       if (!user || !verifyPassword(password, user)) return send(res, 401, { error: "Email or password is incorrect." });
+      if (!user.emailVerifiedAt) return send(res, 403, { error: "Verify your email address before signing in.", code: "email_verification_required" });
+      user.role = "user";
+      user.accountType = "standard";
+      user.isDeveloper = false;
       ensureUserWorkspace(storeData, user);
+      clearAuthAttempts(req, email, kind);
     }
-    const session = { id: id("session"), userId: user.id, activeWorkspaceId: "", createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString() };
-    storeData.sessions.push(session);
+    const session = createSession(storeData, user);
     await saveStore(storeData);
     return send(res, 200, { ok: true, user: publicUser(user), next: "/projects" }, { "set-cookie": sessionCookie(req, session.id) });
   }
@@ -3074,7 +3297,6 @@ async function api(req, res, url, route) {
       cookieName: COOKIE_NAME,
       sessionMaxAgeDays: 30,
       secureCookie: isSecure(req),
-      developerAccountConfigured: Boolean(process.env[DEV_LOGIN_KEY_ENV]),
       durableStoreConfigured,
       dataStore: dataStoreKind,
       ...database,
@@ -3084,6 +3306,7 @@ async function api(req, res, url, route) {
       dashboard: "/dashboard"
     });
   }
+  if (isRetiredResourceRoute(route)) return send(res, 404, { error: "This resource connection is not available." });
   const storeData = await loadStore();
   if (route.startsWith("/api/auth/")) return await auth(req, res, route, storeData);
   if (route === "/api/projects" || route.startsWith("/api/projects/")) {
@@ -3234,7 +3457,7 @@ async function api(req, res, url, route) {
       if (result.permissionRequired) return redirect(res, "/dashboard?microsoft_account_scope_required=1");
       return redirect(res, "/dashboard?microsoft_account_connected=1");
     }
-    const connection = storeData.emailConnections.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
+    const connection = storeData.emailConnections.find((entry) => entry.provider === "gmail" && entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
     if (!connection) return send(res, 400, { error: "This mailbox authorization link is invalid or expired." });
     if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
     const code = clean(url.searchParams.get("code"));
@@ -3303,7 +3526,7 @@ async function api(req, res, url, route) {
       if (result.permissionRequired) return redirect(res, "/dashboard?microsoft_account_scope_required=1");
       return redirect(res, "/dashboard?microsoft_account_connected=1");
     }
-    const connection = storeData.calendarConnections.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
+    const connection = storeData.calendarConnections.find((entry) => entry.provider === "google" && entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
     if (!connection) return send(res, 400, { error: "This calendar authorization link is invalid or expired." });
     if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
     const code = clean(url.searchParams.get("code"));
@@ -3377,7 +3600,7 @@ async function api(req, res, url, route) {
   }
   if (req.method === "GET" && route === "/api/business-tools/oauth/callback") {
     const state = clean(url.searchParams.get("state"));
-    const connection = storeData.businessConnections.find((entry) => entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
+    const connection = storeData.businessConnections.find((entry) => entry.provider === "google_sheets" && entry.oauthStateHash && safeEqualText(entry.oauthStateHash, hashToken(state)) && entry.oauthStateExpiresAt > new Date().toISOString());
     if (!connection) return send(res, 400, { error: "This business-tool authorization link is invalid or expired." });
     if (url.searchParams.get("error")) return send(res, 400, { error: clean(url.searchParams.get("error_description") || url.searchParams.get("error")) });
     const code = clean(url.searchParams.get("code"));
@@ -3583,33 +3806,30 @@ async function api(req, res, url, route) {
     await saveStore(storeData);
     return send(res, 200, { connection: adsenseConnectionSafe(connection, storeData) });
   }
-  if (req.method === "GET" && route === "/api/microsoft-accounts") return send(res, 200, { accounts: storeData.microsoftAccounts.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => microsoftAccountSafe(entry, storeData)), apps: microsoftAppCatalogSafe() });
-  if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(({ oauthTokens, oauthStateHash, ...entry }) => ({ ...entry, automationPolicy: emailAutomationPolicy(entry.automationPolicy) })) });
-  if (req.method === "GET" && route === "/api/calendar-connections") return send(res, 200, { connections: storeData.calendarConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => calendarConnectionSafe({ ...entry, oauthRedirectUri: ["google", "microsoft"].includes(entry.provider) ? calendarOAuthRedirectUri(req) : "" })) });
+  if (req.method === "GET" && route === "/api/email-connections") return send(res, 200, { connections: storeData.emailConnections.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.provider === "gmail").map(({ oauthTokens, oauthStateHash, ...entry }) => ({ ...entry, automationPolicy: emailAutomationPolicy(entry.automationPolicy) })) });
+  if (req.method === "GET" && route === "/api/calendar-connections") return send(res, 200, { connections: storeData.calendarConnections.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.provider === "google").map((entry) => calendarConnectionSafe({ ...entry, oauthRedirectUri: calendarOAuthRedirectUri(req) })) });
   if (req.method === "POST" && route === "/api/calendar-connections/sync") {
     const result = await syncWorkspaceCalendars(storeData, ctx.workspaceId);
     await saveStore(storeData);
     return send(res, 200, result);
   }
   if (req.method === "GET" && route === "/api/business-connections") return send(res, 200, {
-    connections: storeData.businessConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map((entry) => businessConnectionSafe(entry, storeData)),
+    connections: storeData.businessConnections.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.provider === "google_sheets").map((entry) => businessConnectionSafe(entry, storeData)),
     providers: BUSINESS_PROVIDER_IDS.map((provider) => businessProviderReadiness(provider, storeData, ctx.workspaceId))
   });
-  if (req.method === "GET" && route === "/api/messaging-connections") return send(res, 200, { connections: storeData.messagingConnections.filter((entry) => entry.workspaceId === ctx.workspaceId).map(messagingConnectionSafe) });
   if (req.method === "GET" && route === "/api/connected-resources") {
     const resources = storeData.sources
-      .filter((entry) => entry.workspaceId === ctx.workspaceId && entry.status === "connected")
+      .filter((entry) => entry.workspaceId === ctx.workspaceId && entry.status === "connected" && !["messaging", "website_form"].includes(entry.type))
       .map((entry) => ({
         id: entry.id,
         name: entry.name,
         type: entry.type,
         status: entry.status,
-        resourceId: entry.type === "email" ? "email-inbox" : entry.type === "calendar" ? "calendar" : entry.type === "adsense" ? "google-adsense" : entry.type === "business_tool" ? "crm-tools" : entry.type === "messaging" ? "messaging" : entry.type === "website_form" ? "website-forms" : entry.type === "website" ? "website-tracker" : entry.type === "manual_note" ? "manual-notes" : entry.type === "file_upload" ? "file-uploads" : "",
+        resourceId: entry.type === "email" ? "email-inbox" : entry.type === "calendar" ? "calendar" : entry.type === "adsense" ? "google-adsense" : entry.type === "business_tool" ? "crm-tools" : entry.type === "website" ? "website-tracker" : entry.type === "manual_note" ? "manual-notes" : entry.type === "file_upload" ? "file-uploads" : "",
         metadata: entry.metadata || {}
       }))
       .filter((entry) => entry.resourceId);
     resources.unshift(...storeData.googleAccounts.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.status === "active").map((entry) => ({ id: entry.id, name: entry.name || entry.email || "Google account", type: "google_account", status: "connected", resourceId: "google-account", metadata: { email: entry.email, enabledResources: entry.enabledResources || { gmail: true, calendar: true } } })));
-    resources.unshift(...storeData.microsoftAccounts.filter((entry) => entry.workspaceId === ctx.workspaceId && entry.status === "active").map((entry) => ({ id: entry.id, name: entry.name || entry.email || "Microsoft account", type: "microsoft_account", status: "connected", resourceId: "microsoft-account", metadata: { email: entry.email, enabledResources: entry.enabledResources || {} } })));
     return send(res, 200, { resources });
   }
   if (req.method === "POST" && route === "/api/google-accounts") {
@@ -3816,18 +4036,18 @@ async function api(req, res, url, route) {
   if (req.method === "POST" && route === "/api/calendar-connections") {
     const body = await readBody(req);
     const provider = clean(body.provider).toLowerCase();
-    if (!["google", "microsoft", "apple", "ics"].includes(provider)) return send(res, 400, { error: "Choose Google, Microsoft, Apple iCloud, or an ICS calendar feed." });
+    if (provider !== "google") return send(res, 400, { error: "Google Calendar is the available calendar connection." });
     const accountEmail = clean(body.accountEmail).toLowerCase();
     if (provider !== "ics" && !/^\S+@\S+\.\S+$/.test(accountEmail)) return send(res, 400, { error: "Enter the email address used by this calendar." });
     const config = calendarProviderConfig(provider);
-    const authorizationReady = provider === "apple" || provider === "ics" || Boolean(emailTokenKey() && config?.clientId && config?.clientSecret);
+    const authorizationReady = Boolean(emailTokenKey() && config?.clientId && config?.clientSecret);
     const now = new Date().toISOString();
     const connection = {
       id: id("calendar"), accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, sourceId: id("source_calendar"),
       name: clean(body.name || `${calendarProviderName(provider)} connection`), provider, accountEmail,
       calendarName: clean(body.calendarName || "Primary calendar"), timeZone: normalizeTimeZone(body.timeZone || DEFAULT_EMAIL_TIME_ZONE),
       sync: { direction: "read_only", window: "upcoming_90", createTasks: true, attachNotes: true, includeDeclined: false, includePrivate: false },
-      status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, oauthRedirectUri: ["google", "microsoft"].includes(provider) ? calendarOAuthRedirectUri(req) : "",
+      status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, oauthRedirectUri: calendarOAuthRedirectUri(req),
       createdAt: now, updatedAt: now, authorizedAt: "", activatedAt: "", lastVerifiedAt: "", lastSyncAt: "", lastSyncError: "", oauthTokens: "",
       availableCalendars: [], selectedCalendarIds: [], calendarSelectionConfigured: false
     };
@@ -4005,7 +4225,7 @@ async function api(req, res, url, route) {
   if (req.method === "POST" && route === "/api/business-connections") {
     const body = await readBody(req);
     const provider = clean(body.provider).toLowerCase();
-    if (!BUSINESS_PROVIDER_IDS.includes(provider)) return send(res, 400, { error: "Choose HubSpot, Salesforce, Airtable, Notion, or Google Sheets." });
+    if (!BUSINESS_PROVIDER_IDS.includes(provider)) return send(res, 400, { error: "Google Sheets is the available business-tool migration." });
     const providerReadiness = businessProviderReadiness(provider, storeData, ctx.workspaceId);
     const authorizationReady = providerReadiness.ready;
     const now = new Date().toISOString();
@@ -4504,7 +4724,8 @@ async function api(req, res, url, route) {
   if (req.method === "POST" && route === "/api/email-connections") {
     const body = await readBody(req);
     const provider = clean(body.provider || "gmail");
-    const authorizationReady = Boolean(emailTokenKey()) && (provider === "gmail" ? Boolean(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET) : provider === "outlook" ? Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET) : provider === "imap");
+    if (provider !== "gmail") return send(res, 400, { error: "Gmail is the available inbox connection." });
+    const authorizationReady = Boolean(emailTokenKey()) && Boolean(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET);
     const requestedAutomationPolicy = emailAutomationPolicy(body.automationPolicy);
     const timeZone = normalizeTimeZone(body.timeZone || body.scope?.timeZone || DEFAULT_EMAIL_TIME_ZONE);
     const connection = { id: id("email"), accountUserId: ctx.user?.id || "", workspaceId: ctx.workspaceId, sourceId: id("source_email"), name: clean(body.name || "Connected inbox"), emailAddress: clean(body.emailAddress).toLowerCase(), provider, status: "draft", authorizationStatus: authorizationReady ? "ready" : "credentials_required", authorizationReady, scope: { ...(body.scope || {}), timeZone }, timeZone, automationPolicy: requestedAutomationPolicy, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), activatedAt: "", authorizedAt: "", syncCursor: "", lastSyncAt: "", lastSyncError: "", syncStats: { processed: 0, drafted: 0, committed: 0 }, lastMessageAt: "", testEventId: "" };
@@ -4737,9 +4958,16 @@ const webServer = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, ORIGIN);
     const route = url.pathname.replace(/\/+$/, "") || "/";
+    const publicOrigin = ORIGIN.replace(/\/+$/, "");
+    if (route === "/robots.txt") return textResponse(res, `User-agent: *\nAllow: /$\nDisallow: /api/\nDisallow: /dashboard\nDisallow: /app\nDisallow: /projects\nDisallow: /workspaces\nDisallow: /signin\nDisallow: /signup\nDisallow: /login\nDisallow: /verify-email\nDisallow: /verify-email-sent\nDisallow: /developer-signin\nDisallow: /demo\n\nSitemap: ${publicOrigin}/sitemap.xml\n`);
+    if (route === "/sitemap.xml") return textResponse(res, `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${publicOrigin.replaceAll("&", "&amp;")}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url></urlset>\n`, { contentType: "application/xml; charset=utf-8" });
     if (route.startsWith("/api/")) return await api(req, res, url, route);
     if (route === "/demo") return html(res, appPage({ demo: true }));
     if (["/signin", "/login"].includes(route)) return html(res, signInPage());
+    if (route === "/signup") return html(res, signInPage({ signup: true }));
+    if (route === "/verify-email-sent") return html(res, verificationSentPage());
+    if (route === "/verify-email") return html(res, verifyEmailPage(clean(url.searchParams.get("token"))));
+    if (route === "/developer-signin") return html(res, developerSignInPage());
     if (["/projects", "/workspaces"].includes(route)) {
       const storeData = await loadStore();
       const user = currentUser(req, storeData);
@@ -4757,7 +4985,8 @@ const webServer = http.createServer(async (req, res) => {
       await saveStore(storeData);
       return html(res, appPage({ demo: false, user, project: ctx.project }));
     }
-    return html(res, withPublicMobileFit(withPublicPaletteLayout(freePublicPage())));
+    if (route === "/") return html(res, withPublicMobileFit(withPublicPaletteLayout(freePublicPage())), { indexable: true, cacheControl: "public, max-age=300, stale-while-revalidate=600" });
+    return html(res, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Page not found | Constrava</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#faf9ff;color:#21194f;font-family:Inter,system-ui,sans-serif}.card{width:min(520px,calc(100% - 36px));padding:34px;border:1px solid #e4e0f0;border-radius:26px;background:#fff;text-align:center;box-shadow:0 24px 70px rgba(68,52,135,.12)}h1{margin:0;color:#061a33;font-size:44px}p{color:#716b89;line-height:1.6}a{display:inline-flex;padding:12px 18px;border-radius:999px;background:#7357ff;color:#fff;font-weight:900;text-decoration:none}</style></head><body><main class="card"><h1>Page not found</h1><p>The page you requested does not exist.</p><a href="/">Return to Constrava</a></main></body></html>`, { status: 404 });
   } catch (error) {
     send(res, error.status || 500, {
       error: error.message,

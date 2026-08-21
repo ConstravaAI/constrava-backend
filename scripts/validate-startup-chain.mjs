@@ -64,6 +64,23 @@ async function checkResourcesClientSyntax() {
   }
 }
 
+async function checkPublicResourceCatalog() {
+  const source = await readProjectFile("src/server-connected-resources.js");
+  const start = source.indexOf("const CONSTRAVA_RESOURCES=[");
+  const end = source.indexOf("\n];", start);
+  if (start < 0 || end < start) {
+    fail("src/server-connected-resources.js is missing its public resource catalog.");
+    return;
+  }
+  const catalog = source.slice(start, end);
+  const required = ["google-account", "google-adsense", "website-tracker", "email-inbox", "manual-notes", "file-uploads", "crm-tools", "calendar"];
+  const retired = ["microsoft-account", "website-forms", "messaging", "payments", "commerce", "phone-calls", "hubspot", "salesforce", "airtable", "notion"];
+  for (const id of required) if (!catalog.includes(`id:'${id}'`)) fail(`The public resource catalog is missing ${id}.`);
+  for (const id of retired) if (catalog.includes(`id:'${id}'`)) fail(`The public resource catalog still exposes retired resource ${id}.`);
+  const ids = [...catalog.matchAll(/\{id:'([^']+)'/g)].map((match) => match[1]);
+  if (ids.length !== required.length) fail(`The public resource catalog must contain exactly ${required.length} supported resources; found ${ids.length}.`);
+}
+
 function localImportTargets(relativePath, source) {
   const dir = path.dirname(path.join(projectRoot, relativePath));
   const targets = [];
@@ -157,6 +174,8 @@ await assertContains("src/server-responsive.js", "const dashboardStyleInjection 
 await assertContains("src/server-responsive.js", "dashboardStyleEnd = source.indexOf", "the dashboard-scoped style lookup");
 await assertNotContains("src/server-responsive.js", 'const styleNeedle = "</style>\\n</head>"', "the ambiguous first-page style marker");
 await assertContains("src/server-runtime.js", "function aiRecordsContent()", "the AI record queue renderer");
+await assertNotContains("src/server-runtime.js", "source.slice(0, start) + projectAwareSignInPage", "the obsolete production sign-in replacement");
+await assertContains("src/.server.generated.js", "Standard account only", "the secure signup page in the generated production server");
 await assertContains("src/server-runtime.js", "api('/api/records/drafts')", "the Review and Publish draft loader");
 await assertContains("src/server.js", 'route === "/api/calendar-connections/sync"', "the calendar refresh review endpoint");
 await assertContains("src/server.js", "google-calendar:${connection.id}:${event.id}", "calendar event duplicate protection");
@@ -237,6 +256,8 @@ await assertContains("src/server-colorful-workspaces.js", 'await import("./serve
 await assertContains("src/server-colorful-workspaces.js", 'source.indexOf("<title>Constrava Dashboard</title>")', "dashboard-specific colorful stylesheet target");
 await assertContains("src/server-account-persistence.js", 'await import("./server-connected-resources.js");', "the connected resources wrapper handoff");
 await assertContains("src/server-connected-resources.js", "function constravaEmailConnect(state)", "the provider-aware email connection step");
+await assertNotContains("src/server-connected-resources.js", "api('/api/email-connections'),api('/api/google-accounts'),api('/api/microsoft-accounts')", "the retired Microsoft request in the Gmail flow");
+await assertNotContains("src/server-connected-resources.js", "api('/api/calendar-connections'),api('/api/google-accounts'),api('/api/microsoft-accounts')", "the retired Microsoft request in the Google Calendar flow");
 await assertContains("src/server.js", "function businessProviderReadiness(provider, storeData, workspaceId)", "business-tool provider readiness reporting");
 await assertContains("src/server.js", "process.env.GOOGLE_CALENDAR_CLIENT_ID || process.env.GMAIL_CLIENT_ID", "Google Sheets OAuth credential reuse");
 await assertContains("src/server.js", "/link-google$/", "connected Google account reuse for Google Sheets");
@@ -271,8 +292,27 @@ await assertContains("src/server.js", "async function postgresQuery", "runtime N
 await assertContains("src/server.js", "Account storage is temporarily unavailable.", "graceful database outage handling");
 await assertContains("src/server.js", "const database = await databaseHealth();", "database-independent health reporting");
 await assertContains("src/server.js", "function freePublicPage()", "free public homepage renderer");
-await assertContains("src/server.js", "Free online CRM + analytics", "free-service homepage positioning");
+await assertContains("src/server.js", "Free business management + SEO tools", "free-service homepage positioning");
 await assertContains("src/server.js", "Create your free account", "free account homepage call to action");
+await assertContains("src/server.js", "SIGNUP_PASSWORD_MIN_LENGTH = 15", "the secure public passphrase minimum");
+await assertContains("src/server.js", 'role: "user", accountType: "standard", isDeveloper: false', "the standard-only public account boundary");
+await assertContains("src/server.js", 'route === "/api/auth/developer-login"', "the separate developer authentication endpoint");
+await assertContains("src/server.js", "function developerSignInPage()", "the isolated developer sign-in page");
+await assertContains("src/server.js", 'route === "/api/auth/verify-email"', "one-time public email verification");
+await assertContains("src/server.js", "createEmailVerification(user)", "hashed verification-token creation");
+await assertContains("src/server.js", "emailVerificationTokenHash = hashToken(token)", "hashed verification-token storage");
+await assertContains("src/server.js", "sendAccountVerificationEmail(user, verificationToken)", "verification email delivery before account activation");
+await assertContains("src/server.js", 'code: "email_verification_required"', "unverified public login protection");
+await assertContains("src/server.js", "function securityHeaders(", "shared HTTP security headers");
+await assertContains("src/server.js", 'route === "/robots.txt"', "the search crawler rules");
+await assertContains("src/server.js", 'route === "/sitemap.xml"', "the search sitemap");
+await assertContains("src/server.js", '<link rel="canonical"', "the canonical homepage URL");
+await assertContains("src/server.js", 'application/ld+json', "the homepage structured data");
+await assertContains("src/server.js", "Free Business Management, CRM &amp; SEO Tools", "the search-focused homepage title");
+await assertContains("src/server.js", "isRetiredResourceRoute(route)", "retired resource route enforcement");
+await assertContains("src/server.js", 'const BUSINESS_PROVIDER_IDS = ["google_sheets"]', "the Google Sheets-only business migration catalog");
+await assertNotContains("src/server.js", "â", "mojibake characters");
+await assertNotContains("src/server.js", "Â", "mojibake characters");
 await assertContains("src/server.js", 'route === "/api/website-connections"', "persistent Website Tracker connections");
 await assertContains("src/server-connected-resources.js", "function constravaSaveWebsiteState(", "Website Tracker server persistence");
 await assertContains("src/server.js", "/developer-handoff", "server-side Website Tracker developer handoff endpoint");
@@ -316,6 +356,7 @@ await assertContains("src/server-fonts.js", "${analyticsCommandCenterFinal}", "t
 await validateLocalImports("src/server-tracker-analytics.js");
 await validateEncodedScopeWrapper();
 await checkResourcesClientSyntax();
+await checkPublicResourceCatalog();
 
 if (failures.length) {
   console.error("Startup chain validation failed:");
