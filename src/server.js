@@ -3626,7 +3626,8 @@ async function auth(req, res, route, storeData, url) {
     const body = await readBody(req, 16 * 1024);
     const email = clean(body.email).toLowerCase();
     const password = String(body.password || "");
-    const kind = route === "/api/auth/signup" ? "signup" : route === "/api/auth/developer-login" ? "developer" : "login";
+    const developerRequest = route === "/api/auth/developer-login" || (route === "/api/auth/login" && email === DEV_EMAIL);
+    const kind = route === "/api/auth/signup" ? "signup" : developerRequest ? "developer" : "login";
     const throttleEmail = kind === "developer" ? DEV_EMAIL : email;
     const retryAfter = authRateStatus(req, throttleEmail, kind);
     if (retryAfter > 0) return send(res, 429, { error: "Too many authentication attempts. Wait a few minutes and try again." }, { "retry-after": String(retryAfter) });
@@ -3662,7 +3663,6 @@ async function auth(req, res, route, storeData, url) {
       await saveStore(storeData);
       return send(res, 201, { ok: true, verificationRequired: true, next: "/verify-email-sent" });
     } else {
-      if (email === DEV_EMAIL) return send(res, 401, { error: "Email or password is incorrect." });
       if (!user || !verifyPassword(password, user)) return send(res, 401, { error: "Email or password is incorrect." });
       if (!user.emailVerifiedAt) return send(res, 403, { error: "Verify your email address before signing in.", code: "email_verification_required" });
       user.role = "user";

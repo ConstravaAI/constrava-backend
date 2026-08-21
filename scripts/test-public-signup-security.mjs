@@ -259,7 +259,16 @@ try {
     headers: { "x-forwarded-for": "198.51.100.13" },
     body: { email: "constrava@constravaai.com", password: developerKey }
   });
-  assert.equal(publicDeveloperLogin.response.status, 401);
+  assert.equal(publicDeveloperLogin.response.status, 200, JSON.stringify(publicDeveloperLogin.data));
+  assert.equal(publicDeveloperLogin.data.user.role, "developer");
+  assert.match(publicDeveloperLogin.response.headers.get("set-cookie") || "", /constrava_session=/);
+
+  const wrongDeveloperLogin = await jsonRequest("/api/auth/login", {
+    method: "POST",
+    headers: { "x-forwarded-for": "198.51.100.17" },
+    body: { email: "constrava@constravaai.com", password: "not-the-developer-key" }
+  });
+  assert.equal(wrongDeveloperLogin.response.status, 401);
 
   const developerLogin = await jsonRequest("/api/auth/developer-login", {
     method: "POST",
@@ -268,6 +277,11 @@ try {
   });
   assert.equal(developerLogin.response.status, 200, JSON.stringify(developerLogin.data));
   assert.equal(developerLogin.data.user.role, "developer");
+  saved = JSON.parse(await readFile(dataFile, "utf8"));
+  const developerUsers = saved.users.filter((entry) => entry.email === "constrava@constravaai.com");
+  assert.equal(developerUsers.length, 1, "normal accounts must not duplicate or replace the developer account");
+  assert.equal(developerUsers[0].role, "developer");
+  assert.equal(saved.users.find((entry) => entry.email === "taylor@example.com")?.role, "user", "developer login must not change the test account");
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const response = await jsonRequest("/api/auth/signup", {
@@ -289,7 +303,7 @@ try {
     assert.equal(retired.response.status, 404, retiredPath);
   }
 
-  console.log("Public account security passed: recoverable password validation, project-free signup, isolated developer login, hardened headers, clean SEO output, and retired provider routes.");
+  console.log("Public account security passed: recoverable password validation, project-free signup, server-key developer login, hardened headers, clean SEO output, and retired provider routes.");
 } finally {
   child.kill();
   await rm(temporaryDirectory, { recursive: true, force: true });
