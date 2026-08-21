@@ -3163,9 +3163,7 @@ function accountAccessPage(options = {}) {
   const replacements = [
     ["Create a standard user account and your first private CRM project.", "Create a standard user account. You can create or join a CRM project after you sign in."],
     ["Enter your account details to choose a CRM project.", "Enter your account details, then choose, join, or create a CRM project."],
-    ["Use at least 15 characters. A memorable passphrase is welcome.", "Use at least 7 characters and include 1 special character, such as !, @, #, or $."],
-    ["passwordInput.minLength=creating?15:1", "passwordInput.minLength=creating?7:1"],
-    ["if(mode===\"signup\"&&payload.password!==payload.confirmPassword){status.textContent=\"Passwords do not match.\";return}", "if(mode===\"signup\"){if(payload.password!==payload.confirmPassword){status.textContent=\"Passwords do not match.\";passwordMismatchDialog.showModal();return}const passwordIssue=signupPasswordIssue(payload.password);if(passwordIssue){status.textContent=passwordIssue;passwordInput.focus();return}}"]
+    ["Use at least 15 characters. A memorable passphrase is welcome.", "Use at least 7 characters and include 1 special character, such as !, @, #, or $."]
   ];
   for (const [before, after] of replacements) {
     if (!page.includes(before)) throw new Error(`Account page update target was not found: ${before.slice(0, 48)}`);
@@ -3175,8 +3173,117 @@ function accountAccessPage(options = {}) {
   page = page.replace("</style></head>", `.googleAuth{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin:2px 0 13px;padding:12px;border:1px solid var(--line);border-radius:999px;background:#fff;color:#302852;font-weight:900;text-decoration:none;box-shadow:0 7px 20px rgba(68,52,135,.07)}.googleAuth:hover{border-color:#bcb2eb;background:#faf9ff}.googleMark{display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:conic-gradient(from -45deg,#4285f4 0 25%,#34a853 0 50%,#fbbc05 0 75%,#ea4335 0);color:#fff;font-size:11px;font-weight:950}.authDivider{display:flex;align-items:center;gap:10px;margin:2px 0 13px;color:var(--muted);font-size:11px;font-weight:850;text-transform:uppercase;letter-spacing:.06em}.authDivider:before,.authDivider:after{content:"";height:1px;flex:1;background:var(--line)}</style></head>`);
   page = page.replace('<form id="authForm">', `<a class="googleAuth" id="googleAuthButton" href="/api/auth/google/start?mode=${options.signup ? "signup" : "login"}"><span class="googleMark" aria-hidden="true">G</span><span id="googleAuthLabel">${options.signup ? "Sign up with Google" : "Log in with Google"}</span></a><div class="authDivider">or use email</div><form id="authForm">`);
   page = page.replace("</main><script>", `</main><dialog class="mismatchDialog" id="passwordMismatchDialog" aria-labelledby="passwordMismatchTitle"><div class="mismatchCard"><div class="mismatchIcon" aria-hidden="true">!</div><h2 id="passwordMismatchTitle">Passwords do not match</h2><p>Re-enter the confirmation password so both password fields are exactly the same.</p><button type="button" id="passwordMismatchClose">Fix the passwords</button></div></dialog><script>`);
-  page = page.replace('submitBtn.textContent=creating?"Create free account":"Sign in";history.replaceState', 'submitBtn.textContent=creating?"Create free account":"Sign in";googleAuthLabel.textContent=creating?"Sign up with Google":"Log in with Google";googleAuthButton.href="/api/auth/google/start?mode="+(creating?"signup":"login");history.replaceState');
-  page = page.replace("setMode(mode);authForm.onsubmit", `setMode(mode);const googleError=new URLSearchParams(location.search).get("google_error");if(googleError)status.textContent=googleError;const passwordMismatchDialog=document.getElementById("passwordMismatchDialog"),passwordMismatchClose=document.getElementById("passwordMismatchClose");function signupPasswordIssue(value){if(value.length<7)return "Use at least 7 characters and include 1 special character.";if(!/[^a-z0-9\\s]/i.test(value))return "Include at least 1 special character, such as !, @, #, or $.";return ""}passwordMismatchClose.onclick=function(){passwordMismatchDialog.close();confirmPassword.focus()};[passwordInput,confirmPassword].forEach(function(input){input.addEventListener("input",function(){status.textContent=""})});authForm.onsubmit`);
+  const scriptStart = page.lastIndexOf("<script>");
+  const scriptEnd = page.indexOf("</script>", scriptStart);
+  if (scriptStart < 0 || scriptEnd < 0) throw new Error("Account page script could not be replaced.");
+  const script = `<script>
+(() => {
+  "use strict";
+  localStorage.removeItem("constrava_session_token");
+  const initialMode = ${JSON.stringify(options.signup ? "signup" : "login")};
+  const googleError = new URLSearchParams(window.location.search).get("google_error") || "";
+  const el = {
+    form: document.getElementById("authForm"), loginTab: document.getElementById("loginTab"), signupTab: document.getElementById("signupTab"),
+    nameWrap: document.getElementById("nameWrap"), nameInput: document.querySelector('#nameWrap input[name="name"]'),
+    confirmWrap: document.getElementById("confirmWrap"), confirmPassword: document.getElementById("confirmPassword"),
+    password: document.getElementById("passwordInput"), passwordHelp: document.getElementById("passwordHelp"),
+    securityNote: document.getElementById("securityNote"), title: document.getElementById("title"), copy: document.getElementById("copy"),
+    submit: document.getElementById("submitBtn"), status: document.getElementById("status"), googleButton: document.getElementById("googleAuthButton"),
+    googleLabel: document.getElementById("googleAuthLabel"), mismatchDialog: document.getElementById("passwordMismatchDialog"),
+    mismatchClose: document.getElementById("passwordMismatchClose")
+  };
+  if (Object.values(el).some((value) => !value)) return;
+  let mode = initialMode;
+  let busy = false;
+  function setStatus(message = "", kind = "error") {
+    el.status.textContent = message;
+    el.status.dataset.kind = message ? kind : "";
+    el.status.style.color = kind === "success" ? "#08744e" : "";
+  }
+  function signupPasswordIssue(value) {
+    if (value.length < 7) return "Use at least 7 characters and include 1 special character.";
+    if (!/[^a-z0-9\\s]/i.test(value)) return "Include at least 1 special character, such as !, @, #, or $.";
+    return "";
+  }
+  function setMode(next, { updateUrl = true, clearMessage = true } = {}) {
+    mode = next === "signup" ? "signup" : "login";
+    const creating = mode === "signup";
+    el.loginTab.classList.toggle("active", !creating);
+    el.signupTab.classList.toggle("active", creating);
+    el.loginTab.setAttribute("aria-selected", String(!creating));
+    el.signupTab.setAttribute("aria-selected", String(creating));
+    el.nameWrap.hidden = !creating;
+    el.confirmWrap.hidden = !creating;
+    el.securityNote.hidden = !creating;
+    el.passwordHelp.hidden = !creating;
+    el.nameWrap.style.display = creating ? "block" : "none";
+    el.confirmWrap.style.display = creating ? "block" : "none";
+    el.securityNote.style.display = creating ? "flex" : "none";
+    el.passwordHelp.style.display = creating ? "block" : "none";
+    el.nameInput.required = creating;
+    el.confirmPassword.required = creating;
+    el.password.minLength = creating ? 7 : 1;
+    el.password.autocomplete = creating ? "new-password" : "current-password";
+    el.title.textContent = creating ? "Create your free account" : "Sign in";
+    el.copy.textContent = creating ? "Create a standard user account. You can create or join a CRM project after you sign in." : "Enter your account details, then choose, join, or create a CRM project.";
+    el.submit.textContent = creating ? "Create free account" : "Sign in";
+    el.googleLabel.textContent = creating ? "Sign up with Google" : "Log in with Google";
+    el.googleButton.href = "/api/auth/google/start?mode=" + mode;
+    if (updateUrl) window.history.replaceState({ authMode: mode }, "", creating ? "/signup" : "/signin");
+    if (clearMessage) setStatus();
+  }
+  async function responseData(response) {
+    const text = await response.text();
+    if (!text) return {};
+    try { return JSON.parse(text); } catch { throw new Error(response.ok ? "The sign-in response was incomplete. Please try again." : "Constrava could not complete sign-in. Please try again."); }
+  }
+  el.loginTab.addEventListener("click", () => setMode("login"));
+  el.signupTab.addEventListener("click", () => setMode("signup"));
+  window.addEventListener("popstate", () => setMode(window.location.pathname === "/signup" ? "signup" : "login", { updateUrl: false }));
+  el.mismatchClose.addEventListener("click", () => { el.mismatchDialog.close(); el.confirmPassword.focus(); });
+  [el.password, el.confirmPassword].forEach((input) => input.addEventListener("input", () => { if (!busy) setStatus(); }));
+  el.form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (busy) return;
+    setStatus();
+    const payload = Object.fromEntries(new FormData(el.form));
+    if (mode === "signup") {
+      if (payload.password !== payload.confirmPassword) {
+        setStatus("Passwords do not match.");
+        if (typeof el.mismatchDialog.showModal === "function") el.mismatchDialog.showModal();
+        else el.confirmPassword.focus();
+        return;
+      }
+      const passwordIssue = signupPasswordIssue(String(payload.password || ""));
+      if (passwordIssue) { setStatus(passwordIssue); el.password.focus(); return; }
+    }
+    delete payload.confirmPassword;
+    busy = true;
+    el.submit.disabled = true;
+    el.loginTab.disabled = true;
+    el.signupTab.disabled = true;
+    el.submit.textContent = mode === "signup" ? "Creating account..." : "Signing in...";
+    try {
+      const response = await fetch(mode === "signup" ? "/api/auth/signup" : "/api/auth/login", { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      const data = await responseData(response);
+      if (!response.ok) throw new Error(data.error || "Authentication failed.");
+      setStatus("Success. Opening your projects...", "success");
+      window.location.assign(data.next || "/projects");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Authentication failed.");
+    } finally {
+      busy = false;
+      el.submit.disabled = false;
+      el.loginTab.disabled = false;
+      el.signupTab.disabled = false;
+      el.submit.textContent = mode === "signup" ? "Create free account" : "Sign in";
+    }
+  });
+  setMode(initialMode, { updateUrl: false, clearMessage: false });
+  if (googleError) setStatus(googleError);
+})();
+</script>`;
+  page = page.slice(0, scriptStart) + script + page.slice(scriptEnd + "</script>".length);
   return page;
 }
 
