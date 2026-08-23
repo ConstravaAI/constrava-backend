@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const runtimePath = path.join(here, ".server.generated.js");
-const runtimeMarker = "migration-safety-runtime-v2";
+const runtimeMarker = "migration-safety-runtime-v3";
 
 let source = await fs.readFile(runtimePath, "utf8");
 
@@ -12,23 +12,23 @@ if (!source.includes(runtimeMarker)) {
   const replacements = [
     {
       needle: 'import readXlsxFile from "read-excel-file/node";',
-      value: 'import readXlsxFile from "read-excel-file/node";\nimport { createMigrationSafety } from "./postgres-migration-safety.js";\nimport { createRelationalFoundation } from "./postgres-relational-foundation.js";'
+      value: 'import readXlsxFile from "read-excel-file/node";\nimport { createMigrationSafety } from "./postgres-migration-safety.js";\nimport { createRelationalFoundation } from "./postgres-relational-foundation.js";\nimport { createIdentityBackfill } from "./postgres-identity-backfill.js";'
     },
     {
       needle: 'const POSTGRES_STORE_TABLE = "public.constrava_app_store_v2";',
-      value: 'const POSTGRES_STORE_TABLE = "public.constrava_app_store_v2";\n// migration-safety-runtime-v2\nconst migrationSafety = createMigrationSafety({ pool: postgresPool, requestedStorageMode: process.env.DATA_STORAGE_MODE });\nconst relationalFoundation = createRelationalFoundation({ migrationSafety: postgresPool ? migrationSafety : null });'
+      value: 'const POSTGRES_STORE_TABLE = "public.constrava_app_store_v2";\n// migration-safety-runtime-v3\nconst migrationSafety = createMigrationSafety({ pool: postgresPool, requestedStorageMode: process.env.DATA_STORAGE_MODE });\nconst relationalFoundation = createRelationalFoundation({ migrationSafety: postgresPool ? migrationSafety : null });\nconst identityBackfill = createIdentityBackfill({ migrationSafety: postgresPool ? migrationSafety : null });'
     },
     {
       needle: '      `);\n      postgresStatus = "ready";',
-      value: '      `);\n      await migrationSafety.ensure();\n      await relationalFoundation.ensure();\n      postgresStatus = "ready";'
+      value: '      `);\n      await migrationSafety.ensure();\n      await relationalFoundation.ensure();\n      await identityBackfill.ensure();\n      postgresStatus = "ready";'
     },
     {
       needle: '    return { postgresStoreConfigured: false, databaseStatus: "not_configured", databaseErrorCode: "", databaseCheckedAt: "" };',
-      value: '    return { postgresStoreConfigured: false, databaseStatus: "not_configured", databaseErrorCode: "", databaseCheckedAt: "", ...migrationSafety.health(), ...relationalFoundation.health() };'
+      value: '    return { postgresStoreConfigured: false, databaseStatus: "not_configured", databaseErrorCode: "", databaseCheckedAt: "", ...migrationSafety.health(), ...relationalFoundation.health(), ...identityBackfill.health() };'
     },
     {
       needle: '    databaseErrorCode: postgresLastErrorCode,\n    databaseCheckedAt: postgresLastCheckedAt\n  };',
-      value: '    databaseErrorCode: postgresLastErrorCode,\n    databaseCheckedAt: postgresLastCheckedAt,\n    ...migrationSafety.health(),\n    ...relationalFoundation.health()\n  };'
+      value: '    databaseErrorCode: postgresLastErrorCode,\n    databaseCheckedAt: postgresLastCheckedAt,\n    ...migrationSafety.health(),\n    ...relationalFoundation.health(),\n    ...identityBackfill.health()\n  };'
     }
   ];
 
