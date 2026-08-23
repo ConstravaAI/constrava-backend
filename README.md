@@ -31,6 +31,14 @@ Deployment 2 creates normalized tables for users, hashed sessions, CRM projects,
 
 This deployment is schema-only. It does not backfill rows, dual-write application changes, or serve reads from the new tables. `public.constrava_app_store_v2` remains the only source of truth and `/api/health` reports both `relationalBackfillEnabled: false` and `relationalDualWriteEnabled: false`.
 
+### Identity and project baseline backfill
+
+Deployment 3 takes a locked snapshot of the primary JSONB store and copies its users, CRM projects, project memberships, invitations, sessions, user-owned Google/Microsoft accounts, and project-to-account links into the normalized tables in one transaction. It is an idempotent, one-time baseline: a completed migration is recorded with count-only details and is not rerun after restarts.
+
+Raw session cookies are never copied. Their relational token values are SHA-256 hashes and their row identifiers are independently derived from those hashes. OAuth credential blobs remain in their existing encrypted form and are written only to `credentials_ciphertext`; transient OAuth state is excluded. External accounts require an explicit valid user owner, and project links are created only when that owner can access the project.
+
+This deployment still does not read from or continuously write to the normalized tables. `public.constrava_app_store_v2` remains the sole live source of truth, `DATA_STORAGE_MODE` stays `legacy`, and `/api/health` reports the backfill result and counts while keeping `relationalDualWriteEnabled: false`.
+
 ## Developer handoff email
 
 Website Tracker developer handoffs are sent through Resend. In Render, set `RESEND_API_KEY` and `DEVELOPER_HANDOFF_FROM`; the sender must use a domain verified in Resend. `DEVELOPER_HANDOFF_REPLY_TO` is optional. When it is omitted, replies go to the signed-in user's email address.

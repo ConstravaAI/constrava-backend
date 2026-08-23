@@ -119,6 +119,12 @@ export function createMigrationSafety({ pool, requestedStorageMode = "legacy" } 
   }
 
   async function insertSnapshot(client, snapshotKey, label) {
+    const lockedStore = await client.query(`SELECT id FROM ${LEGACY_STORE_TABLE} WHERE id = 'primary' FOR UPDATE`);
+    if (!lockedStore.rows.length) {
+      const error = new Error("The primary legacy store is missing; a migration snapshot could not be created.");
+      error.code = "LEGACY_STORE_MISSING";
+      throw error;
+    }
     const inserted = await client.query(
       `INSERT INTO ${SNAPSHOT_TABLE} (snapshot_key, label, store_id, store_version, data, source_created_at, source_updated_at)
        SELECT $1, $2, id, version, data, created_at, updated_at
@@ -173,7 +179,7 @@ export function createMigrationSafety({ pool, requestedStorageMode = "legacy" } 
     return withAdvisoryLock(async (client) => {
       await client.query("BEGIN");
       try {
-        const existing = await client.query(`SELECT checksum, status FROM ${MIGRATION_TABLE} WHERE id = $1`, [migrationId]);
+        const existing = await client.query(`SELECT checksum, status, details FROM ${MIGRATION_TABLE} WHERE id = $1`, [migrationId]);
         if (existing.rows.length) {
           if (existing.rows[0].checksum !== migrationChecksum) {
             const error = new Error(`Migration ${migrationId} has already been recorded with a different checksum.`);
@@ -182,7 +188,8 @@ export function createMigrationSafety({ pool, requestedStorageMode = "legacy" } 
           }
           if (existing.rows[0].status === "completed") {
             await client.query("COMMIT");
-            return { id: migrationId, applied: false };
+            const details = existing.rows[0].details && typeof existing.rows[0].details === "object" ? existing.rows[0].details : {};
+            return Object.keys(details).length ? { id: migrationId, applied: false, details } : { id: migrationId, applied: false };
           }
         }
         if (normalizedSnapshotKey) await insertSnapshot(client, normalizedSnapshotKey, String(snapshotLabel || migrationName).trim().slice(0, 160));
@@ -192,13 +199,14 @@ export function createMigrationSafety({ pool, requestedStorageMode = "legacy" } 
            ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, status = 'running', details = '{}'::jsonb, started_at = NOW(), finished_at = NULL, updated_at = NOW()`,
           [migrationId, migrationName, migrationChecksum]
         );
-        await up(client);
+        const migrationDetails = await up(client);
+        const details = migrationDetails && typeof migrationDetails === "object" ? migrationDetails : {};
         await client.query(
-          `UPDATE ${MIGRATION_TABLE} SET status = 'completed', finished_at = NOW(), updated_at = NOW() WHERE id = $1`,
-          [migrationId]
+          `UPDATE ${MIGRATION_TABLE} SET status = 'completed', details = $2::jsonb, finished_at = NOW(), updated_at = NOW() WHERE id = $1`,
+          [migrationId, JSON.stringify(details)]
         );
         await client.query("COMMIT");
-        return { id: migrationId, applied: true };
+        return Object.keys(details).length ? { id: migrationId, applied: true, details } : { id: migrationId, applied: true };
       } catch (error) {
         try { await client.query("ROLLBACK"); } catch {}
         if (error?.code !== "MIGRATION_CHECKSUM_MISMATCH") {

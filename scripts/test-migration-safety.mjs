@@ -22,9 +22,12 @@ class FakeClient {
       this.bootstrapChecksum = parameters[2];
       return { rows: [] };
     }
-    if (sql.includes("SELECT checksum, status FROM public.constrava_schema_migrations")) {
+    if (sql.includes("SELECT checksum, status, details FROM public.constrava_schema_migrations")) {
       const migration = this.migrations.get(parameters[0]);
       return { rows: migration ? [migration] : [] };
+    }
+    if (sql.includes("SELECT id FROM public.constrava_app_store_v2") && sql.includes("FOR UPDATE")) {
+      return { rows: this.legacyStorePresent ? [{ id: "primary" }] : [] };
     }
     if (sql.includes("INSERT INTO public.constrava_store_snapshots")) {
       if (!this.legacyStorePresent || this.snapshots.has(parameters[0])) return { rows: [] };
@@ -35,12 +38,15 @@ class FakeClient {
       return { rows: this.snapshots.has(parameters[0]) ? [{ snapshot_key: parameters[0] }] : [] };
     }
     if (sql.includes("INSERT INTO public.constrava_schema_migrations") && parameters[0]) {
-      this.migrations.set(parameters[0], { checksum: parameters[2], status: sql.includes("'failed'") ? "failed" : "running" });
+      this.migrations.set(parameters[0], { checksum: parameters[2], status: sql.includes("'failed'") ? "failed" : "running", details: {} });
       return { rows: [] };
     }
     if (sql.includes("UPDATE public.constrava_schema_migrations SET status = 'completed'")) {
       const migration = this.migrations.get(parameters[0]);
-      if (migration) migration.status = "completed";
+      if (migration) {
+        migration.status = "completed";
+        migration.details = JSON.parse(parameters[1] || "{}");
+      }
       return { rows: [] };
     }
     return { rows: [] };
@@ -93,6 +99,9 @@ assert(pool.client.released, "bootstrap must release its database client");
 
 const snapshot = await safety.createSnapshot({ key: "before-test-migration", label: "Test snapshot" });
 assert.deepEqual(snapshot, { snapshotKey: "before-test-migration", created: true });
+const snapshotLockIndex = pool.client.queries.findIndex(({ sql }) => sql.includes("SELECT id FROM public.constrava_app_store_v2") && sql.includes("FOR UPDATE"));
+const snapshotInsertIndex = pool.client.queries.findIndex(({ sql }) => sql.includes("INSERT INTO public.constrava_store_snapshots"));
+assert(snapshotLockIndex >= 0 && snapshotLockIndex < snapshotInsertIndex, "the primary legacy row must be locked before its snapshot is copied");
 const duplicateSnapshot = await safety.createSnapshot({ key: "before-test-migration", label: "Test snapshot" });
 assert.deepEqual(duplicateSnapshot, { snapshotKey: "before-test-migration", created: false }, "snapshot creation must be idempotent");
 
@@ -101,6 +110,17 @@ const migration = { id: "0002_test", name: "Test migration", checksum: "sha256:t
 assert.deepEqual(await safety.runMigration(migration), { id: "0002_test", applied: true });
 assert.deepEqual(await safety.runMigration(migration), { id: "0002_test", applied: false });
 assert.equal(migrationApplied, 1, "completed migrations must not run twice");
+
+let detailedMigrationApplied = 0;
+const detailedMigration = {
+  id: "0002_details_test",
+  name: "Details migration",
+  checksum: "sha256:details",
+  up: async () => { detailedMigrationApplied += 1; return { users: 2, sessions: 1 }; }
+};
+assert.deepEqual(await safety.runMigration(detailedMigration), { id: "0002_details_test", applied: true, details: { users: 2, sessions: 1 } });
+assert.deepEqual(await safety.runMigration(detailedMigration), { id: "0002_details_test", applied: false, details: { users: 2, sessions: 1 } });
+assert.equal(detailedMigrationApplied, 1, "completed migration details must survive restart without rerunning the migration");
 await assert.rejects(
   safety.runMigration({ ...migration, checksum: "sha256:changed" }),
   (error) => error.code === "MIGRATION_CHECKSUM_MISMATCH"
@@ -119,5 +139,13 @@ const mismatchedSafety = createMigrationSafety({ pool: mismatchedPool });
 await assert.rejects(mismatchedSafety.ensure(), (error) => error.code === "MIGRATION_CHECKSUM_MISMATCH");
 assert.equal(mismatchedSafety.health().migrationSafetyStatus, "unavailable");
 assert.equal(mismatchedSafety.health().migrationSafetyErrorCode, "MIGRATION_CHECKSUM_MISMATCH");
+
+const missingLegacyPool = new FakePool({ legacyStorePresent: false });
+const missingLegacySafety = createMigrationSafety({ pool: missingLegacyPool });
+await missingLegacySafety.ensure();
+await assert.rejects(
+  missingLegacySafety.createSnapshot({ key: "missing-legacy", label: "Missing legacy row" }),
+  (error) => error.code === "LEGACY_STORE_MISSING"
+);
 
 console.log("Migration safety tests passed.");
