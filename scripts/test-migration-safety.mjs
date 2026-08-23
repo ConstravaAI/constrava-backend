@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createMigrationSafety, normalizeStorageMode } from "../src/postgres-migration-safety.js";
+import { createRelationalFoundation, RELATIONAL_FOUNDATION_MIGRATION_ID, RELATIONAL_FOUNDATION_SNAPSHOT_KEY } from "../src/postgres-relational-foundation.js";
 
 class FakeClient {
   constructor({ bootstrapChecksum = "", legacyStorePresent = true } = {}) {
@@ -105,6 +106,13 @@ await assert.rejects(
   (error) => error.code === "MIGRATION_CHECKSUM_MISMATCH"
 );
 assert.equal(pool.client.migrations.get("0002_test").status, "completed", "a checksum mismatch must not alter completed migration history");
+
+const foundation = createRelationalFoundation({ migrationSafety: safety });
+assert.deepEqual(await foundation.ensure(), { id: RELATIONAL_FOUNDATION_MIGRATION_ID, applied: true });
+assert(pool.client.snapshots.has(RELATIONAL_FOUNDATION_SNAPSHOT_KEY), "Deployment 2 must snapshot the legacy store before creating relational tables");
+assert.equal(pool.client.migrations.get(RELATIONAL_FOUNDATION_MIGRATION_ID)?.status, "completed");
+const restartedFoundation = createRelationalFoundation({ migrationSafety: safety });
+assert.deepEqual(await restartedFoundation.ensure(), { id: RELATIONAL_FOUNDATION_MIGRATION_ID, applied: false }, "the Deployment 2 migration must be restart-safe");
 
 const mismatchedPool = new FakePool({ bootstrapChecksum: "sha256:wrong" });
 const mismatchedSafety = createMigrationSafety({ pool: mismatchedPool });

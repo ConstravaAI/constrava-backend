@@ -25,6 +25,12 @@ Deployment 1 adds migration safeguards without changing the current data layout.
 
 Migration operations use a Postgres advisory lock and transactions so concurrent service instances cannot apply the same migration simultaneously. `/api/health` exposes the active storage mode and migration-safety status without exposing database credentials or stored account data. The values `shadow` and `relational` are reserved for later deployments and are not activated by Deployment 1.
 
+### Relational identity and project foundation
+
+Deployment 2 creates normalized tables for users, hashed sessions, CRM projects, project memberships, invitations, user-owned external accounts, and project-to-account links. Before creating the schema it saves an idempotent copy of the current primary JSONB row in `public.constrava_store_snapshots`.
+
+This deployment is schema-only. It does not backfill rows, dual-write application changes, or serve reads from the new tables. `public.constrava_app_store_v2` remains the only source of truth and `/api/health` reports both `relationalBackfillEnabled: false` and `relationalDualWriteEnabled: false`.
+
 ## Developer handoff email
 
 Website Tracker developer handoffs are sent through Resend. In Render, set `RESEND_API_KEY` and `DEVELOPER_HANDOFF_FROM`; the sender must use a domain verified in Resend. `DEVELOPER_HANDOFF_REPLY_TO` is optional. When it is omitted, replies go to the signed-in user's email address.
