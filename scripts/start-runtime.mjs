@@ -9,7 +9,7 @@ let shouldGenerate = false;
 try {
   await access(generatedServer);
   const generatedSource = await readFile(generatedServer, "utf8");
-  shouldGenerate = !generatedSource.includes("migration-safety-runtime-v1");
+  shouldGenerate = !generatedSource.includes("migration-safety-runtime-v2");
 } catch {
   shouldGenerate = true;
 }
