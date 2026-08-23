@@ -159,7 +159,7 @@ await assertContains("src/server-tracker-analytics.js", 'import "./server-remove
 await assertContains("scripts/generate-runtime.mjs", 'process.env.CONSTRAVA_GENERATE_ONLY = "1";', "the build-only runtime flag");
 await assertContains("scripts/generate-runtime.mjs", 'await import("../src/server-migration-safety-runtime.js");', "the migration safety runtime wrapper");
 await assertContains("scripts/start-runtime.mjs", 'path.join(root, "src", ".server.generated.js")', "the generated production server target");
-await assertContains("scripts/start-runtime.mjs", 'generatedSource.includes("migration-safety-runtime-v3")', "the migration-safe generated runtime check");
+await assertContains("scripts/start-runtime.mjs", 'generatedSource.includes("migration-safety-runtime-v4")', "the migration-safe generated runtime check");
 await assertContains("src/server.js", 'process.env.CONSTRAVA_GENERATE_ONLY !== "1"', "the build-only listener guard");
 await assertContains("src/server-migration-safety-runtime.js", 'createMigrationSafety({ pool: postgresPool', "the migration safety integration");
 await assertContains("src/server-migration-safety-runtime.js", 'await migrationSafety.ensure();', "the Postgres migration safety bootstrap");
@@ -167,10 +167,15 @@ await assertContains("src/server-migration-safety-runtime.js", 'createRelational
 await assertContains("src/server-migration-safety-runtime.js", 'await relationalFoundation.ensure();', "the relational foundation bootstrap");
 await assertContains("src/server-migration-safety-runtime.js", 'createIdentityBackfill({ migrationSafety:', "the identity backfill integration");
 await assertContains("src/server-migration-safety-runtime.js", 'await identityBackfill.ensure();', "the identity backfill bootstrap");
-await assertContains("src/.server.generated.js", "migration-safety-runtime-v3", "the generated migration safety marker");
+await assertContains("src/server-migration-safety-runtime.js", "createRelationalShadowSync({ pool: postgresPool", "the transactional relational shadow integration");
+await assertContains("src/server-migration-safety-runtime.js", "RELATIONAL_DUAL_WRITE_ENABLED", "the explicit relational shadow off switch");
+await assertContains("src/server-migration-safety-runtime.js", "await relationalShadowSync.ensure();", "the relational shadow startup reconciliation");
+await assertContains("src/server-migration-safety-runtime.js", "relationalShadowSync.save({ serialized, storeData, expectedVersion })", "the atomic legacy and relational save boundary");
+await assertContains("src/.server.generated.js", "migration-safety-runtime-v4", "the generated migration safety marker");
 await assertContains("src/.server.generated.js", '...migrationSafety.health()', "the generated migration health response");
 await assertContains("src/.server.generated.js", '...relationalFoundation.health()', "the generated relational schema health response");
 await assertContains("src/.server.generated.js", '...identityBackfill.health()', "the generated relational backfill health response");
+await assertContains("src/.server.generated.js", '...relationalShadowSync.health()', "the generated relational shadow health response");
 await assertContains("src/postgres-migration-safety.js", 'const activeMode = "legacy";', "the Deployment 1 legacy-only storage mode");
 await assertContains("src/postgres-migration-safety.js", "pg_advisory_lock", "the migration advisory lock");
 await assertContains("src/postgres-migration-safety.js", "constrava_store_snapshots", "the pre-migration snapshot table");
@@ -183,6 +188,12 @@ await assertContains("src/postgres-identity-backfill.js", "hashToken(rawId)", "h
 await assertContains("src/postgres-identity-backfill.js", "credentialsCiphertext", "encrypted external-account credential migration");
 await assertContains("src/postgres-identity-backfill.js", 'snapshotKey: IDENTITY_BACKFILL_SNAPSHOT_KEY', "the Deployment 3 pre-backfill snapshot");
 await assertContains("src/postgres-identity-backfill.js", "relationalDualWriteEnabled: false", "the Deployment 3 no-dual-write boundary");
+await assertContains("src/postgres-relational-shadow-sync.js", 'RELATIONAL_SHADOW_SYNC_MIGRATION_ID = "0004_relational_shadow_sync"', "the versioned relational shadow migration");
+await assertContains("src/postgres-relational-shadow-sync.js", "RELATIONAL_SHADOW_SYNC_SNAPSHOT_KEY", "the Deployment 4 pre-shadow snapshot");
+await assertContains("src/postgres-relational-shadow-sync.js", 'await client.query("BEGIN")', "transactional shadow writes");
+await assertContains("src/postgres-relational-shadow-sync.js", 'await client.query("ROLLBACK")', "atomic shadow rollback");
+await assertContains("src/postgres-relational-shadow-sync.js", "verifyIdentityShadow", "post-write relational drift verification");
+await assertContains("src/postgres-relational-shadow-sync.js", "relationalReadsEnabled: false", "the Deployment 4 legacy-read boundary");
 await assertContains("src/server-remove-analytics-title.js", 'await import("./server-notification-icon.js");', "the notification wrapper handoff");
 await assertContains("src/server-notification-icon.js", 'await import("./server-tab-loading-state.js");', "the tab loading wrapper handoff");
 await assertContains("src/server.js", 'aria-label="Notifications"', "the encoding-safe notification control");

@@ -202,41 +202,59 @@ export function buildIdentityBackfill(storeData, legacyStoreVersion = 0) {
   };
 }
 
-async function insertBackfill(client, backfill) {
+export async function syncIdentityBackfill(client, backfill, { prune = false } = {}) {
+  if (prune) {
+    const linkKeys = backfill.externalAccountLinks.map((row) => `${row.workspaceId}\u001f${row.externalAccountId}`);
+    await client.query(
+      `DELETE FROM public.constrava_workspace_external_accounts
+       WHERE NOT ((workspace_id || CHR(31) || external_account_id) = ANY($1::text[]))`,
+      [linkKeys]
+    );
+    for (const [table, ids] of [
+      ["constrava_sessions", backfill.sessions.map((row) => row.id)],
+      ["constrava_workspace_invitations", backfill.invitations.map((row) => row.id)],
+      ["constrava_workspace_memberships", backfill.memberships.map((row) => row.id)],
+      ["constrava_external_accounts", backfill.externalAccounts.map((row) => row.id)],
+      ["constrava_workspaces", backfill.workspaces.map((row) => row.id)],
+      ["constrava_users", backfill.users.map((row) => row.id)]
+    ]) {
+      await client.query(`DELETE FROM public.${table} WHERE NOT (id = ANY($1::text[]))`, [ids]);
+    }
+  }
   for (const row of backfill.users) await client.query(
     `INSERT INTO public.constrava_users (id, email, name, role, auth_provider, password_salt, password_hash, email_verified_at, created_at, updated_at, metadata)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb)
-     ON CONFLICT (id) DO UPDATE SET email=EXCLUDED.email, name=EXCLUDED.name, role=EXCLUDED.role, auth_provider=EXCLUDED.auth_provider, password_salt=EXCLUDED.password_salt, password_hash=EXCLUDED.password_hash, email_verified_at=EXCLUDED.email_verified_at, updated_at=EXCLUDED.updated_at, metadata=EXCLUDED.metadata`,
+     ON CONFLICT (id) DO UPDATE SET email=EXCLUDED.email, name=EXCLUDED.name, role=EXCLUDED.role, auth_provider=EXCLUDED.auth_provider, password_salt=EXCLUDED.password_salt, password_hash=EXCLUDED.password_hash, email_verified_at=EXCLUDED.email_verified_at, created_at=EXCLUDED.created_at, updated_at=EXCLUDED.updated_at, metadata=EXCLUDED.metadata`,
     [row.id, row.email, row.name, row.role, row.authProvider, row.passwordSalt, row.passwordHash, row.emailVerifiedAt, row.createdAt, row.updatedAt, json(row.metadata)]
   );
   for (const row of backfill.workspaces) await client.query(
     `INSERT INTO public.constrava_workspaces (id, name, owner_user_id, created_at, updated_at, metadata)
      VALUES ($1,$2,$3,$4,$5,$6::jsonb)
-     ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, owner_user_id=EXCLUDED.owner_user_id, updated_at=EXCLUDED.updated_at, metadata=EXCLUDED.metadata`,
+     ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, owner_user_id=EXCLUDED.owner_user_id, created_at=EXCLUDED.created_at, updated_at=EXCLUDED.updated_at, metadata=EXCLUDED.metadata`,
     [row.id, row.name, row.ownerUserId, row.createdAt, row.updatedAt, json(row.metadata)]
   );
   for (const row of backfill.memberships) await client.query(
     `INSERT INTO public.constrava_workspace_memberships (id, workspace_id, user_id, role, status, joined_at, last_opened_at, created_at, updated_at, metadata)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
-     ON CONFLICT (workspace_id, user_id) DO UPDATE SET role=EXCLUDED.role, status=EXCLUDED.status, last_opened_at=EXCLUDED.last_opened_at, updated_at=EXCLUDED.updated_at, metadata=EXCLUDED.metadata`,
+     ON CONFLICT (workspace_id, user_id) DO UPDATE SET role=EXCLUDED.role, status=EXCLUDED.status, joined_at=EXCLUDED.joined_at, last_opened_at=EXCLUDED.last_opened_at, created_at=EXCLUDED.created_at, updated_at=EXCLUDED.updated_at, metadata=EXCLUDED.metadata`,
     [row.id, row.workspaceId, row.userId, row.role, row.status, row.joinedAt, row.lastOpenedAt, row.createdAt, row.updatedAt, json(row.metadata)]
   );
   for (const row of backfill.invitations) await client.query(
     `INSERT INTO public.constrava_workspace_invitations (id, workspace_id, email, invited_user_id, invited_by_user_id, role, status, token_hash, expires_at, accepted_at, created_at, updated_at, metadata)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)
-     ON CONFLICT (id) DO UPDATE SET email=EXCLUDED.email, invited_user_id=EXCLUDED.invited_user_id, invited_by_user_id=EXCLUDED.invited_by_user_id, role=EXCLUDED.role, status=EXCLUDED.status, token_hash=EXCLUDED.token_hash, expires_at=EXCLUDED.expires_at, accepted_at=EXCLUDED.accepted_at, updated_at=EXCLUDED.updated_at, metadata=EXCLUDED.metadata`,
+     ON CONFLICT (id) DO UPDATE SET email=EXCLUDED.email, invited_user_id=EXCLUDED.invited_user_id, invited_by_user_id=EXCLUDED.invited_by_user_id, role=EXCLUDED.role, status=EXCLUDED.status, token_hash=EXCLUDED.token_hash, expires_at=EXCLUDED.expires_at, accepted_at=EXCLUDED.accepted_at, created_at=EXCLUDED.created_at, updated_at=EXCLUDED.updated_at, metadata=EXCLUDED.metadata`,
     [row.id, row.workspaceId, row.email, row.invitedUserId, row.invitedByUserId, row.role, row.status, row.tokenHash, row.expiresAt, row.acceptedAt, row.createdAt, row.updatedAt, json(row.metadata)]
   );
   for (const row of backfill.sessions) await client.query(
     `INSERT INTO public.constrava_sessions (id, user_id, token_hash, created_at, expires_at, last_seen_at, metadata)
      VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb)
-     ON CONFLICT (id) DO UPDATE SET user_id=EXCLUDED.user_id, token_hash=EXCLUDED.token_hash, expires_at=EXCLUDED.expires_at, last_seen_at=EXCLUDED.last_seen_at, metadata=EXCLUDED.metadata`,
+     ON CONFLICT (id) DO UPDATE SET user_id=EXCLUDED.user_id, token_hash=EXCLUDED.token_hash, created_at=EXCLUDED.created_at, expires_at=EXCLUDED.expires_at, last_seen_at=EXCLUDED.last_seen_at, metadata=EXCLUDED.metadata`,
     [row.id, row.userId, row.tokenHash, row.createdAt, row.expiresAt, row.lastSeenAt, json(row.metadata)]
   );
   for (const row of backfill.externalAccounts) await client.query(
     `INSERT INTO public.constrava_external_accounts (id, user_id, provider, provider_subject, email, display_name, status, authorization_status, credentials_ciphertext, granted_scopes, selected_apps, settings, created_at, updated_at, last_synced_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::text[],$11::text[],$12::jsonb,$13,$14,$15)
-     ON CONFLICT (id) DO UPDATE SET user_id=EXCLUDED.user_id, provider=EXCLUDED.provider, provider_subject=EXCLUDED.provider_subject, email=EXCLUDED.email, display_name=EXCLUDED.display_name, status=EXCLUDED.status, authorization_status=EXCLUDED.authorization_status, credentials_ciphertext=EXCLUDED.credentials_ciphertext, granted_scopes=EXCLUDED.granted_scopes, selected_apps=EXCLUDED.selected_apps, settings=EXCLUDED.settings, updated_at=EXCLUDED.updated_at, last_synced_at=EXCLUDED.last_synced_at`,
+     ON CONFLICT (id) DO UPDATE SET user_id=EXCLUDED.user_id, provider=EXCLUDED.provider, provider_subject=EXCLUDED.provider_subject, email=EXCLUDED.email, display_name=EXCLUDED.display_name, status=EXCLUDED.status, authorization_status=EXCLUDED.authorization_status, credentials_ciphertext=EXCLUDED.credentials_ciphertext, granted_scopes=EXCLUDED.granted_scopes, selected_apps=EXCLUDED.selected_apps, settings=EXCLUDED.settings, created_at=EXCLUDED.created_at, updated_at=EXCLUDED.updated_at, last_synced_at=EXCLUDED.last_synced_at`,
     [row.id, row.userId, row.provider, row.providerSubject, row.email, row.displayName, row.status, row.authorizationStatus, row.credentialsCiphertext, row.grantedScopes, row.selectedApps, json(row.settings), row.createdAt, row.updatedAt, row.lastSyncedAt]
   );
   for (const row of backfill.externalAccountLinks) await client.query(
@@ -256,7 +274,7 @@ export const IDENTITY_BACKFILL_MIGRATION = Object.freeze({
   async up(client) {
     const legacy = await client.query("SELECT data, version FROM public.constrava_app_store_v2 WHERE id = 'primary' FOR UPDATE");
     const backfill = buildIdentityBackfill(parseLegacyData(legacy.rows[0]), legacy.rows[0]?.version);
-    await insertBackfill(client, backfill);
+    await syncIdentityBackfill(client, backfill);
     return {
       legacyStoreVersion: backfill.legacyStoreVersion,
       users: backfill.users.length,

@@ -39,6 +39,14 @@ Raw session cookies are never copied. Their relational token values are SHA-256 
 
 This deployment still does not read from or continuously write to the normalized tables. `public.constrava_app_store_v2` remains the sole live source of truth, `DATA_STORAGE_MODE` stays `legacy`, and `/api/health` reports the backfill result and counts while keeping `relationalDualWriteEnabled: false`.
 
+### Transactional relational shadow synchronization
+
+Deployment 4 adds an explicit `RELATIONAL_DUAL_WRITE_ENABLED` switch. When enabled, each versioned JSONB save and its normalized identity/project mirror run in the same Postgres transaction. A version conflict, relational write failure, or post-write checksum mismatch rolls back both copies; the application never commits only half of an account change.
+
+The shadow synchronizer prunes removed rows, upserts current users/projects/memberships/invitations, stores only hashed session identifiers, preserves encrypted external-account credential blobs, and verifies the complete relational representation before commit. Startup reconciliation repairs an interrupted or stale shadow from the locked legacy source. Public health reports only safe counts, source version, status, and drift state—never row contents, credentials, password hashes, or comparison hashes.
+
+All application reads remain on `public.constrava_app_store_v2`. Keep `DATA_STORAGE_MODE=legacy`; Deployment 4 does not enable relational reads or cut over user traffic. Set `RELATIONAL_DUAL_WRITE_ENABLED=false` to return immediately to the prior legacy-only write path.
+
 ## Developer handoff email
 
 Website Tracker developer handoffs are sent through Resend. In Render, set `RESEND_API_KEY` and `DEVELOPER_HANDOFF_FROM`; the sender must use a domain verified in Resend. `DEVELOPER_HANDOFF_REPLY_TO` is optional. When it is omitted, replies go to the signed-in user's email address.
