@@ -386,7 +386,7 @@ function normalize(storeData) {
   return storeData;
 }
 
-const IDENTITY_VERSION = 2;
+const IDENTITY_VERSION = 1;
 
 function identityName(value) {
   return clean(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -610,14 +610,7 @@ function reconcilePlanIdentities(storeData, plan, workspaceId) {
   }
 }
 
-async function reconcileWorkspaceIdentities(storeData, workspaceId) {
-  const previousVersion = Number(storeData.identityReconciliation?.[workspaceId]?.version || 0);
-  const upgradeVisibleCompanyLinks = previousVersion < IDENTITY_VERSION;
-  const companiesBefore = storeData.records.filter((record) => record.workspaceId === workspaceId && record.type === "Company").length;
-  if (upgradeVisibleCompanyLinks) {
-    const people = storeData.records.filter((record) => record.workspaceId === workspaceId && record.type === "Person" && clean(record.fields?.companyName));
-    for (const person of people) await synchronizePersonCompanyRecord(storeData, person);
-  }
+function reconcileWorkspaceIdentities(storeData, workspaceId) {
   const records = storeData.records.filter((record) => record.workspaceId === workspaceId);
   let processed = 0;
   for (const record of records) {
@@ -626,9 +619,8 @@ async function reconcileWorkspaceIdentities(storeData, workspaceId) {
     processed += 1;
   }
   const now = new Date().toISOString();
-  const visibleCompaniesCreated = Math.max(0, storeData.records.filter((record) => record.workspaceId === workspaceId && record.type === "Company").length - companiesBefore);
-  storeData.identityReconciliation[workspaceId] = { version: IDENTITY_VERSION, lastRunAt: now, processed, recordCount: records.length, visibleCompaniesCreated };
-  return { processed, upgraded: upgradeVisibleCompanyLinks, visibleCompaniesCreated, entities: storeData.identityEntities.filter((entry) => entry.workspaceId === workspaceId).length, lastRunAt: now };
+  storeData.identityReconciliation[workspaceId] = { version: IDENTITY_VERSION, lastRunAt: now, processed, recordCount: records.length };
+  return { processed, entities: storeData.identityEntities.filter((entry) => entry.workspaceId === workspaceId).length, lastRunAt: now };
 }
 
 let postgresReadyPromise = null;
@@ -3074,7 +3066,7 @@ async function decideCompanyResolution(storeData, workspaceId, companyName, pers
   const exactMatches = candidates.filter((record) => [companyRecordName(record), ...companyRecordAliases(record, storeData)].some((name) => identityName(name) === identityName(mention)));
   if (exactMatches.length === 1) return { decision: "match", record: exactMatches[0], hiddenEntity: hiddenCompanyEntityForRecord(storeData, exactMatches[0]), mentionIdentity, canonicalName: companyRecordName(exactMatches[0]) || mention, confidence: 1, provider: "deterministic", model: "verified-identity-v1", reasoning: "The company name exactly matches a single existing company or alias." };
   const exactHiddenMatches = hiddenCandidates.filter((entity) => hiddenCompanyAliases(entity).some((name) => identityName(name) === identityName(mention)));
-  if (!candidates.length && exactHiddenMatches.length === 1) return { decision: "create", record: null, hiddenEntity: exactHiddenMatches[0], mentionIdentity: exactHiddenMatches[0], canonicalName: exactHiddenMatches[0].canonicalName || mention, confidence: 1, provider: "deterministic", model: "hidden-identity-v1", reasoning: "The company mention matches an existing hidden company identity, which will be promoted into the visible CRM." };
+  if (!exactMatches.length && exactHiddenMatches.length === 1) return { decision: "create", record: null, hiddenEntity: exactHiddenMatches[0], mentionIdentity: exactHiddenMatches[0], canonicalName: exactHiddenMatches[0].canonicalName || mention, confidence: 1, provider: "deterministic", model: "hidden-identity-v1", reasoning: "The company mention matches an existing hidden company identity, which will be promoted into the visible CRM." };
   const businessDomain = personBusinessDomain(personRecord);
   const domainMatches = businessDomain ? candidates.filter((record) => companyRecordDomain(record, storeData) === businessDomain) : [];
   const hiddenDomainMatches = businessDomain ? hiddenCandidates.filter((entity) => hiddenCompanyDomain(storeData, entity) === businessDomain) : [];
@@ -4521,12 +4513,12 @@ async function api(req, res, url, route) {
     : send(res, 401, { error: "Sign in required." });
   if (ctx.membership?.role === "viewer" && req.method !== "GET") return send(res, 403, { error: "Viewer access is read-only." });
   if (req.method === "GET" && route === "/api/dashboard/summary") {
-    const identityReconciliation = await reconcileWorkspaceIdentities(storeData, ctx.workspaceId);
-    if (identityReconciliation.processed || identityReconciliation.upgraded) await saveStore(storeData);
+    const identityReconciliation = reconcileWorkspaceIdentities(storeData, ctx.workspaceId);
+    if (identityReconciliation.processed) await saveStore(storeData);
     return send(res, 200, { ...dashboardSummary(storeData, ctx.workspaceId), identityReconciliation });
   }
   if (req.method === "POST" && route === "/api/identity/reconcile") {
-    const identityReconciliation = await reconcileWorkspaceIdentities(storeData, ctx.workspaceId);
+    const identityReconciliation = reconcileWorkspaceIdentities(storeData, ctx.workspaceId);
     await saveStore(storeData);
     return send(res, 200, { identityReconciliation });
   }
