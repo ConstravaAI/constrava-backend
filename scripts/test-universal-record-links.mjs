@@ -57,6 +57,13 @@ function assertLinks(saved, recordId, expectedIds) {
 
 try {
   await waitForServer();
+  const dashboardResponse = await fetch(`${origin}/dashboard/`, { headers: { cookie: "constrava_session=session_test" } });
+  const dashboardHtml = await dashboardResponse.text();
+  assert.equal(dashboardResponse.status, 200);
+  assert.match(dashboardHtml, /data-related-record-type-filter/, "every record form must include the related-record type filter");
+  assert.match(dashboardHtml, /data-related-record-search-input/, "every record form must include searchable existing records");
+  assert.match(dashboardHtml, /relatedRecordDropdown/, "existing matching records must be offered in a dropdown");
+  assert.match(dashboardHtml, /name="relatedRecordText"/, "every record form must include the AI plain-text relationship option");
   const company = (await request("/api/records/manual", { type: "Company", title: "Northwind Manufacturing" }, 201)).record;
   const person = (await request("/api/records/manual", { type: "Person", title: "Jordan Lee", email: "jordan@example.com", companyRecordIds: [company.id] }, 201)).record;
   const task = (await request("/api/records/manual", { type: "Task", title: "Call Jordan" }, 201)).record;
@@ -89,7 +96,19 @@ try {
   assert.ok(!saved.records.some((entry) => (entry.fields?.relatedRecordIds || []).includes(note.id)), "deleting a record must remove every saved reciprocal reference");
   assert.ok(!saved.records.some((entry) => (entry.relationships || []).some((relationship) => relationship.recordId === note.id)), "deleting a record must remove every relationship entry");
 
-  console.log("Universal record relationships passed: all five types, reciprocal updates, removal, deletion cleanup, self-link protection, and workspace isolation.");
+  const combination = await request("/api/records/manual", { type: "Note", title: "Renewal planning", relatedRecordIds: [person.id], relatedRecordText: "Casey from Alpine Labs needs a proposal and a follow-up tomorrow." }, 201);
+  assert.ok(combination.relatedDrafts.length > 0, "plain text must go through the record-planning system and create reviewable drafts");
+  assert.ok(combination.relatedDrafts.every((draft) => (draft.fields.relatedRecordIds || []).includes(combination.record.id)), "each AI draft must remember the record it will connect to");
+  saved = await store();
+  assertLinks(saved, combination.record.id, [person.id]);
+  assert.ok(genericLinks(record(saved, person.id)).has(combination.record.id), "selected existing records and AI text must work in the same submission");
+
+  const published = (await request("/api/records/drafts/publish", { id: combination.relatedDrafts[0].id })).record;
+  saved = await store();
+  assert.ok(genericLinks(record(saved, combination.record.id)).has(published.id), "publishing the AI-created record must complete the relationship");
+  assert.ok(genericLinks(record(saved, published.id)).has(combination.record.id), "the completed AI relationship must be bidirectional");
+
+  console.log("Universal record relationships passed: all five types, searchable form controls, combined existing and AI-created links, reciprocal updates, deletion cleanup, self-link protection, and workspace isolation.");
 } finally {
   child.kill();
   await rm(temporaryDirectory, { recursive: true, force: true });
