@@ -412,6 +412,11 @@ await assertContains("src/server-runtime.js", "That parent company would create 
 await assertContains("src/server-runtime.js", "function ensureDeleteRecordDialog()", "the confirmed CRM record deletion dialog");
 await assertContains("src/server-responsive.js", "function crmCompaniesContent()", "the dedicated company relationship dashboard");
 await assertContains("src/server-responsive.js", ".companyRelationshipGrid", "the Company People and Companies sections");
+await assertContains("src/server-runtime.js", "function personCompanyRecordIds(", "backwards-compatible multiple person-company links");
+await assertContains("src/server-runtime.js", "function synchronizePersonCompanyIdentities(", "multiple hidden person-company identity relationships");
+await assertContains("src/server-runtime.js", "company-multi", "the multiple-company person editor field");
+await assertContains("src/server-runtime.js", "function collectCompanySelections(", "the multiple-company form serializer");
+await assertContains("src/server-responsive.js", "metric('Company links'", "the People company-relationship summary");
 await assertContains("src/server-fonts.js", 'source = source.replace(/\\r\\n/g, "\\n");', "cross-platform Analytics visual source line endings");
 await assertContains("src/server-fonts.js", 'source.includes("function analyticsOverviewPopup(")', "the active Analytics visual installation check");
 await assertContains("src/server-fonts.js", '<select id="analyticsRange" style="color:#061a33!important">', "explicit dark date-range selected value");
