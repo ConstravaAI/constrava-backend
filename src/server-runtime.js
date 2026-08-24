@@ -32,6 +32,7 @@ const manualRecordServerCode = String.raw`function manualRecordFromBody(body, wo
     email: clean(body.email || ""),
     phone: clean(body.phone || ""),
     companyName: clean(body.companyName || ""),
+    newCompanyName: clean(body.newCompanyName || ""),
     role: clean(body.role || ""),
     industry: clean(body.industry || ""),
     website: clean(body.website || ""),
@@ -44,6 +45,7 @@ const manualRecordServerCode = String.raw`function manualRecordFromBody(body, wo
     source: clean(body.source || ""),
     category: clean(body.category || "")
   };
+  if (type === "Person" && Object.prototype.hasOwnProperty.call(body, "companyRecordIds")) fields.companyRecordIds = recordIdList(body.companyRecordIds);
   for (const key of Object.keys(fields)) if (fields[key] === "" || fields[key] === 0) delete fields[key];
   const tags = clean(body.tags || "").split(",").map((tag) => clean(tag)).filter(Boolean);
   return {
@@ -80,8 +82,9 @@ const updateRecordServerCode = String.raw`function updateRecordFromBody(storeDat
   const now = new Date().toISOString();
   const associatedDate = clean(body.associatedDate || body.dueDate || "");
   const fields = { ...(record.fields || {}) };
-  const stringFields = ["description", "email", "phone", "companyName", "role", "industry", "website", "contactEmail", "parentCompanyRecordId", "stage", "taskType", "source", "category", "status"];
+  const stringFields = ["description", "email", "phone", "companyName", "newCompanyName", "role", "industry", "website", "contactEmail", "parentCompanyRecordId", "stage", "taskType", "source", "category", "status"];
   for (const key of stringFields) if (Object.prototype.hasOwnProperty.call(body, key)) fields[key] = clean(body[key]);
+  if (type === "Person" && Object.prototype.hasOwnProperty.call(body, "companyRecordIds")) fields.companyRecordIds = recordIdList(body.companyRecordIds);
   if (associatedDate || Object.prototype.hasOwnProperty.call(body, "associatedDate")) fields.associatedDate = associatedDate;
   if (type === "Task") fields.dueDate = associatedDate || clean(body.dueDate || fields.dueDate || "");
   if (Object.prototype.hasOwnProperty.call(body, "value")) fields.value = Number(String(body.value || "").replace(/[$,\s]/g, "")) || 0;
@@ -98,13 +101,145 @@ const updateRecordServerCode = String.raw`function updateRecordFromBody(storeDat
   record.fields = fields;
   record.updatedAt = now;
   record.metadata ||= {};
+  if (type === "Person") {
+    record.metadata.pendingCompanySelectionExplicit = Object.prototype.hasOwnProperty.call(body, "companyRecordIds");
+    record.metadata.pendingCompanyName = Object.prototype.hasOwnProperty.call(body, "companyName") ? clean(body.companyName) : "";
+  }
   record.metadata.priorityLevel = priorityMap[level] ? level : record.metadata.priorityLevel;
   record.metadata.editHistory ||= [];
   record.metadata.editHistory.push({ at: now, action: "edited", source: "record editor" });
   return record;
 }`;
 
-const recordRelationshipServerCode = String.raw`function companyHierarchyRecords(storeData, workspaceId) {
+const recordRelationshipServerCode = String.raw`function recordIdList(value) {
+  const values = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : [];
+  return [...new Set(values.map((entry) => clean(entry)).filter(Boolean))];
+}
+
+function personCompanyRecordIds(personRecord) {
+  return [...new Set([...recordIdList(personRecord?.fields?.companyRecordIds), clean(personRecord?.fields?.companyRecordId)].filter(Boolean))];
+}
+
+function applyPersonCompanyFields(storeData, personRecord, companyIds) {
+  personRecord.fields ||= {};
+  const companies = recordIdList(companyIds).map((recordId) => storeData.records.find((record) => record.id === recordId && record.workspaceId === personRecord.workspaceId && record.type === "Company")).filter(Boolean);
+  if (companies.length) {
+    personRecord.fields.companyRecordIds = companies.map((company) => company.id);
+    personRecord.fields.companyNames = companies.map((company) => companyRecordName(company));
+    personRecord.fields.companyRecordId = companies[0].id;
+    personRecord.fields.companyName = companyRecordName(companies[0]);
+  } else {
+    delete personRecord.fields.companyRecordIds;
+    delete personRecord.fields.companyNames;
+    delete personRecord.fields.companyRecordId;
+    delete personRecord.fields.companyName;
+  }
+  personRecord.relationships = (personRecord.relationships || []).filter((relationship) => relationship.type !== "works_at");
+  for (const company of companies) personRecord.relationships.push({ type: "works_at", recordId: company.id, recordType: "Company" });
+  return companies;
+}
+
+function synchronizePersonCompanyIdentities(storeData, personRecord, companies) {
+  const personEntity = identityEntityForRecord(storeData, personRecord.id, personRecord.workspaceId);
+  if (!personEntity) return;
+  storeData.identityRelationships = storeData.identityRelationships.filter((relationship) => !(relationship.workspaceId === personRecord.workspaceId && relationship.fromEntityId === personEntity.id && relationship.type === "associated_with"));
+  const companyEntities = [];
+  for (const companyRecord of companies) {
+    const companyEntity = identityEntityForRecord(storeData, companyRecord.id, personRecord.workspaceId) || reconcilePublishedRecordIdentity(storeData, companyRecord);
+    if (!companyEntity) continue;
+    companyEntities.push(companyEntity);
+    linkPersonCompanyIdentity(storeData, personRecord.workspaceId, personEntity, companyEntity, personRecord.id);
+  }
+  personEntity.facts ||= {};
+  if (companyEntities.length) {
+    personEntity.facts.companyEntityIds = companyEntities.map((entity) => entity.id);
+    personEntity.facts.companyRecordIds = companies.map((company) => company.id);
+    personEntity.facts.companyEntityId = companyEntities[0].id;
+    personEntity.facts.companyRecordId = companies[0].id;
+  } else {
+    delete personEntity.facts.companyEntityIds;
+    delete personEntity.facts.companyRecordIds;
+    delete personEntity.facts.companyEntityId;
+    delete personEntity.facts.companyRecordId;
+  }
+  personEntity.updatedAt = new Date().toISOString();
+}
+
+function updateCompanyConnectedPeopleNames(storeData, companyRecord) {
+  const companyName = companyRecordName(companyRecord);
+  for (const person of storeData.records.filter((record) => record.workspaceId === companyRecord.workspaceId && record.type === "Person" && personCompanyRecordIds(record).includes(companyRecord.id))) {
+    const companies = applyPersonCompanyFields(storeData, person, personCompanyRecordIds(person));
+    if (person.fields.companyRecordId === companyRecord.id) person.fields.companyName = companyName;
+    person.updatedAt = companyRecord.updatedAt;
+    synchronizePersonCompanyIdentities(storeData, person, companies);
+  }
+}
+
+async function synchronizePersonCompanyRecord(storeData, personRecord) {
+  if (!personRecord || personRecord.type !== "Person") return null;
+  personRecord.fields ||= {};
+  personRecord.metadata ||= {};
+  const explicitSelection = Boolean(personRecord.metadata.pendingCompanySelectionExplicit || Array.isArray(personRecord.fields.companyRecordIds));
+  const pendingCompanyName = clean(personRecord.metadata.pendingCompanyName);
+  let requestedIds = explicitSelection ? recordIdList(personRecord.fields.companyRecordIds) : personCompanyRecordIds(personRecord);
+  if (pendingCompanyName && !personRecord.metadata.pendingCompanySelectionExplicit) requestedIds = [];
+  const mention = clean(personRecord.fields.newCompanyName || pendingCompanyName || (!requestedIds.length ? personRecord.fields.companyName : ""));
+  delete personRecord.metadata.pendingCompanySelectionExplicit;
+  delete personRecord.metadata.pendingCompanyName;
+  delete personRecord.fields.newCompanyName;
+  const availableCompanies = companyHierarchyRecords(storeData, personRecord.workspaceId);
+  const byId = new Map(availableCompanies.map((company) => [company.id, company]));
+  const invalidId = requestedIds.find((recordId) => !byId.has(recordId));
+  if (invalidId) throw Object.assign(new Error("Choose companies from this CRM project."), { status: 400 });
+  let resolution = null;
+  if (mention) {
+    let companyRecord = requestedIds.map((recordId) => byId.get(recordId)).find((company) => [companyRecordName(company), ...companyRecordAliases(company, storeData)].some((name) => identityName(name) === identityName(mention)));
+    if (!companyRecord) {
+      resolution = await decideCompanyResolution(storeData, personRecord.workspaceId, mention, personRecord);
+      companyRecord = resolution.record;
+      if (!companyRecord) { companyRecord = createLinkedCompanyRecord(personRecord, mention, resolution); storeData.records.push(companyRecord); }
+      bindCompanyResolutionIdentity(storeData, companyRecord, resolution);
+      applyCompanyResolution(storeData, companyRecord, mention, resolution);
+      byId.set(companyRecord.id, companyRecord);
+    }
+    if (!requestedIds.includes(companyRecord.id)) requestedIds.push(companyRecord.id);
+  }
+  const companies = requestedIds.map((recordId) => byId.get(recordId)).filter(Boolean);
+  const selectedIds = new Set(companies.map((company) => company.id));
+  const now = new Date().toISOString();
+  for (const company of companyHierarchyRecords(storeData, personRecord.workspaceId)) {
+    company.fields ||= {};
+    const people = Array.isArray(company.fields.people) ? company.fields.people.filter((person) => typeof person === "object" && person) : [];
+    const relationships = Array.isArray(company.relationships) ? company.relationships : [];
+    const beforePeople = JSON.stringify(people);
+    const beforeRelationships = JSON.stringify(relationships);
+    company.fields.people = people.filter((person) => person.recordId !== personRecord.id && (!person.email || identityEmail(person.email) !== identityEmail(personRecord.fields.email)));
+    company.relationships = relationships.filter((relationship) => !(relationship.type === "has_person" && relationship.recordId === personRecord.id));
+    if (selectedIds.has(company.id)) {
+      company.fields.people.push(companyPersonEntry(personRecord));
+      company.relationships.push({ type: "has_person", recordId: personRecord.id, recordType: "Person" });
+    }
+    if (beforePeople !== JSON.stringify(company.fields.people) || beforeRelationships !== JSON.stringify(company.relationships)) company.updatedAt = now;
+    reconcilePublishedRecordIdentity(storeData, company);
+  }
+  const linkedCompanies = applyPersonCompanyFields(storeData, personRecord, requestedIds);
+  if (resolution) personRecord.metadata.companyResolution = { companyRecordId: linkedCompanies.at(-1)?.id || "", provider: resolution.provider, model: resolution.model, confidence: Number(resolution.confidence || 0), reasoning: clean(resolution.reasoning), resolvedAt: now };
+  personRecord.updatedAt = now;
+  reconcilePublishedRecordIdentity(storeData, personRecord);
+  synchronizePersonCompanyIdentities(storeData, personRecord, linkedCompanies);
+  return linkedCompanies[0] || null;
+}
+
+function redirectPersonCompanyReferences(storeData, oldCompanyRecordId, newCompanyRecordId, workspaceId) {
+  for (const person of storeData.records.filter((record) => record.workspaceId === workspaceId && record.type === "Person" && personCompanyRecordIds(record).includes(oldCompanyRecordId))) {
+    const ids = personCompanyRecordIds(person).map((recordId) => recordId === oldCompanyRecordId ? newCompanyRecordId : recordId);
+    const companies = applyPersonCompanyFields(storeData, person, ids);
+    reconcilePublishedRecordIdentity(storeData, person);
+    synchronizePersonCompanyIdentities(storeData, person, companies);
+  }
+}
+
+function companyHierarchyRecords(storeData, workspaceId) {
   return storeData.records.filter((record) => record.workspaceId === workspaceId && record.type === "Company");
 }
 
@@ -190,6 +325,7 @@ function deleteRecordFromBody(storeData, body, workspaceId) {
   if (index < 0) throw Object.assign(new Error("Record not found."), { status: 404 });
   const [deletedRecord] = storeData.records.splice(index, 1);
   const now = new Date().toISOString();
+  const changedPeople = [];
   for (const record of storeData.records.filter((entry) => entry.workspaceId === workspaceId)) {
     let changed = false;
     const relationshipCount = (record.relationships || []).length;
@@ -205,9 +341,9 @@ function deleteRecordFromBody(storeData, body, workspaceId) {
         changed = true;
       }
     }
-    if (record.type === "Person" && record.fields?.companyRecordId === recordId) {
-      delete record.fields.companyRecordId;
-      delete record.fields.companyName;
+    if (record.type === "Person" && personCompanyRecordIds(record).includes(recordId)) {
+      const companies = applyPersonCompanyFields(storeData, record, personCompanyRecordIds(record).filter((companyId) => companyId !== recordId));
+      changedPeople.push({ record, companies });
       changed = true;
     }
     if (changed) record.updatedAt = now;
@@ -219,6 +355,10 @@ function deleteRecordFromBody(storeData, body, workspaceId) {
     if (entity.facts.recordId === recordId) { delete entity.facts.recordId; changed = true; }
     if (Array.isArray(entity.facts.personRecordIds)) { const count = entity.facts.personRecordIds.length; entity.facts.personRecordIds = entity.facts.personRecordIds.filter((id) => id !== recordId); if (entity.facts.personRecordIds.length !== count) changed = true; }
     if (changed) entity.updatedAt = now;
+  }
+  for (const entry of changedPeople) {
+    reconcilePublishedRecordIdentity(storeData, entry.record);
+    synchronizePersonCompanyIdentities(storeData, entry.record, entry.companies);
   }
   if (deletedRecord.type === "Company") rebuildCompanyHierarchy(storeData, workspaceId);
   return deletedRecord;
@@ -334,15 +474,19 @@ function aiDraftRow(r){return '<div class="item recordCard"><div><span class="pi
 function aiRecordsContent(){const rows=[...(S.aiRecords||[])].sort(function(a,b){return String(b.createdAt||'').localeCompare(String(a.createdAt||''))});return crmShell('<section class="card"><div class="in"><div class="crmListHead"><div><h2>Review and publish AI-created records</h2><p class="muted">Edit each draft as needed, then publish it when it is ready to enter the CRM.</p></div><span class="pill">'+rows.length+' awaiting review</span></div><div id="aiDraftRows">'+(rows.length?rows.map(aiDraftRow).join(''):'<div class="crmEmpty"><div><b>No records awaiting review</b><p>Drafts created by connected resources and AI Add will appear here.</p></div></div>')+'</div></div></section>')}
 function crmContent(){if(S.crmView==='overview'){return crmShell('<div class="grid metrics">'+metric('All records',S.records.length,'CRM objects')+metric('Contacts',crmCount('Person'),'People')+metric('Deals',crmCount('Deal'),money(S.summary.metrics.revenueOpportunity))+metric('Tasks',crmCount('Task'),'Follow-ups')+'</div><div style="margin-top:16px">'+list('High-priority CRM records',S.summary.highPriority,'No high priority records')+'</div>')}if(S.crmView==='ai-records')return aiRecordsContent();if(S.crmView==='all')return crmShell(list('All CRM Records',S.records,'No CRM records yet'));if(S.crmView==='edit')return editRecordsContent();return crmShell(list(({Person:'Contacts',Company:'Companies',Deal:'Deals',Task:'Tasks',Note:'Notes'})[S.crmView]||S.crmView,S.records.filter(function(r){return r.type===S.crmView}),'This section is empty'))}`;
 
-const recordRelationshipClientCode = String.raw`function editorTypeConfig(type){return {Person:{title:'Name',note:'People and contacts.',extra:[['email','Email','email'],['phone','Phone','text'],['companyName','Company','text'],['role','Role','text']]},Company:{title:'Company name',note:'Organizations, customers, vendors, accounts, parent companies, or subsidiaries.',extra:[['industry','Industry','text'],['website','Website','url'],['contactEmail','Main contact email','email'],['parentCompanyRecordId','Part of company (optional)','company-select']]},Deal:{title:'Deal title',note:'Opportunities, quotes, proposals, or sales.',extra:[['companyName','Company','text'],['value','Value','number'],['stage','Stage','text']]},Task:{title:'Task title',note:'Follow-ups and work that needs to be completed.',extra:[['taskType','Task type','text'],['status','Status','text']]},Note:{title:'Note title',note:'Saved context, observations, or internal notes.',extra:[['category','Category','text']]}}[type]||{title:'Title',note:'General record.',extra:[]}}
+const recordRelationshipClientCode = String.raw`function editorTypeConfig(type){return {Person:{title:'Name',note:'A person can belong to any number of companies.',extra:[['email','Email','email'],['phone','Phone','text'],['companyRecordIds','Companies','company-multi'],['newCompanyName','Add a new or unlisted company (optional)','text'],['role','Role','text']]},Company:{title:'Company name',note:'Organizations, customers, vendors, accounts, parent companies, or subsidiaries.',extra:[['industry','Industry','text'],['website','Website','url'],['contactEmail','Main contact email','email'],['parentCompanyRecordId','Part of company (optional)','company-select']]},Deal:{title:'Deal title',note:'Opportunities, quotes, proposals, or sales.',extra:[['companyName','Company','text'],['value','Value','number'],['stage','Stage','text']]},Task:{title:'Task title',note:'Follow-ups and work that needs to be completed.',extra:[['taskType','Task type','text'],['status','Status','text']]},Note:{title:'Note title',note:'Saved context, observations, or internal notes.',extra:[['category','Category','text']]}}[type]||{title:'Title',note:'General record.',extra:[]}}
 function companyDescendantIds(companyId){const blocked=new Set(companyId?[companyId]:[]);let changed=true;while(changed){changed=false;for(const company of (S.records||[]).filter(function(record){return record.type==='Company'})){if(blocked.has(company.fields&&company.fields.parentCompanyRecordId)&&!blocked.has(company.id)){blocked.add(company.id);changed=true}}}return blocked}
 function companySelectMarkup(name,selectedId,excludedId){const blocked=companyDescendantIds(excludedId);const companies=(S.records||[]).filter(function(record){return record.type==='Company'&&!blocked.has(record.id)}).sort(function(a,b){return String(a.title||'').localeCompare(String(b.title||''))});return '<select name="'+esc(name)+'"><option value="">No parent company</option>'+companies.map(function(company){return '<option value="'+esc(company.id)+'" '+(company.id===selectedId?'selected':'')+'>'+esc(company.title)+'</option>'}).join('')+'</select><small class="muted">Choose an existing company record. Constrava prevents circular company relationships.</small>'}
-function recordRelationshipInput(field,value,excludedId){if(field[2]==='company-select')return '<label>'+esc(field[1])+'</label>'+companySelectMarkup(field[0],value||'',excludedId||'');return '<label>'+esc(field[1])+'</label><input name="'+esc(field[0])+'" type="'+esc(field[2])+'" value="'+esc(value||'')+'">'}
+function personCompanyClientIds(record){const fields=record&&record.fields||{},ids=Array.isArray(fields.companyRecordIds)?fields.companyRecordIds.slice():[];if(fields.companyRecordId&&!ids.includes(fields.companyRecordId))ids.unshift(fields.companyRecordId);return ids}
+function companyMultiSelectMarkup(name,selectedIds){const selected=new Set(Array.isArray(selectedIds)?selectedIds:[]),companies=(S.records||[]).filter(function(record){return record.type==='Company'}).sort(function(a,b){return String(a.title||'').localeCompare(String(b.title||''))});return '<div class="companyMultiSelect" data-company-multi>'+(companies.length?companies.map(function(company){return '<label><input type="checkbox" name="'+esc(name)+'" value="'+esc(company.id)+'" '+(selected.has(company.id)?'checked':'')+'><span>'+esc(company.title)+'</span></label>'}).join(''):'<p class="muted">No company records exist yet. Use the field below to create and connect one.</p>')+'</div><small class="muted">Select every company this person is part of.</small>'}
+function recordRelationshipInput(field,value,excludedId){if(field[2]==='company-select')return '<label>'+esc(field[1])+'</label>'+companySelectMarkup(field[0],value||'',excludedId||'');if(field[2]==='company-multi')return '<label>'+esc(field[1])+'</label>'+companyMultiSelectMarkup(field[0],value||[]);return '<label>'+esc(field[1])+'</label><input name="'+esc(field[0])+'" type="'+esc(field[2])+'" value="'+esc(value||'')+'">'}
 function manualSpecificFields(type){const config=editorTypeConfig(type);return '<p class="muted">'+esc(config.note)+'</p>'+config.extra.map(function(field){return recordRelationshipInput(field,'','')}).join('')}
-function editSpecificFields(type,record){const config=editorTypeConfig(type),fields=record&&record.fields||{},excludedId=type==='Company'&&record?record.id:'';return '<p class="muted">'+esc(config.note)+'</p>'+config.extra.map(function(field){return recordRelationshipInput(field,fields[field[0]]||'',excludedId)}).join('')}
+function editSpecificFields(type,record){const config=editorTypeConfig(type),fields=record&&record.fields||{},excludedId=type==='Company'&&record?record.id:'';return '<p class="muted">'+esc(config.note)+'</p>'+config.extra.map(function(field){const value=field[2]==='company-multi'?personCompanyClientIds(record):fields[field[0]]||'';return recordRelationshipInput(field,value,excludedId)}).join('')}
+function collectCompanySelections(form,payload){if(form&&form.querySelector('[data-company-multi]'))payload.companyRecordIds=new FormData(form).getAll('companyRecordIds');return payload}
 function companyRelationshipNames(records,emptyLabel){return records.length?records.map(function(record){return '<span class="companyRelationPill">'+esc(record.title||record.name||'Company')+'</span>'}).join(''):'<span class="muted">'+esc(emptyLabel)+'</span>'}
 function companyRelationshipMarkup(record){const fields=record.fields||{},parent=(S.records||[]).find(function(candidate){return candidate.type==='Company'&&candidate.id===fields.parentCompanyRecordId}),children=(S.records||[]).filter(function(candidate){return candidate.type==='Company'&&candidate.fields&&candidate.fields.parentCompanyRecordId===record.id}),people=(Array.isArray(fields.people)?fields.people:[]).map(function(person){return {title:typeof person==='string'?person:person.name||person.email||'Person'}});return '<div class="companyRelationshipGrid"><section><b>Part of company</b>'+companyRelationshipNames(parent?[parent]:[],'Independent company')+'</section><section><b>Companies</b>'+companyRelationshipNames(children,'No companies inside this company')+'</section><section><b>People</b>'+companyRelationshipNames(people,'No people connected')+'</section></div>'}
-function recordRow(record){return '<div class="item recordCard"><div><span class="pill">'+esc(record.type)+'</span> <b>'+esc(record.title)+'</b><div class="fieldLine">ID: '+esc(record.id)+' · Added: '+esc((record.createdAt||'').slice(0,10))+' · Edited: '+esc((record.updatedAt||'').slice(0,10))+'</div><div class="fieldLine">'+esc(recordFields(record)||((record.tags||[]).join(' · ')))+'</div><div class="fieldLine">'+esc((record.priorityReasons||[])[0]||'')+'</div>'+(record.type==='Company'?companyRelationshipMarkup(record):'')+'</div><div class="recordCardActions"><span class="pill">'+Math.round(record.priorityScore||0)+'</span><button class="secondary" data-edit-record="'+esc(record.id)+'">Edit</button><button class="recordDeleteButton" data-delete-record="'+esc(record.id)+'">Delete</button></div></div>'}
+function personCompanyMarkup(record){const companies=personCompanyClientIds(record).map(function(recordId){return (S.records||[]).find(function(company){return company.type==='Company'&&company.id===recordId})}).filter(Boolean);return '<div class="personCompanyList"><b>Companies</b>'+companyRelationshipNames(companies,'No companies connected')+'</div>'}
+function recordRow(record){return '<div class="item recordCard"><div><span class="pill">'+esc(record.type)+'</span> <b>'+esc(record.title)+'</b><div class="fieldLine">ID: '+esc(record.id)+' · Added: '+esc((record.createdAt||'').slice(0,10))+' · Edited: '+esc((record.updatedAt||'').slice(0,10))+'</div><div class="fieldLine">'+esc(recordFields(record)||((record.tags||[]).join(' · ')))+'</div><div class="fieldLine">'+esc((record.priorityReasons||[])[0]||'')+'</div>'+(record.type==='Company'?companyRelationshipMarkup(record):record.type==='Person'?personCompanyMarkup(record):'')+'</div><div class="recordCardActions"><span class="pill">'+Math.round(record.priorityScore||0)+'</span><button class="secondary" data-edit-record="'+esc(record.id)+'">Edit</button><button class="recordDeleteButton" data-delete-record="'+esc(record.id)+'">Delete</button></div></div>'}
 function ensureDeleteRecordDialog(){if(document.getElementById('deleteRecordDialog'))return;document.body.insertAdjacentHTML('beforeend','<dialog id="deleteRecordDialog"><form id="deleteRecordForm"><div class="modalHead"><h2>Delete record?</h2><p class="muted" id="deleteRecordLabel"></p></div><div class="modalBody"><div class="recordDeleteWarning"><b>This permanently removes this CRM record.</b><p>Connected records will stay in the CRM and will be safely detached from it.</p></div><p class="status" id="deleteRecordStatus" aria-live="polite"></p></div><div class="modalFoot"><button class="secondary" type="button" id="cancelDeleteRecord">Cancel</button><button class="recordDeleteConfirm" type="submit" id="confirmDeleteRecord">Delete record</button></div></form></dialog>');const dialog=document.getElementById('deleteRecordDialog');document.getElementById('cancelDeleteRecord').onclick=function(){dialog.close()};document.getElementById('deleteRecordForm').onsubmit=async function(event){event.preventDefault();const record=S.deletingRecord,button=document.getElementById('confirmDeleteRecord'),status=document.getElementById('deleteRecordStatus');if(!record)return;if(button){button.disabled=true;button.textContent='Deleting...'}if(status)status.textContent='';try{await api('/api/records/delete',{method:'POST',body:JSON.stringify({id:record.id})});dialog.close();S.deletingRecord=null;await load();render()}catch(error){if(status)status.textContent=error.message||'Could not delete this record.';if(button){button.disabled=false;button.textContent='Delete record'}}}}
 function openDeleteRecordDialog(recordId){const record=(S.records||[]).find(function(candidate){return candidate.id===recordId});if(!record)return;ensureDeleteRecordDialog();S.deletingRecord=record;document.getElementById('deleteRecordLabel').textContent=record.type+': '+record.title;document.getElementById('deleteRecordStatus').textContent='';const button=document.getElementById('confirmDeleteRecord');button.disabled=false;button.textContent='Delete record';document.getElementById('deleteRecordDialog').showModal()}
 function bindRecordActions(){document.querySelectorAll('[data-delete-record]').forEach(function(button){button.onclick=function(){openDeleteRecordDialog(button.dataset.deleteRecord)}})}`;
@@ -353,6 +497,8 @@ const recordEditorBindCodeWithAllActions = recordEditorBindCodeWithHeroActions.r
 
 let source = await fs.readFile(serverPath, "utf8");
 source = source.replace(/\r\n/g, "\n");
+source = source.replace("function updateCompanyConnectedPeopleNames(storeData, companyRecord) {", "function legacyUpdateCompanyConnectedPeopleNames(storeData, companyRecord) {");
+source = source.replace("async function synchronizePersonCompanyRecord(storeData, personRecord) {", "async function legacySynchronizePersonCompanyRecord(storeData, personRecord) {");
 if (!source.includes("function signInPage(")) {
   throw new Error("Could not locate signInPage in src/server.js");
 }
@@ -375,7 +521,10 @@ source = source.replace('let record = manualRecordFromBody(await readBody(req), 
 source = source.replaceAll('else if (record.type === "Company") record = await reconcileStandaloneCompanyRecord(storeData, record); else reconcilePublishedRecordIdentity(storeData, record);', 'else if (record.type === "Company") { record = await reconcileStandaloneCompanyRecord(storeData, record); synchronizeCompanyHierarchy(storeData, record); } else reconcilePublishedRecordIdentity(storeData, record);');
 source = source.replace('if (req.method === "POST" && route === "/api/records/priority-check") {', 'if (req.method === "POST" && route === "/api/records/delete") { const deletedRecord = deleteRecordFromBody(storeData, await readBody(req), ctx.workspaceId); await saveStore(storeData); return send(res, 200, { deletedRecord }); } if (req.method === "POST" && route === "/api/records/priority-check") {');
 source = source.replace('storeData.records = storeData.records.filter((record) => record.id !== companyRecord.id);', 'redirectCompanyHierarchyReferences(storeData, companyRecord.id, target.id, companyRecord.workspaceId); storeData.records = storeData.records.filter((record) => record.id !== companyRecord.id);');
+source = source.replace('for (const person of storeData.records.filter((record) => record.workspaceId === target.workspaceId && record.type === "Person" && record.fields?.companyRecordId === companyRecord.id)) person.fields.companyRecordId = target.id;', 'redirectPersonCompanyReferences(storeData, companyRecord.id, target.id, target.workspaceId);');
 source = source.replace("function render(){", recordEditorClientCode + "\n" + recordRelationshipClientCode + "\nfunction render(){");
+source = source.replace("let payload=Object.fromEntries(new FormData(e.target)),endpoint=S.editingRecordIsDraft?'/api/records/drafts/update':'/api/records/update';", "let payload=Object.fromEntries(new FormData(e.target));collectCompanySelections(e.target,payload);let endpoint=S.editingRecordIsDraft?'/api/records/drafts/update':'/api/records/update';");
+source = source.replace("let payload=Object.fromEntries(new FormData(manualForm));await api('/api/records/manual'", "let payload=Object.fromEntries(new FormData(manualForm));collectCompanySelections(manualForm,payload);await api('/api/records/manual'");
 source = source.replace("async function refresh(nextTab)", recordEditorBindCodeWithAllActions + "\nasync function refresh(nextTab)");
 source = source
   .replaceAll("['Person','Contacts']", "['Person','People']")
