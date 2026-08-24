@@ -405,6 +405,13 @@ await assertContains("src/server-analytics-selector-copies.js", ".crmHeroActions
 await assertContains("src/server-runtime.js", "['Person','People']", "the dedicated People navigation label");
 await assertContains("src/server-responsive.js", "function crmPeopleContent()", "the dedicated People CRM dashboard");
 await assertContains("src/server-responsive.js", "if(S.crmView==='Person')return crmPeopleContent()", "the dedicated People tab route");
+await assertContains("src/server-runtime.js", "function deleteRecordFromBody(", "workspace-scoped CRM record deletion");
+await assertContains("src/server-runtime.js", "function synchronizeCompanyHierarchy(", "bidirectional company hierarchy persistence");
+await assertContains("src/server-runtime.js", "A company cannot be part of itself.", "company self-link protection");
+await assertContains("src/server-runtime.js", "That parent company would create a relationship loop.", "company relationship cycle protection");
+await assertContains("src/server-runtime.js", "function ensureDeleteRecordDialog()", "the confirmed CRM record deletion dialog");
+await assertContains("src/server-responsive.js", "function crmCompaniesContent()", "the dedicated company relationship dashboard");
+await assertContains("src/server-responsive.js", ".companyRelationshipGrid", "the Company People and Companies sections");
 await assertContains("src/server-fonts.js", 'source = source.replace(/\\r\\n/g, "\\n");', "cross-platform Analytics visual source line endings");
 await assertContains("src/server-fonts.js", 'source.includes("function analyticsOverviewPopup(")', "the active Analytics visual installation check");
 await assertContains("src/server-fonts.js", '<select id="analyticsRange" style="color:#061a33!important">', "explicit dark date-range selected value");
