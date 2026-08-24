@@ -18,7 +18,10 @@ await writeFile(dataFile, JSON.stringify({
   sources: [], records: [],
   draftRecords: [{ id: "draft_alice", workspaceId: "workspace_test", type: "Person", title: "Alice Carter", status: "draft", priorityScore: 60, priorityReasons: ["Test"], tags: [], fields: { name: "Alice Carter", email: "alice@greenroof.example", companyName: "Green Roof" }, relationships: [], sourceIds: ["source_manual"], createdAt: now, updatedAt: now, metadata: { planId: plan.planId, actionId: "action_alice", actionType: "create" } }],
   events: [], plans: [plan, bobPlan], ingestionEvents: [], formConnections: [], emailConnections: [], adsenseConnections: [], googleAnalyticsConnections: [], businessConnections: [], messagingConnections: [], websiteConnections: [], reports: [], googleAccounts: [], microsoftAccounts: [], calendarConnections: [],
-  identityEntities: [{ id: "identity_company_green_roof", workspaceId: "workspace_test", entityType: "Company", canonicalName: "Green Roof", normalizedName: "green roof", aliases: [], hidden: true, status: "provisional", facts: {}, createdAt: now, updatedAt: now }],
+  identityEntities: [
+    { id: "identity_company_green_roof", workspaceId: "workspace_test", entityType: "Company", canonicalName: "Green Roof", normalizedName: "green roof", aliases: [], hidden: true, status: "provisional", facts: {}, createdAt: now, updatedAt: now },
+    { id: "identity_company_green_roof_construction", workspaceId: "workspace_test", entityType: "Company", canonicalName: "Green Roof Construction", normalizedName: "green roof construction", aliases: [], hidden: true, status: "provisional", facts: {}, createdAt: now, updatedAt: now }
+  ],
   identityIdentifiers: [{ id: "identifier_green_roof_domain", workspaceId: "workspace_test", entityId: "identity_company_green_roof", type: "domain", value: "greenroof.example", verified: false, sourceRecordId: "", createdAt: now, updatedAt: now }],
   identityMentions: [], identityRelationships: [], identityRecordLinks: [], identityReconciliation: {},
   workspaces: [{ id: "workspace_test", name: "Company Linking Test", ownerUserId: "user_test", createdAt: now, updatedAt: now }],
@@ -70,7 +73,7 @@ try {
   assert.deepEqual(companies[0].fields.people.map((person) => person.name), ["Alice Carter"]);
   assert.equal(people[0].fields.companyRecordId, companies[0].id);
   assert.ok(people[0].relationships.some((relationship) => relationship.type === "works_at" && relationship.recordId === companies[0].id));
-  assert.equal(hiddenCompanies(saved).length, 1, "the visible company must reuse the pre-existing hidden company identity");
+  assert.equal(hiddenCompanies(saved).length, 2, "the visible company must reuse its hidden identity without discarding a separate unresolved hidden mention");
   assert.equal(companies[0].metadata.identityEntityId, "identity_company_green_roof");
   assert.equal(hiddenEntityFor(saved, companies[0])?.id, "identity_company_green_roof");
   const aliceIdentity = hiddenEntityFor(saved, people[0]);
