@@ -46,6 +46,7 @@ const manualRecordServerCode = String.raw`function manualRecordFromBody(body, wo
     category: clean(body.category || "")
   };
   if (type === "Person" && Object.prototype.hasOwnProperty.call(body, "companyRecordIds")) fields.companyRecordIds = recordIdList(body.companyRecordIds);
+  if (Object.prototype.hasOwnProperty.call(body, "relatedRecordIds")) fields.relatedRecordIds = recordIdList(body.relatedRecordIds);
   for (const key of Object.keys(fields)) if (fields[key] === "" || fields[key] === 0) delete fields[key];
   const tags = clean(body.tags || "").split(",").map((tag) => clean(tag)).filter(Boolean);
   return {
@@ -77,6 +78,7 @@ const updateRecordServerCode = String.raw`function updateRecordFromBody(storeDat
   const title = clean(body.title || record.title);
   if (!title) throw Object.assign(new Error("Title or name is required."), { status: 400 });
   if (type === "Company" && Object.prototype.hasOwnProperty.call(body, "parentCompanyRecordId")) validateCompanyParent(storeData, record, body.parentCompanyRecordId);
+  if (Object.prototype.hasOwnProperty.call(body, "relatedRecordIds")) validateRelatedRecordIds(storeData, record, body.relatedRecordIds);
   const priorityMap = { low: 25, normal: 50, high: 75, highest: 95 };
   const level = clean(body.priorityLevel || body.priority || record.metadata?.priorityLevel || "normal").toLowerCase();
   const now = new Date().toISOString();
@@ -85,6 +87,7 @@ const updateRecordServerCode = String.raw`function updateRecordFromBody(storeDat
   const stringFields = ["description", "email", "phone", "companyName", "newCompanyName", "role", "industry", "website", "contactEmail", "parentCompanyRecordId", "stage", "taskType", "source", "category", "status"];
   for (const key of stringFields) if (Object.prototype.hasOwnProperty.call(body, key)) fields[key] = clean(body[key]);
   if (type === "Person" && Object.prototype.hasOwnProperty.call(body, "companyRecordIds")) fields.companyRecordIds = recordIdList(body.companyRecordIds);
+  if (Object.prototype.hasOwnProperty.call(body, "relatedRecordIds")) fields.relatedRecordIds = recordIdList(body.relatedRecordIds);
   if (associatedDate || Object.prototype.hasOwnProperty.call(body, "associatedDate")) fields.associatedDate = associatedDate;
   if (type === "Task") fields.dueDate = associatedDate || clean(body.dueDate || fields.dueDate || "");
   if (Object.prototype.hasOwnProperty.call(body, "value")) fields.value = Number(String(body.value || "").replace(/[$,\s]/g, "")) || 0;
@@ -239,6 +242,85 @@ function redirectPersonCompanyReferences(storeData, oldCompanyRecordId, newCompa
   }
 }
 
+function genericRelatedRecordIds(record) {
+  const fieldIds = recordIdList(record?.fields?.relatedRecordIds);
+  const relationshipIds = (record?.relationships || []).filter((relationship) => relationship.type === "related_to").map((relationship) => relationship.recordId);
+  return recordIdList([...fieldIds, ...relationshipIds]);
+}
+
+function validateRelatedRecordIds(storeData, record, relatedRecordIds) {
+  const requestedIds = recordIdList(relatedRecordIds);
+  if (requestedIds.includes(record.id)) throw Object.assign(new Error("A record cannot be related to itself."), { status: 400 });
+  const byId = new Map(storeData.records.filter((entry) => entry.workspaceId === record.workspaceId && entry.id !== record.id).map((entry) => [entry.id, entry]));
+  if (requestedIds.some((recordId) => !byId.has(recordId))) throw Object.assign(new Error("Choose related records from this CRM project."), { status: 400 });
+  return requestedIds.map((recordId) => byId.get(recordId));
+}
+
+function setGenericRecordRelationship(record, otherRecord, connected) {
+  record.fields ||= {};
+  record.relationships ||= [];
+  const ids = genericRelatedRecordIds(record).filter((recordId) => recordId !== otherRecord.id);
+  record.relationships = record.relationships.filter((relationship) => !(relationship.type === "related_to" && relationship.recordId === otherRecord.id));
+  if (connected) {
+    ids.push(otherRecord.id);
+    record.relationships.push({ type: "related_to", recordId: otherRecord.id, recordType: otherRecord.type });
+  }
+  const nextIds = recordIdList(ids);
+  if (nextIds.length) record.fields.relatedRecordIds = nextIds;
+  else delete record.fields.relatedRecordIds;
+}
+
+function synchronizeRecordRelationships(storeData, record) {
+  const requestedRecords = validateRelatedRecordIds(storeData, record, record.fields?.relatedRecordIds);
+  const requestedIds = new Set(requestedRecords.map((entry) => entry.id));
+  const previousIds = new Set((record.relationships || []).filter((relationship) => relationship.type === "related_to").map((relationship) => relationship.recordId));
+  const affectedIds = new Set([...requestedIds, ...previousIds]);
+  const recordsById = new Map(storeData.records.filter((entry) => entry.workspaceId === record.workspaceId).map((entry) => [entry.id, entry]));
+  const now = new Date().toISOString();
+  for (const otherId of affectedIds) {
+    const otherRecord = recordsById.get(otherId);
+    if (!otherRecord || otherRecord.id === record.id) continue;
+    const before = JSON.stringify({ relatedRecordIds: otherRecord.fields?.relatedRecordIds || [], relationships: otherRecord.relationships || [] });
+    setGenericRecordRelationship(otherRecord, record, requestedIds.has(otherId));
+    const after = JSON.stringify({ relatedRecordIds: otherRecord.fields?.relatedRecordIds || [], relationships: otherRecord.relationships || [] });
+    if (before !== after) otherRecord.updatedAt = now;
+  }
+  record.relationships = (record.relationships || []).filter((relationship) => relationship.type !== "related_to");
+  record.fields ||= {};
+  if (requestedRecords.length) record.fields.relatedRecordIds = requestedRecords.map((entry) => entry.id);
+  else delete record.fields.relatedRecordIds;
+  for (const otherRecord of requestedRecords) record.relationships.push({ type: "related_to", recordId: otherRecord.id, recordType: otherRecord.type });
+  record.updatedAt = now;
+  return requestedRecords;
+}
+
+function redirectGenericRecordReferences(storeData, oldRecordId, newRecordId, workspaceId) {
+  const replacement = storeData.records.find((record) => record.id === newRecordId && record.workspaceId === workspaceId);
+  if (!replacement) return;
+  const duplicate = storeData.records.find((record) => record.id === oldRecordId && record.workspaceId === workspaceId);
+  replacement.fields ||= {};
+  replacement.fields.relatedRecordIds = recordIdList([...genericRelatedRecordIds(replacement), ...genericRelatedRecordIds(duplicate)]).filter((recordId) => recordId !== newRecordId && recordId !== oldRecordId);
+  for (const record of storeData.records.filter((entry) => entry.workspaceId === workspaceId && entry.id !== oldRecordId)) {
+    const relatedIds = genericRelatedRecordIds(record);
+    if (!relatedIds.includes(oldRecordId)) continue;
+    const nextIds = relatedIds.map((recordId) => recordId === oldRecordId ? newRecordId : recordId).filter((recordId) => recordId !== record.id);
+    record.fields ||= {};
+    record.fields.relatedRecordIds = recordIdList(nextIds);
+    if (!record.fields.relatedRecordIds.length) delete record.fields.relatedRecordIds;
+    record.relationships = (record.relationships || []).filter((relationship) => relationship.type !== "related_to");
+    for (const relatedId of recordIdList(nextIds)) {
+      const relatedRecord = storeData.records.find((entry) => entry.id === relatedId && entry.workspaceId === workspaceId);
+      if (relatedRecord) record.relationships.push({ type: "related_to", recordId: relatedRecord.id, recordType: relatedRecord.type });
+    }
+    record.updatedAt = new Date().toISOString();
+  }
+  replacement.fields.relatedRecordIds = recordIdList([
+    ...genericRelatedRecordIds(replacement),
+    ...storeData.records.filter((record) => record.workspaceId === workspaceId && record.id !== oldRecordId && record.id !== newRecordId && genericRelatedRecordIds(record).includes(newRecordId)).map((record) => record.id)
+  ]);
+  synchronizeRecordRelationships(storeData, replacement);
+}
+
 function companyHierarchyRecords(storeData, workspaceId) {
   return storeData.records.filter((record) => record.workspaceId === workspaceId && record.type === "Company");
 }
@@ -331,6 +413,12 @@ function deleteRecordFromBody(storeData, body, workspaceId) {
     const relationshipCount = (record.relationships || []).length;
     record.relationships = (record.relationships || []).filter((relationship) => relationship.recordId !== recordId);
     if (record.relationships.length !== relationshipCount) changed = true;
+    if (Array.isArray(record.fields?.relatedRecordIds)) {
+      const relatedCount = record.fields.relatedRecordIds.length;
+      record.fields.relatedRecordIds = record.fields.relatedRecordIds.filter((relatedRecordId) => relatedRecordId !== recordId);
+      if (!record.fields.relatedRecordIds.length) delete record.fields.relatedRecordIds;
+      if (relatedCount !== (record.fields.relatedRecordIds || []).length) changed = true;
+    }
     if (record.type === "Company") {
       record.fields ||= {};
       if (Array.isArray(record.fields.people)) { const count = record.fields.people.length; record.fields.people = record.fields.people.filter((person) => person?.recordId !== recordId); if (record.fields.people.length !== count) changed = true; }
@@ -475,18 +563,22 @@ function aiRecordsContent(){const rows=[...(S.aiRecords||[])].sort(function(a,b)
 function crmContent(){if(S.crmView==='overview'){return crmShell('<div class="grid metrics">'+metric('All records',S.records.length,'CRM objects')+metric('Contacts',crmCount('Person'),'People')+metric('Deals',crmCount('Deal'),money(S.summary.metrics.revenueOpportunity))+metric('Tasks',crmCount('Task'),'Follow-ups')+'</div><div style="margin-top:16px">'+list('High-priority CRM records',S.summary.highPriority,'No high priority records')+'</div>')}if(S.crmView==='ai-records')return aiRecordsContent();if(S.crmView==='all')return crmShell(list('All CRM Records',S.records,'No CRM records yet'));if(S.crmView==='edit')return editRecordsContent();return crmShell(list(({Person:'Contacts',Company:'Companies',Deal:'Deals',Task:'Tasks',Note:'Notes'})[S.crmView]||S.crmView,S.records.filter(function(r){return r.type===S.crmView}),'This section is empty'))}`;
 
 const recordRelationshipClientCode = String.raw`function editorTypeConfig(type){return {Person:{title:'Name',note:'A person can belong to any number of companies.',extra:[['email','Email','email'],['phone','Phone','text'],['companyRecordIds','Companies','company-multi'],['newCompanyName','Add a new or unlisted company (optional)','text'],['role','Role','text']]},Company:{title:'Company name',note:'Organizations, customers, vendors, accounts, parent companies, or subsidiaries.',extra:[['industry','Industry','text'],['website','Website','url'],['contactEmail','Main contact email','email'],['parentCompanyRecordId','Part of company (optional)','company-select']]},Deal:{title:'Deal title',note:'Opportunities, quotes, proposals, or sales.',extra:[['companyName','Company','text'],['value','Value','number'],['stage','Stage','text']]},Task:{title:'Task title',note:'Follow-ups and work that needs to be completed.',extra:[['taskType','Task type','text'],['status','Status','text']]},Note:{title:'Note title',note:'Saved context, observations, or internal notes.',extra:[['category','Category','text']]}}[type]||{title:'Title',note:'General record.',extra:[]}}
+function editorTypeFields(type){const config=editorTypeConfig(type);return [...(config.extra||[]),['relatedRecordIds','Related records','record-multi']]}
 function companyDescendantIds(companyId){const blocked=new Set(companyId?[companyId]:[]);let changed=true;while(changed){changed=false;for(const company of (S.records||[]).filter(function(record){return record.type==='Company'})){if(blocked.has(company.fields&&company.fields.parentCompanyRecordId)&&!blocked.has(company.id)){blocked.add(company.id);changed=true}}}return blocked}
 function companySelectMarkup(name,selectedId,excludedId){const blocked=companyDescendantIds(excludedId);const companies=(S.records||[]).filter(function(record){return record.type==='Company'&&!blocked.has(record.id)}).sort(function(a,b){return String(a.title||'').localeCompare(String(b.title||''))});return '<select name="'+esc(name)+'"><option value="">No parent company</option>'+companies.map(function(company){return '<option value="'+esc(company.id)+'" '+(company.id===selectedId?'selected':'')+'>'+esc(company.title)+'</option>'}).join('')+'</select><small class="muted">Choose an existing company record. Constrava prevents circular company relationships.</small>'}
 function personCompanyClientIds(record){const fields=record&&record.fields||{},ids=Array.isArray(fields.companyRecordIds)?fields.companyRecordIds.slice():[];if(fields.companyRecordId&&!ids.includes(fields.companyRecordId))ids.unshift(fields.companyRecordId);return ids}
 function companyMultiSelectMarkup(name,selectedIds){const selected=new Set(Array.isArray(selectedIds)?selectedIds:[]),companies=(S.records||[]).filter(function(record){return record.type==='Company'}).sort(function(a,b){return String(a.title||'').localeCompare(String(b.title||''))});return '<div class="companyMultiSelect" data-company-multi>'+(companies.length?companies.map(function(company){return '<label><input type="checkbox" name="'+esc(name)+'" value="'+esc(company.id)+'" '+(selected.has(company.id)?'checked':'')+'><span>'+esc(company.title)+'</span></label>'}).join(''):'<p class="muted">No company records exist yet. Use the field below to create and connect one.</p>')+'</div><small class="muted">Select every company this person is part of.</small>'}
-function recordRelationshipInput(field,value,excludedId){if(field[2]==='company-select')return '<label>'+esc(field[1])+'</label>'+companySelectMarkup(field[0],value||'',excludedId||'');if(field[2]==='company-multi')return '<label>'+esc(field[1])+'</label>'+companyMultiSelectMarkup(field[0],value||[]);return '<label>'+esc(field[1])+'</label><input name="'+esc(field[0])+'" type="'+esc(field[2])+'" value="'+esc(value||'')+'">'}
-function manualSpecificFields(type){const config=editorTypeConfig(type);return '<p class="muted">'+esc(config.note)+'</p>'+config.extra.map(function(field){return recordRelationshipInput(field,'','')}).join('')}
-function editSpecificFields(type,record){const config=editorTypeConfig(type),fields=record&&record.fields||{},excludedId=type==='Company'&&record?record.id:'';return '<p class="muted">'+esc(config.note)+'</p>'+config.extra.map(function(field){const value=field[2]==='company-multi'?personCompanyClientIds(record):fields[field[0]]||'';return recordRelationshipInput(field,value,excludedId)}).join('')}
-function collectCompanySelections(form,payload){if(form&&form.querySelector('[data-company-multi]'))payload.companyRecordIds=new FormData(form).getAll('companyRecordIds');return payload}
+function relatedRecordClientIds(record){const fields=record&&record.fields||{},ids=Array.isArray(fields.relatedRecordIds)?fields.relatedRecordIds.slice():[];for(const relationship of record&&record.relationships||[])if(relationship.type==='related_to'&&relationship.recordId&&!ids.includes(relationship.recordId))ids.push(relationship.recordId);return ids}
+function recordMultiSelectMarkup(name,selectedIds,excludedId){const selected=new Set(Array.isArray(selectedIds)?selectedIds:[]),labels={Person:'People',Company:'Companies',Deal:'Deals',Task:'Tasks',Note:'Notes'},groups=['Person','Company','Deal','Task','Note'].map(function(type){const records=(S.records||[]).filter(function(record){return record.type===type&&record.id!==excludedId}).sort(function(a,b){return String(a.title||'').localeCompare(String(b.title||''))});if(!records.length)return '';return '<section class="recordMultiGroup"><b>'+esc(labels[type])+'</b>'+records.map(function(record){return '<label><input type="checkbox" name="'+esc(name)+'" value="'+esc(record.id)+'" '+(selected.has(record.id)?'checked':'')+'><span>'+esc(record.title)+'</span></label>'}).join('')+'</section>'}).join('');return '<div class="recordMultiSelect" data-related-record-multi>'+(groups||'<p class="muted">Create another record before adding a relationship.</p>')+'</div><small class="muted">Select any records that belong together. Connections appear on both records.</small>'}
+function recordRelationshipInput(field,value,excludedId){if(field[2]==='company-select')return '<label>'+esc(field[1])+'</label>'+companySelectMarkup(field[0],value||'',excludedId||'');if(field[2]==='company-multi')return '<label>'+esc(field[1])+'</label>'+companyMultiSelectMarkup(field[0],value||[]);if(field[2]==='record-multi')return '<label>'+esc(field[1])+'</label>'+recordMultiSelectMarkup(field[0],value||[],excludedId||'');return '<label>'+esc(field[1])+'</label><input name="'+esc(field[0])+'" type="'+esc(field[2])+'" value="'+esc(value||'')+'">'}
+function manualSpecificFields(type){const config=editorTypeConfig(type);return '<p class="muted">'+esc(config.note)+'</p>'+editorTypeFields(type).map(function(field){return recordRelationshipInput(field,'','')}).join('')}
+function editSpecificFields(type,record){const config=editorTypeConfig(type),fields=record&&record.fields||{},excludedId=record&&record.id||'';return '<p class="muted">'+esc(config.note)+'</p>'+editorTypeFields(type).map(function(field){const value=field[2]==='company-multi'?personCompanyClientIds(record):field[2]==='record-multi'?relatedRecordClientIds(record):fields[field[0]]||'';return recordRelationshipInput(field,value,excludedId)}).join('')}
+function collectCompanySelections(form,payload){if(!form)return payload;const data=new FormData(form);if(form.querySelector('[data-company-multi]'))payload.companyRecordIds=data.getAll('companyRecordIds');if(form.querySelector('[data-related-record-multi]'))payload.relatedRecordIds=data.getAll('relatedRecordIds');return payload}
 function companyRelationshipNames(records,emptyLabel){return records.length?records.map(function(record){return '<span class="companyRelationPill">'+esc(record.title||record.name||'Company')+'</span>'}).join(''):'<span class="muted">'+esc(emptyLabel)+'</span>'}
 function companyRelationshipMarkup(record){const fields=record.fields||{},parent=(S.records||[]).find(function(candidate){return candidate.type==='Company'&&candidate.id===fields.parentCompanyRecordId}),children=(S.records||[]).filter(function(candidate){return candidate.type==='Company'&&candidate.fields&&candidate.fields.parentCompanyRecordId===record.id}),people=(Array.isArray(fields.people)?fields.people:[]).map(function(person){return {title:typeof person==='string'?person:person.name||person.email||'Person'}});return '<div class="companyRelationshipGrid"><section><b>Part of company</b>'+companyRelationshipNames(parent?[parent]:[],'Independent company')+'</section><section><b>Companies</b>'+companyRelationshipNames(children,'No companies inside this company')+'</section><section><b>People</b>'+companyRelationshipNames(people,'No people connected')+'</section></div>'}
 function personCompanyMarkup(record){const companies=personCompanyClientIds(record).map(function(recordId){return (S.records||[]).find(function(company){return company.type==='Company'&&company.id===recordId})}).filter(Boolean);return '<div class="personCompanyList"><b>Companies</b>'+companyRelationshipNames(companies,'No companies connected')+'</div>'}
-function recordRow(record){return '<div class="item recordCard"><div><span class="pill">'+esc(record.type)+'</span> <b>'+esc(record.title)+'</b><div class="fieldLine">ID: '+esc(record.id)+' · Added: '+esc((record.createdAt||'').slice(0,10))+' · Edited: '+esc((record.updatedAt||'').slice(0,10))+'</div><div class="fieldLine">'+esc(recordFields(record)||((record.tags||[]).join(' · ')))+'</div><div class="fieldLine">'+esc((record.priorityReasons||[])[0]||'')+'</div>'+(record.type==='Company'?companyRelationshipMarkup(record):record.type==='Person'?personCompanyMarkup(record):'')+'</div><div class="recordCardActions"><span class="pill">'+Math.round(record.priorityScore||0)+'</span><button class="secondary" data-edit-record="'+esc(record.id)+'">Edit</button><button class="recordDeleteButton" data-delete-record="'+esc(record.id)+'">Delete</button></div></div>'}
+function relatedRecordsMarkup(record){const ids=new Set(relatedRecordClientIds(record)),labels={Person:'People',Company:'Companies',Deal:'Deals',Task:'Tasks',Note:'Notes'},groups=['Person','Company','Deal','Task','Note'].map(function(type){const records=(S.records||[]).filter(function(candidate){return candidate.type===type&&ids.has(candidate.id)});return records.length?'<section><b>'+esc(labels[type])+'</b>'+companyRelationshipNames(records,'')+'</section>':''}).filter(Boolean);return groups.length?'<div class="relatedRecordsGrid"><b>Related records</b>'+groups.join('')+'</div>':''}
+function recordRow(record){return '<div class="item recordCard"><div><span class="pill">'+esc(record.type)+'</span> <b>'+esc(record.title)+'</b><div class="fieldLine">ID: '+esc(record.id)+' · Added: '+esc((record.createdAt||'').slice(0,10))+' · Edited: '+esc((record.updatedAt||'').slice(0,10))+'</div><div class="fieldLine">'+esc(recordFields(record)||((record.tags||[]).join(' · ')))+'</div><div class="fieldLine">'+esc((record.priorityReasons||[])[0]||'')+'</div>'+(record.type==='Company'?companyRelationshipMarkup(record):record.type==='Person'?personCompanyMarkup(record):'')+relatedRecordsMarkup(record)+'</div><div class="recordCardActions"><span class="pill">'+Math.round(record.priorityScore||0)+'</span><button class="secondary" data-edit-record="'+esc(record.id)+'">Edit</button><button class="recordDeleteButton" data-delete-record="'+esc(record.id)+'">Delete</button></div></div>'}
 function ensureDeleteRecordDialog(){if(document.getElementById('deleteRecordDialog'))return;document.body.insertAdjacentHTML('beforeend','<dialog id="deleteRecordDialog"><form id="deleteRecordForm"><div class="modalHead"><h2>Delete record?</h2><p class="muted" id="deleteRecordLabel"></p></div><div class="modalBody"><div class="recordDeleteWarning"><b>This permanently removes this CRM record.</b><p>Connected records will stay in the CRM and will be safely detached from it.</p></div><p class="status" id="deleteRecordStatus" aria-live="polite"></p></div><div class="modalFoot"><button class="secondary" type="button" id="cancelDeleteRecord">Cancel</button><button class="recordDeleteConfirm" type="submit" id="confirmDeleteRecord">Delete record</button></div></form></dialog>');const dialog=document.getElementById('deleteRecordDialog');document.getElementById('cancelDeleteRecord').onclick=function(){dialog.close()};document.getElementById('deleteRecordForm').onsubmit=async function(event){event.preventDefault();const record=S.deletingRecord,button=document.getElementById('confirmDeleteRecord'),status=document.getElementById('deleteRecordStatus');if(!record)return;if(button){button.disabled=true;button.textContent='Deleting...'}if(status)status.textContent='';try{await api('/api/records/delete',{method:'POST',body:JSON.stringify({id:record.id})});dialog.close();S.deletingRecord=null;await load();render()}catch(error){if(status)status.textContent=error.message||'Could not delete this record.';if(button){button.disabled=false;button.textContent='Delete record'}}}}
 function openDeleteRecordDialog(recordId){const record=(S.records||[]).find(function(candidate){return candidate.id===recordId});if(!record)return;ensureDeleteRecordDialog();S.deletingRecord=record;document.getElementById('deleteRecordLabel').textContent=record.type+': '+record.title;document.getElementById('deleteRecordStatus').textContent='';const button=document.getElementById('confirmDeleteRecord');button.disabled=false;button.textContent='Delete record';document.getElementById('deleteRecordDialog').showModal()}
 function bindRecordActions(){document.querySelectorAll('[data-delete-record]').forEach(function(button){button.onclick=function(){openDeleteRecordDialog(button.dataset.deleteRecord)}})}`;
@@ -517,10 +609,11 @@ source = source.replace("if(S.tab==='settings'){h='<div class=\"grid two\"><sect
 source = source.replace("\nasync function api(req, res, url, route) {", "\n" + manualRecordServerCode + "\n\n" + updateRecordServerCode + "\n\n" + recordRelationshipServerCode + "\n\n" + settingsServerCode + "\n\n" + openAiPriorityServerCode + "\n\nasync function api(req, res, url, route) {");
 source = source.replace('if (req.method === "GET" && route === "/api/dashboard/summary") return send(res, 200, dashboardSummary(storeData, ctx.workspaceId));', 'if (req.method === "GET" && route === "/api/dashboard/summary") return send(res, 200, dashboardSummary(storeData, ctx.workspaceId)); if (req.method === "GET" && route === "/api/settings") return send(res, 200, { settings: settingsForWorkspace(storeData, ctx.workspaceId) }); if ((req.method === "POST" || req.method === "PATCH") && route === "/api/settings") { const settings = updateSettingsFromBody(storeData, ctx.workspaceId, await readBody(req)); await saveStore(storeData); return send(res, 200, { settings }); }');
 source = source.replace('if (req.method === "POST" && route === "/api/records/plan") {', 'if (req.method === "POST" && route === "/api/records/manual") { let record = manualRecordFromBody(await readBody(req), ctx.workspaceId); storeData.records.push(record); if (record.type === "Person") await synchronizePersonCompanyRecord(storeData, record); else if (record.type === "Company") record = await reconcileStandaloneCompanyRecord(storeData, record); else reconcilePublishedRecordIdentity(storeData, record); await saveStore(storeData); return send(res, 201, { record }); } if (req.method === "POST" && route === "/api/records/update") { let record = updateRecordFromBody(storeData, await readBody(req), ctx.workspaceId); if (record.type === "Person") await synchronizePersonCompanyRecord(storeData, record); else if (record.type === "Company") record = await reconcileStandaloneCompanyRecord(storeData, record); else reconcilePublishedRecordIdentity(storeData, record); await saveStore(storeData); return send(res, 200, { record }); } if (req.method === "POST" && route === "/api/records/priority-check") { const result = await runOpenAIPriorityCheck(storeData, ctx.workspaceId); await saveStore(storeData); return send(res, 200, result); } if (req.method === "POST" && route === "/api/records/plan") {');
-source = source.replace('let record = manualRecordFromBody(await readBody(req), ctx.workspaceId); storeData.records.push(record);', 'let record = manualRecordFromBody(await readBody(req), ctx.workspaceId); if (record.type === "Company") validateCompanyParent(storeData, record, record.fields?.parentCompanyRecordId); storeData.records.push(record);');
+source = source.replace('let record = manualRecordFromBody(await readBody(req), ctx.workspaceId); storeData.records.push(record);', 'let record = manualRecordFromBody(await readBody(req), ctx.workspaceId); if (record.type === "Company") validateCompanyParent(storeData, record, record.fields?.parentCompanyRecordId); validateRelatedRecordIds(storeData, record, record.fields?.relatedRecordIds); storeData.records.push(record);');
 source = source.replaceAll('else if (record.type === "Company") record = await reconcileStandaloneCompanyRecord(storeData, record); else reconcilePublishedRecordIdentity(storeData, record);', 'else if (record.type === "Company") { record = await reconcileStandaloneCompanyRecord(storeData, record); synchronizeCompanyHierarchy(storeData, record); } else reconcilePublishedRecordIdentity(storeData, record);');
+source = source.replaceAll('} else reconcilePublishedRecordIdentity(storeData, record); await saveStore(storeData);', '} else reconcilePublishedRecordIdentity(storeData, record); synchronizeRecordRelationships(storeData, record); await saveStore(storeData);');
 source = source.replace('if (req.method === "POST" && route === "/api/records/priority-check") {', 'if (req.method === "POST" && route === "/api/records/delete") { const deletedRecord = deleteRecordFromBody(storeData, await readBody(req), ctx.workspaceId); await saveStore(storeData); return send(res, 200, { deletedRecord }); } if (req.method === "POST" && route === "/api/records/priority-check") {');
-source = source.replace('storeData.records = storeData.records.filter((record) => record.id !== companyRecord.id);', 'redirectCompanyHierarchyReferences(storeData, companyRecord.id, target.id, companyRecord.workspaceId); storeData.records = storeData.records.filter((record) => record.id !== companyRecord.id);');
+source = source.replace('storeData.records = storeData.records.filter((record) => record.id !== companyRecord.id);', 'redirectCompanyHierarchyReferences(storeData, companyRecord.id, target.id, companyRecord.workspaceId); redirectGenericRecordReferences(storeData, companyRecord.id, target.id, companyRecord.workspaceId); storeData.records = storeData.records.filter((record) => record.id !== companyRecord.id);');
 source = source.replace('for (const person of storeData.records.filter((record) => record.workspaceId === target.workspaceId && record.type === "Person" && record.fields?.companyRecordId === companyRecord.id)) person.fields.companyRecordId = target.id;', 'redirectPersonCompanyReferences(storeData, companyRecord.id, target.id, target.workspaceId);');
 source = source.replace("function render(){", recordEditorClientCode + "\n" + recordRelationshipClientCode + "\nfunction render(){");
 source = source.replace("let payload=Object.fromEntries(new FormData(e.target)),endpoint=S.editingRecordIsDraft?'/api/records/drafts/update':'/api/records/update';", "let payload=Object.fromEntries(new FormData(e.target));collectCompanySelections(e.target,payload);let endpoint=S.editingRecordIsDraft?'/api/records/drafts/update':'/api/records/update';");

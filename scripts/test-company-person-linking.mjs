@@ -105,11 +105,14 @@ try {
   assert.equal(hiddenCompanies(saved).length, 1);
   assert.deepEqual(new Set(hiddenCompanies(saved)[0].facts.personRecordIds), new Set(saved.records.filter((record) => record.workspaceId === "workspace_test" && record.type === "Person").map((record) => record.id)));
 
-  await request("/api/records/manual", { type: "Company", title: "Green Roof", priorityLevel: "normal" }, 201);
+  const companyContext = (await request("/api/records/manual", { type: "Note", title: "Green Roof account context", priorityLevel: "normal" }, 201)).record;
+  await request("/api/records/manual", { type: "Company", title: "Green Roof", relatedRecordIds: [companyContext.id], priorityLevel: "normal" }, 201);
   saved = await store();
   companies = saved.records.filter((record) => record.workspaceId === "workspace_test" && record.type === "Company");
   assert.equal(companies.length, 1, "creating a company by a known alias must merge into the canonical company");
   assert.equal(hiddenCompanies(saved).length, 1, "merging a standalone visible alias must not leave a duplicate hidden company");
+  assert.ok(companies[0].relationships.some((relationship) => relationship.type === "related_to" && relationship.recordId === companyContext.id), "a merged company must retain the duplicate record's generic relationships");
+  assert.ok(saved.records.find((record) => record.id === companyContext.id).relationships.some((relationship) => relationship.type === "related_to" && relationship.recordId === companies[0].id), "a merged company relationship must remain bidirectional");
 
   await request("/api/records/manual", { type: "Company", title: "Green Roofing Materials", priorityLevel: "normal" }, 201);
   saved = await store();
