@@ -417,6 +417,11 @@ await assertContains("src/server-runtime.js", "function synchronizePersonCompany
 await assertContains("src/server-runtime.js", "company-multi", "the multiple-company person editor field");
 await assertContains("src/server-runtime.js", "function collectCompanySelections(", "the multiple-company form serializer");
 await assertContains("src/server-responsive.js", "metric('Company links'", "the People company-relationship summary");
+await assertContains("src/server-runtime.js", "function synchronizeRecordRelationships(", "bidirectional universal CRM record relationships");
+await assertContains("src/server-runtime.js", "A record cannot be related to itself.", "universal record self-link protection");
+await assertContains("src/server-runtime.js", "data-related-record-multi", "the universal related-record selector");
+await assertContains("src/server-runtime.js", "function relatedRecordsMarkup(", "the grouped related-record card display");
+await assertContains("src/server-responsive.js", ".recordMultiSelect", "the responsive universal record selector layout");
 await assertContains("src/server-fonts.js", 'source = source.replace(/\\r\\n/g, "\\n");', "cross-platform Analytics visual source line endings");
 await assertContains("src/server-fonts.js", 'source.includes("function analyticsOverviewPopup(")', "the active Analytics visual installation check");
 await assertContains("src/server-fonts.js", '<select id="analyticsRange" style="color:#061a33!important">', "explicit dark date-range selected value");
