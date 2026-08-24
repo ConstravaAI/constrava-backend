@@ -422,6 +422,12 @@ await assertContains("src/server-runtime.js", "A record cannot be related to its
 await assertContains("src/server-runtime.js", "data-related-record-multi", "the universal related-record selector");
 await assertContains("src/server-runtime.js", "function relatedRecordsMarkup(", "the grouped related-record card display");
 await assertContains("src/server-responsive.js", ".recordMultiSelect", "the responsive universal record selector layout");
+await assertContains("src/server-runtime.js", "function stageRelatedRecordText(", "LLM-planned related records from creation-form text");
+await assertContains("src/server-runtime.js", "data-related-record-type-filter", "the related-record type dropdown");
+await assertContains("src/server-runtime.js", "data-related-record-search-input", "the related-record search control");
+await assertContains("src/server-runtime.js", "class=\"relatedRecordDropdown\"", "the searchable existing-record dropdown");
+await assertContains("src/server-runtime.js", "name=\"relatedRecordText\"", "the combined plain-text related-record option");
+await assertContains("src/server-runtime.js", "synchronizeRecordRelationships(storeData, record);\\n  storeData.draftRecords.splice", "relationship completion when an AI draft is published");
 await assertContains("src/server-fonts.js", 'source = source.replace(/\\r\\n/g, "\\n");', "cross-platform Analytics visual source line endings");
 await assertContains("src/server-fonts.js", 'source.includes("function analyticsOverviewPopup(")', "the active Analytics visual installation check");
 await assertContains("src/server-fonts.js", '<select id="analyticsRange" style="color:#061a33!important">', "explicit dark date-range selected value");
