@@ -237,6 +237,11 @@ source = source.replace('if (req.method === "GET" && route === "/api/dashboard/s
 source = source.replace('if (req.method === "POST" && route === "/api/records/plan") {', 'if (req.method === "POST" && route === "/api/records/manual") { let record = manualRecordFromBody(await readBody(req), ctx.workspaceId); storeData.records.push(record); if (record.type === "Person") await synchronizePersonCompanyRecord(storeData, record); else if (record.type === "Company") record = await reconcileStandaloneCompanyRecord(storeData, record); else reconcilePublishedRecordIdentity(storeData, record); await saveStore(storeData); return send(res, 201, { record }); } if (req.method === "POST" && route === "/api/records/update") { let record = updateRecordFromBody(storeData, await readBody(req), ctx.workspaceId); if (record.type === "Person") await synchronizePersonCompanyRecord(storeData, record); else if (record.type === "Company") record = await reconcileStandaloneCompanyRecord(storeData, record); else reconcilePublishedRecordIdentity(storeData, record); await saveStore(storeData); return send(res, 200, { record }); } if (req.method === "POST" && route === "/api/records/priority-check") { const result = await runOpenAIPriorityCheck(storeData, ctx.workspaceId); await saveStore(storeData); return send(res, 200, result); } if (req.method === "POST" && route === "/api/records/plan") {');
 source = source.replace("function render(){", recordEditorClientCode + "\nfunction render(){");
 source = source.replace("async function refresh(nextTab)", recordEditorBindCodeWithHeroActions + "\nasync function refresh(nextTab)");
+source = source
+  .replaceAll("['Person','Contacts']", "['Person','People']")
+  .replaceAll("Person:'Contacts'", "Person:'People'")
+  .replaceAll("metric('Contacts'", "metric('People'")
+  .replaceAll(">Contacts</option>", ">People</option>");
 
 
 // tab-loading-state-v1

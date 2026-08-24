@@ -402,6 +402,9 @@ await assertContains("src/server-analytics-selector-copies.js", "analytics-visua
 await assertContains("src/server-analytics-selector-copies.js", "analyticsDedicatedMetrics()+(body?'<div", "conditional analytics detail panel rendering");
 await assertContains("src/server-analytics-selector-copies.js", ".analyticsToolbarControlsWrap select{color:#061a33!important}", "dark analytics dropdown selected values");
 await assertContains("src/server-analytics-selector-copies.js", ".crmHeroActions{display:flex", "the CRM hero action layout");
+await assertContains("src/server-runtime.js", "['Person','People']", "the dedicated People navigation label");
+await assertContains("src/server-responsive.js", "function crmPeopleContent()", "the dedicated People CRM dashboard");
+await assertContains("src/server-responsive.js", "if(S.crmView==='Person')return crmPeopleContent()", "the dedicated People tab route");
 await assertContains("src/server-fonts.js", 'source = source.replace(/\\r\\n/g, "\\n");', "cross-platform Analytics visual source line endings");
 await assertContains("src/server-fonts.js", 'source.includes("function analyticsOverviewPopup(")', "the active Analytics visual installation check");
 await assertContains("src/server-fonts.js", '<select id="analyticsRange" style="color:#061a33!important">', "explicit dark date-range selected value");
